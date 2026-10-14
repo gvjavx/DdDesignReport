@@ -256,12 +256,45 @@ const tests = {
     const old = open({ page: { width: 595, height: 842, margin: 20 } })
     check('one old margin becomes four', same(['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].map(s => old.tpl.page[s]), [20, 20, 20, 20]))
   },
+  'resizes with the corner handle'() {
+    const t = open()
+    t.drop('rect', 'summary', 20, 0)
+    const h = t.q('.ddr-handle')
+    check('a selected element has a handle on its corner', !!h && h.style.left === '140px' && h.style.top === '40px', h && h.style.left + ',' + h.style.top)
+    t.ptr(h, 'pointerdown', 100, 100); t.ptr(h, 'pointermove', 140, 115); t.ptr(h, 'pointerup', 140, 115)
+    check('40 wider and 15 taller', t.els('summary')[0].w === 160 && t.els('summary')[0].h === 55, JSON.stringify(t.els('summary')[0]))
+    check('the band grew with it', t.tpl.bands.summary.height === 55)
+    t.click('zoom:1'); t.click('zoom:1'); t.click('zoom:1'); t.click('zoom:1'); t.click('zoom:1')
+    const z = t.q('.ddr-handle')
+    t.ptr(z, 'pointerdown', 100, 100); t.ptr(z, 'pointermove', 130, 100); t.ptr(z, 'pointerup', 130, 100)
+    check('at 150% a 30px drag is 20pt', t.els('summary')[0].w === 180, 'w=' + t.els('summary')[0].w)
+    t.drop('line', 'footer', 0, 5)
+    const l = t.q('.ddr-handle')
+    t.ptr(l, 'pointerdown', 100, 100); t.ptr(l, 'pointermove', 130, 160); t.ptr(l, 'pointerup', 130, 160)
+    check('a line only changes its length', t.els('footer')[0].w === 220 && t.els('footer')[0].h === 1, JSON.stringify(t.els('footer')[0]))
+    t.ptr(t.qa('.ddr-el')[0], 'pointerdown', 0, 0, { shiftKey: true })
+    check('no handle while several are selected', !t.q('.ddr-handle'))
+  },
+  'guides a first-time user and reports what is selected'() {
+    const t = open()
+    check('an empty page says how to start', !!t.q('.ddr-hint'))
+    check('status shows the paper', t.q('[data-id=status]').textContent === 'A4 · 595 × 842 pt', t.q('[data-id=status]').textContent)
+    t.click('add:rect')
+    check('the hint goes away', !t.q('.ddr-hint'))
+    check('status and panel name the selection', t.q('[data-id=status]').textContent.endsWith('rect 120 × 40') && t.q('[data-id=side]').textContent === 'Properties · rect')
+    const range = t.q('[data-id=zoomrange]'); range.value = 200; range.dispatchEvent(new Event('input', { bubbles: true }))
+    check('the zoom slider zooms', t.q('[data-id=zoom]').value === '200%')
+    t.click('zoom:fit')
+    check('fit to width', t.q('[data-id=zoom]').value !== '200%' && parseInt(t.q('[data-id=zoom]').value) >= 25, t.q('[data-id=zoom]').value)
+    check('every ribbon button has a name for screen readers', t.qa('.ddr-b').every(b => b.getAttribute('aria-label')))
+    check('light theme by default, dark on request', t.root.dataset.theme === 'light' && open(undefined, { theme: 'dark' }).root.dataset.theme === 'dark')
+  },
   'Indonesian interface'() {
     const t = open(undefined, { lang: 'id' })
     check('tabs', same(t.qa('[data-tab]').map(b => b.textContent), ['Beranda', 'Sisipkan', 'Tata Letak', 'Tampilan']))
-    check('buttons and tooltips', t.q('[data-cmd=copy]').textContent === 'Salin' && t.q('[data-cmd=undo]').title === 'Urungkan (Ctrl+Z)')
+    check('buttons and tooltips', t.q('[data-cmd=copy]').title === 'Salin (Ctrl+C)' && t.q('[data-cmd="add:table"]').textContent === 'Tabel' && t.q('[data-cmd=undo]').title === 'Urungkan (Ctrl+Z)')
     check('commands still work', (t.click('add:text'), t.els('header').length === 1))
-    check('English by default', open().q('[data-cmd=copy]').textContent === 'Copy')
+    check('English by default', open().q('[data-cmd=copy]').title === 'Copy (Ctrl+C)')
   },
   'tells the host about changes, with a copy on request'() {
     const t = open()

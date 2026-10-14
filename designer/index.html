@@ -5,40 +5,76 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DdDesignReport Designer</title>
 <style>
+  :root { --a: #2563eb; --surface: #fff; --bg: #f6f7f9; --text: #1f2937; --muted: #6b7280; --line: #e2e5ea; --hover: #eef2f7; color-scheme: light }
+  @media (prefers-color-scheme: dark) {
+    :root { --a: #7aa2ff; --surface: #1d222c; --bg: #161a22; --text: #e5e9f0; --muted: #98a2b3; --line: #303745; --hover: #272e3b; color-scheme: dark }
+  }
+  * { box-sizing: border-box }
   html, body { height: 100%; margin: 0 }
-  body { display: flex; flex-direction: column; background: #f3f3f3; color: #111; font: 13px system-ui, sans-serif }
-  header { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 10px; background: #fff; border-bottom: 1px solid #c8c8c8 }
-  header strong { margin-right: 8px }
-  header span { margin-left: 12px; color: #666 }
-  header a { margin-left: auto; color: #185abd }
-  #msg { color: #a12a00 }
-  details { padding: 6px 10px; background: #fff; border-bottom: 1px solid #c8c8c8 }
-  textarea { display: block; width: min(100%, 700px); height: 140px; margin-top: 6px; font: 12px monospace }
-  #designer { flex: 1; min-height: 0; border: 0 }
-  #designer .ddr-work { flex: 1 }
+  body { display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif }
+  header { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--line) }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; margin-right: 6px }
+  .brand svg { width: 26px; height: 26px }
+  button, select { font: inherit; color: inherit; height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); cursor: pointer }
+  button:hover, select:hover { background: var(--hover) }
+  button.primary { background: var(--a); border-color: var(--a); color: #fff; font-weight: 600 }
+  button.primary:hover { filter: brightness(1.08); background: var(--a) }
+  :is(button, select, a, summary, textarea):focus-visible { outline: 2px solid var(--a); outline-offset: 1px }
+  .seg { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--surface) }
+  .seg span { padding: 0 10px; color: var(--muted); font-size: 12px }
+  .seg button { border: 0; border-left: 1px solid var(--line); border-radius: 0; padding: 0 10px; font-weight: 600; font-size: 12px }
+  .spacer { flex: 1 }
+  header a { color: var(--a); text-decoration: none; font-weight: 600; white-space: nowrap }
+  header a:hover { text-decoration: underline }
+  #msg { position: fixed; left: 50%; bottom: 46px; transform: translateX(-50%); z-index: 30; max-width: min(92vw, 560px); padding: 10px 16px; border-radius: 10px; background: #1f2937; color: #fff; box-shadow: 0 8px 24px #0004; font-size: 13px }
+  #msg:empty { display: none }
+  #datapanel { background: var(--surface); border-bottom: 1px solid var(--line) }
+  #datapanel summary { display: none }
+  #datapanel > div { padding: 10px 12px 12px }
+  #datapanel label { display: block; font-weight: 600; margin-bottom: 6px }
+  #datapanel p { margin: 0 0 6px; color: var(--muted) }
+  textarea { display: block; width: min(100%, 760px); height: 150px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: 12px/1.5 ui-monospace, Consolas, monospace }
+  #designer { flex: 1; min-height: 0; border: 0; border-radius: 0 }
+  @media (max-width: 640px) {
+    header { padding: 6px 8px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none }
+    header > * { flex: none }
+    .brand span { display: none }
+    .spacer { display: none }
+  }
 </style>
 </head>
 <body>
 <header>
-  <strong>DdDesignReport</strong>
+  <div class="brand">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#2563eb"/><path d="M10 7h9l4 4v14H10z" fill="#fff"/><path d="M13 14h7M13 17.5h7M13 21h4" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/></svg>
+    <span>DdDesignReport</span>
+  </div>
   <button id="new" type="button" data-t>New</button>
   <select id="templates" aria-label="Start from a ready-made template"><option value="" data-t>Templates…</option></select>
   <button id="open" type="button" data-t>Open…</button>
-  <button id="save" type="button" data-t>Save template</button>
+  <button id="save" type="button" class="primary" data-t>Save template</button>
   <input id="file" type="file" accept=".json,application/json" hidden>
-  <span data-t>Export</span>
-  <button type="button" data-export="pdf">PDF</button>
-  <button type="button" data-export="html">HTML</button>
-  <button type="button" data-export="xlsx">XLSX</button>
-  <button type="button" data-export="xls">XLS</button>
-  <button type="button" data-export="csv">CSV</button>
-  <output id="msg" role="status"></output>
+  <div class="seg" role="group" aria-label="Export">
+    <span data-t>Export</span>
+    <button type="button" data-export="pdf">PDF</button>
+    <button type="button" data-export="html">HTML</button>
+    <button type="button" data-export="xlsx">XLSX</button>
+    <button type="button" data-export="xls">XLS</button>
+    <button type="button" data-export="csv">CSV</button>
+  </div>
+  <button id="datatoggle" type="button" aria-expanded="false" aria-controls="datapanel" data-t>Sample data</button>
+  <span class="spacer"></span>
   <a id="lang" href="?lang=id">Bahasa Indonesia</a>
 </header>
-<details>
-  <summary><label for="data" data-t>Sample data for preview and export (JSON)</label></summary>
-  <textarea id="data" spellcheck="false"></textarea>
+<details id="datapanel">
+  <summary data-t>Sample data</summary>
+  <div>
+    <label for="data" data-t>Sample data for preview and export (JSON)</label>
+    <p data-t>The fields here are what the {{placeholders}} in the report are filled with.</p>
+    <textarea id="data" spellcheck="false"></textarea>
+  </div>
 </details>
+<output id="msg" role="status"></output>
 <div id="designer"></div>
 <script type="module">
 import { createDesigner } from './designer.js'
@@ -47,7 +83,8 @@ import { createDesigner } from './designer.js'
 const lang = new URLSearchParams(location.search).get('lang') === 'id' ? 'id' : 'en'
 const ID = {
   'New': 'Baru', 'Templates…': 'Template…', 'Open…': 'Buka…', 'Save template': 'Simpan template', 'Export': 'Ekspor',
-  'Sample data for preview and export (JSON)': 'Data contoh untuk pratinjau dan ekspor (JSON)',
+  'Sample data for preview and export (JSON)': 'Data contoh untuk pratinjau dan ekspor (JSON)', 'Sample data': 'Data contoh',
+  'The fields here are what the {{placeholders}} in the report are filled with.': 'Field di sini adalah isi untuk {{placeholder}} di laporan.',
   'Sample data is not valid JSON: ': 'Data contoh bukan JSON yang sah: ',
   'Could not load the template: ': 'Template tidak bisa dimuat: ', 'Not a valid template: ': 'Bukan template yang sah: ', 'Export failed: ': 'Ekspor gagal: ',
   'Replaced. Ctrl+Z or the Undo button brings the previous report back.': 'Diganti. Ctrl+Z atau tombol Urungkan mengembalikan laporan sebelumnya.',
@@ -59,7 +96,10 @@ for (const el of document.querySelectorAll('[data-t]')) el.textContent = L(el.te
 if (lang === 'id') Object.assign(document.getElementById('lang'), { href: '?', textContent: 'English' })
 
 const KEY = 'ddreport-template', DATA = 'ddreport-data', $ = id => document.getElementById(id)
-const say = text => { $('msg').value = text }
+// messages show for a few seconds at the bottom of the window
+let hide
+const say = text => { $('msg').value = text; clearTimeout(hide); if (text) hide = setTimeout(() => { $('msg').value = '' }, 7000) }
+$('datatoggle').onclick = () => { $('datapanel').open = !$('datapanel').open; $('datatoggle').setAttribute('aria-expanded', $('datapanel').open) }
 // a template with large pictures can be more than the browser will store: say so instead of losing it quietly
 const store = (k, v) => {
   try { localStorage.setItem(k, v); return true }
@@ -99,6 +139,7 @@ function download(blob, name) {
 
 const designer = createDesigner($('designer'), {
   lang,
+  theme: 'auto',
   template: saved ?? undefined,
   onChange: persist,
   preview: async template => (await render(template, 'html')).text(),

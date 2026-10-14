@@ -28,6 +28,7 @@ const designer = createDesigner(document.getElementById('designer'), {
   template: savedTemplate,            // opsional
   onChange: t => save(t),             // dipanggil setiap ada perubahan
   lang: 'id',                         // opsional: antarmuka Indonesia (default 'en')
+  theme: 'auto',                      // opsional: 'light' (default), 'dark', atau 'auto'
   preview: async t => {               // opsional, memunculkan tombol Preview
     const res = await fetch('/api/report/preview', { method: 'POST', body: JSON.stringify(t) })
     return res.text()                 // HTML hasil render backend (format "html")
@@ -45,7 +46,9 @@ Designer punya ribbon seperti pengolah kata:
 | **Layout** | Ukuran kertas (A4, A5, Letter, Legal, F4), orientasi, margin per sisi, warna dan gambar latar halaman, grouping, pemisah angka |
 | **View** | Zoom, penggaris, snap, preview |
 
-Klik tombol di tab Insert atau seret ke band. Klik ganda teks atau sel tabel untuk mengetik langsung di halaman; pilih sebagian teks lalu tekan **B**/**I**/**U** untuk memformat bagian itu saja. Shift-klik, atau seret kotak di area kosong, untuk memilih banyak elemen. Geser elemen untuk memindah (termasuk ke band lain), tarik sudut kanan bawah untuk mengubah ukuran, tarik tepi bawah band untuk mengubah tingginya.
+Tampilannya menyesuaikan lebar tempat designer dipasang: di layar sempit panel properti pindah ke bawah dan halaman dipaskan ke lebar. Zoom ada di bilah status bawah.
+
+Klik tombol di tab Insert atau seret ke band. Klik ganda teks atau sel tabel untuk mengetik langsung di halaman; pilih sebagian teks lalu tekan **B**/**I**/**U** untuk memformat bagian itu saja. Shift-klik, atau seret kotak di area kosong, untuk memilih banyak elemen. Geser elemen untuk memindah (termasuk ke band lain), tarik pegangan biru di sudut kanan bawah untuk mengubah ukuran (juga dengan sentuhan), tarik tepi bawah band untuk mengubah tingginya.
 
 Pintasan: `Ctrl+Z` / `Ctrl+Y`, `Ctrl+C` / `X` / `V` / `D`, `Ctrl+A`, `Ctrl+B` / `I` / `U`, tombol panah (dengan `Shift` = 10pt), `Delete`. Tahan `Alt` saat menggeser untuk mematikan snap.
 
