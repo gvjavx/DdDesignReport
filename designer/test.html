@@ -289,6 +289,55 @@ const tests = {
     check('every ribbon button has a name for screen readers', t.qa('.ddr-b').every(b => b.getAttribute('aria-label')))
     check('light theme by default, dark on request', t.root.dataset.theme === 'light' && open(undefined, { theme: 'dark' }).root.dataset.theme === 'dark')
   },
+  'deletes with the button on the element and by dragging to the bin'() {
+    const t = open()
+    t.drop('rect', 'summary', 20, 0); t.drop('rect', 'summary', 200, 0)
+    const x = t.q('.ddr-x')
+    check('the selected element has a delete button on its top-right corner', !!x && x.style.left === '320px' && x.style.top === '0px' && !!x.getAttribute('aria-label'), x && x.style.left + ',' + x.style.top)
+    x.click()
+    check('the button deletes that element only', same(t.els('summary').map(e => e.x), [20]))
+    check('the keyboard still works afterwards', t.root.contains(document.activeElement))
+    t.click('undo')
+    check('undo brings it back', t.els('summary').length === 2)
+
+    const bin = t.q('.ddr-trash'), node = t.q('.ddr-el'), r = node.getBoundingClientRect()
+    check('the bin is hidden until something is dragged', bin.hidden)
+    t.ptr(node, 'pointerdown', r.left + 4, r.top + 4); t.ptr(node, 'pointermove', r.left + 30, r.top + 4, { altKey: true })
+    check('dragging shows the bin', !bin.hidden && !bin.classList.contains('over'))
+    const b = bin.getBoundingClientRect()
+    t.ptr(node, 'pointermove', b.left + 10, b.top + 10, { altKey: true })
+    check('the bin lights up under the pointer', bin.classList.contains('over'))
+    t.ptr(node, 'pointerup', b.left + 10, b.top + 10)
+    check('dropping on the bin deletes the element', t.els('summary').length === 1 && bin.hidden)
+    t.click('undo')
+    check('and undo restores it where it was', same(t.els('summary').map(e => [e.x, e.y]), [[20, 0], [200, 0]]), JSON.stringify(t.els('summary').map(e => [e.x, e.y])))
+
+    const nodes = t.qa('.ddr-el')
+    t.ptr(nodes[0], 'pointerdown', 0, 0); t.ptr(nodes[0], 'pointerup', 0, 0); t.ptr(nodes[1], 'pointerdown', 0, 0, { shiftKey: true })
+    check('no delete button while several are selected', !t.q('.ddr-x'))
+    const r2 = nodes[0].getBoundingClientRect()
+    t.ptr(nodes[0], 'pointerdown', r2.left + 4, r2.top + 4); t.ptr(nodes[0], 'pointermove', r2.left + 40, r2.top + 4, { altKey: true })
+    const b2 = bin.getBoundingClientRect()
+    t.ptr(nodes[0], 'pointermove', b2.left + 10, b2.top + 10, { altKey: true }); t.ptr(nodes[0], 'pointerup', b2.left + 10, b2.top + 10)
+    check('dragging several to the bin deletes them all', t.els('summary').length === 0)
+    const d = open(); d.drop('rect', 'summary', 20, 0)
+    const n3 = d.q('.ddr-el'), r3 = n3.getBoundingClientRect()
+    d.ptr(n3, 'pointerdown', r3.left + 4, r3.top + 4); d.ptr(n3, 'pointermove', r3.left + 60, r3.top + 4, { altKey: true }); d.ptr(n3, 'pointerup', r3.left + 60, r3.top + 4)
+    check('a drop anywhere else just moves it', d.els('summary').length === 1 && d.els('summary')[0].x === 76 && d.q('.ddr-trash').hidden, JSON.stringify(d.els('summary')))
+  },
+  'keeps the page in the middle of the work area'() {
+    const t = open()
+    const gaps = () => { const s = t.q('.ddr-stage').getBoundingClientRect(), p = t.q('.ddr-page').getBoundingClientRect(); return [Math.round(p.left - s.left), Math.round(s.right - p.right)] }
+    let [left, right] = gaps()
+    check('same space left and right of the page', left > 100 && Math.abs(left - right) <= 16, left + ' / ' + right) // the scrollbar may take a few pixels on one side
+    t.click('zoom:1'); t.click('zoom:1'); [left, right] = gaps()
+    check('still centred when zoomed', Math.abs(left - right) <= 16, left + ' / ' + right)
+    t.set('[data-id=orientation]', 'Landscape'); [left, right] = gaps()
+    check('and for another paper shape', Math.abs(left - right) <= 16, left + ' / ' + right)
+    const range = t.q('[data-id=zoomrange]'); range.value = 300; range.dispatchEvent(new Event('input', { bubbles: true }))
+    const s = t.q('.ddr-stage')
+    check('a page wider than the work area starts at its left edge and scrolls', s.scrollWidth > s.clientWidth && gaps()[0] >= 0, String(gaps()))
+  },
   'Indonesian interface'() {
     const t = open(undefined, { lang: 'id' })
     check('tabs', same(t.qa('[data-tab]').map(b => b.textContent), ['Beranda', 'Sisipkan', 'Tata Letak', 'Tampilan']))

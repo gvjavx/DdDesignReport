@@ -76,7 +76,7 @@ const ID = {
   'Drag to resize this band': 'Tarik untuk mengubah tinggi band ini', band: 'band', text: 'teks', rows: 'baris', columns: 'kolom', 'column widths': 'lebar kolom',
   border: 'garis', 'line colour': 'warna garis', src: 'gambar', chart: 'jenis chart', label: 'label', value: 'nilai', format: 'format', color: 'warna',
   'field or qty * price': 'field atau qty * price', 'Use <b>, <i> and <u> to style parts of the text': 'Pakai <b>, <i>, dan <u> untuk memformat sebagian teks',
-  'element': 'elemen', Properties: 'Properti', selected: 'dipilih', 'Drag to resize': 'Tarik untuk mengubah ukuran', 'Fit the page to the width': 'Paskan halaman ke lebar',
+  'element': 'elemen', Properties: 'Properti', selected: 'dipilih', 'Drag to resize': 'Tarik untuk mengubah ukuran', 'Delete this element': 'Hapus elemen ini', 'Drop here to delete': 'Lepas di sini untuk menghapus', 'Fit the page to the width': 'Paskan halaman ke lebar',
   'Start here': 'Mulai di sini', 'Open the Insert tab, then click an element or drag it onto the page.': 'Buka tab Sisipkan, lalu klik sebuah elemen atau seret ke halaman.',
 }
 
@@ -112,6 +112,7 @@ const ICONS = {
   preview: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
   zoomOut: 'M5 12h14',
   zoomIn: 'M5 12h14M12 5v14',
+  close: 'M6 6l12 12M18 6 6 18',
   fit: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
 }
 
@@ -156,8 +157,9 @@ const CSS = `
 .ddr-group label{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .ddr-group input[type=checkbox],.ddr-props input[type=checkbox]{width:15px;height:15px;accent-color:var(--a)}
 
-.ddr-work{display:flex;flex:1;min-height:0}
+.ddr-work{position:relative;display:flex;flex:1;min-height:0}
 .ddr-stage{flex:1;min-width:0;overflow:auto;padding:16px;background:var(--stage) radial-gradient(circle,color-mix(in srgb,var(--muted) 28%,transparent) 1px,transparent 1.2px) 0 0/16px 16px}
+.ddr-sizer{margin:0 auto}
 .ddr-zoom{transform-origin:0 0;width:max-content}
 .ddr-ruler{position:relative;height:18px;margin-bottom:6px;font-size:9px;color:#555;background-color:#fff;border-radius:3px;box-shadow:0 0 0 1px #0002}
 .ddr-ruler span{position:absolute;top:1px;padding-left:3px}
@@ -182,6 +184,13 @@ const CSS = `
 .ddr-el.ddr-sel{outline:2px solid #2563eb}
 .ddr-handle{position:absolute;z-index:3;width:11px;height:11px;margin:-6px 0 0 -6px;background:#2563eb;border:2px solid #fff;border-radius:3px;box-shadow:0 0 0 1px #2563eb;cursor:nwse-resize;touch-action:none}
 @media (pointer:coarse){.ddr-handle{width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%}.ddr-b{min-width:38px;height:38px}}
+.ddr .ddr-x{position:absolute;z-index:3;display:grid;place-items:center;width:18px;height:18px;margin:-9px 0 0 -9px;padding:0;border:2px solid #fff;border-radius:50%;background:#dc2626;color:#fff;box-shadow:0 0 0 1px #dc2626;cursor:pointer;touch-action:none}
+.ddr-x .ddr-i{width:10px;height:10px;stroke-width:3.2}
+.ddr-x:hover{background:#b91c1c}
+.ddr-trash{position:absolute;z-index:5;left:50%;top:12px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:9px 16px;border:2px dashed #dc2626;border-radius:999px;background:var(--surface);color:#dc2626;font-weight:600;box-shadow:0 6px 18px #0003;pointer-events:none;white-space:nowrap}
+.ddr-trash[hidden]{display:none}
+.ddr-trash.over{background:#dc2626;color:#fff;border-style:solid;transform:translateX(-50%) scale(1.06)}
+@media (pointer:coarse){.ddr-x{width:26px;height:26px;margin:-13px 0 0 -13px}.ddr-x .ddr-i{width:13px;height:13px}}
 .ddr-marquee{position:fixed;z-index:10;border:1px solid #2563eb;background:#2563eb22;pointer-events:none}
 .ddr [contenteditable]:not([contenteditable=false]){user-select:text;cursor:text;outline:2px solid #f59e0b}
 
@@ -336,6 +345,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     <div class="ddr-tabs" role="tablist">${tabs.map((t, i) => `<button type="button" role="tab" aria-selected="${i === 0}" tabindex="${i ? -1 : 0}" data-tab="${t}">${L(t)}</button>`).join('')}</div>
     ${tabs.map((t, i) => `<div class="ddr-panel" role="tabpanel" data-panel="${t}" ${i ? 'hidden' : ''}>${RIBBON[t]}</div>`).join('')}
     <div class="ddr-work">
+      <div class="ddr-trash" hidden>${icon('delete')}<span>${L('Drop here to delete')}</span></div>
       <div class="ddr-stage"><div class="ddr-sizer"><div class="ddr-zoom"><div class="ddr-ruler"></div><div class="ddr-page" tabindex="-1"></div></div></div></div>
       <details class="ddr-side" open><summary data-id="side"></summary><div class="ddr-props"></div></details>
     </div>
@@ -404,11 +414,24 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   // one handle on the bottom-right corner of the selected element resizes it;
   // unlike the browser's own resize grip it also works by touch and at any zoom
   const handle = Object.assign(document.createElement('div'), { className: 'ddr-handle', title: L('Drag to resize') })
+  // ... and a small red button on its top-right corner deletes it
+  const cross = Object.assign(document.createElement('button'), { type: 'button', className: 'ddr-x', title: L('Delete this element'), innerHTML: icon('close') })
+  cross.setAttribute('aria-label', L('Delete this element'))
+  cross.onpointerdown = ev => ev.stopPropagation()
+  cross.onclick = () => { moveTo(sel); keepFocus() } // Safari does not focus a clicked button, so say where the keyboard goes
   function grab() {
     const e = sel.length === 1 && !editing ? sel[0] : null, band = e && page.querySelector(`[data-name="${bandOf(e)}"]`)
-    if (!band) return handle.remove()
+    if (!band) return void (handle.remove(), cross.remove())
     handle.style.left = px(e.x + e.w); handle.style.top = px(e.y + e.h)
-    if (handle.parentNode !== band) band.append(handle)
+    cross.style.left = px(e.x + e.w); cross.style.top = px(e.y)
+    if (handle.parentNode !== band) band.append(handle, cross)
+  }
+
+  // while an element is being dragged a bin shows at the top; dropping on it deletes the selection
+  const trash = $('.ddr-trash')
+  const overTrash = ev => {
+    const r = trash.getBoundingClientRect()
+    return !trash.hidden && ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom
   }
   handle.onpointerdown = ev => {
     const e = sel[0], w0 = e.w, h0 = e.h, n = nodes.get(e)
@@ -490,6 +513,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     editing = node
     cancelled = false
     handle.remove()
+    cross.remove()
     if (rich) node.dataset.rich = 1
     try { node.contentEditable = rich ? 'true' : 'plaintext-only' } catch { node.contentEditable = 'true' } // older Firefox has no plaintext-only
     node.focus()
@@ -861,14 +885,20 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
         }
         for (const [o, x, y] of start) { o.x = Math.max(0, Math.round(x + dx)); o.y = Math.round(y + dy); place(o) }
         dragged = true
+        trash.hidden = false
+        trash.classList.toggle('over', overTrash(mv))
       }
       n.setPointerCapture(ev.pointerId)
     }
-    n.onpointerup = () => {
+    n.onpointerup = ev => {
       if (!n.onpointermove) return
       n.onpointermove = null
+      const binned = overTrash(ev)
+      trash.hidden = true
+      trash.classList.remove('over')
       if (!dragged) return
       dragged = false
+      if (binned) return moveTo(sel) // undo brings them back
       // one element dropped over another band: it now belongs to that band
       const top = n.getBoundingClientRect().top
       const over = [...page.children].map(b => [b.dataset.name, b.getBoundingClientRect()]).find(([, r]) => top >= r.top && top < r.bottom)
