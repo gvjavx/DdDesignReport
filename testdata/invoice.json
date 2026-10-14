@@ -1,0 +1,43 @@
+{
+  "page": { "width": 595, "height": 842, "margin": 36 },
+  "dataKey": "rows",
+  "bands": {
+    "header": {
+      "height": 60,
+      "elements": [
+        { "type": "text", "x": 0, "y": 0, "w": 300, "h": 24, "text": "INVOICE {{number}}", "fontSize": 18, "bold": true },
+        { "type": "text", "x": 0, "y": 28, "w": 300, "h": 14, "text": "Customer: {{customer.name}}" },
+        { "type": "line", "x": 0, "y": 52, "w": 523, "h": 1, "border": 1 }
+      ]
+    },
+    "columnHeader": {
+      "height": 20,
+      "elements": [
+        { "type": "rect", "x": 0, "y": 0, "w": 523, "h": 18, "fill": "#eeeeee" },
+        { "type": "text", "x": 4, "y": 3, "w": 300, "h": 14, "text": "Item", "bold": true },
+        { "type": "text", "x": 310, "y": 3, "w": 60, "h": 14, "text": "Qty", "bold": true, "align": "right" },
+        { "type": "text", "x": 380, "y": 3, "w": 139, "h": 14, "text": "Price", "bold": true, "align": "right" }
+      ]
+    },
+    "detail": {
+      "height": 18,
+      "elements": [
+        { "type": "text", "x": 380, "y": 3, "w": 139, "h": 14, "text": "{{price}}", "align": "right" },
+        { "type": "text", "x": 4, "y": 3, "w": 300, "h": 14, "text": "{{name}}" },
+        { "type": "text", "x": 310, "y": 3, "w": 60, "h": 14, "text": "{{qty}}", "align": "right" }
+      ]
+    },
+    "summary": {
+      "height": 30,
+      "elements": [
+        { "type": "text", "x": 310, "y": 8, "w": 209, "h": 16, "text": "Total: {{total}}", "fontSize": 12, "bold": true, "align": "right", "color": "#aa0000" }
+      ]
+    },
+    "footer": {
+      "height": 20,
+      "elements": [
+        { "type": "text", "x": 0, "y": 4, "w": 523, "h": 14, "text": "Page {{page}} of {{pages}}", "fontSize": 8, "align": "center" }
+      ]
+    }
+  }
+}

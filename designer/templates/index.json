@@ -1,0 +1,42 @@
+[
+  {
+    "id": "invoice",
+    "name": "Faktur",
+    "description": "Faktur penjualan dengan tabel barang, pajak, total, dan QR nomor faktur."
+  },
+  {
+    "id": "sales-report",
+    "name": "Laporan penjualan",
+    "description": "Laporan berkelompok per kategori dengan subtotal, total, dan dua chart."
+  },
+  {
+    "id": "receipt",
+    "name": "Struk kasir",
+    "description": "Struk untuk printer thermal 80 mm dengan total, kembalian, dan barcode."
+  },
+  {
+    "id": "payslip",
+    "name": "Slip gaji",
+    "description": "Slip gaji A5 mendatar: pendapatan dan potongan berkelompok, lalu gaji bersih."
+  },
+  {
+    "id": "certificate",
+    "name": "Sertifikat",
+    "description": "Sertifikat mendatar satu halaman dengan bingkai, latar berwarna, dan QR verifikasi."
+  },
+  {
+    "id": "letter",
+    "name": "Surat resmi",
+    "description": "Surat dengan kop, isi yang panjangnya mengikuti teks, dan blok tanda tangan."
+  },
+  {
+    "id": "stock",
+    "name": "Daftar stok",
+    "description": "Daftar stok mendatar per kategori dengan nilai persediaan dan chart batang horizontal."
+  },
+  {
+    "id": "labels",
+    "name": "Label produk",
+    "description": "Label 10 × 6 cm, satu label per baris data, dengan Code 128 dan QR."
+  }
+]

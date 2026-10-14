@@ -1,0 +1,340 @@
+{
+  "name": "Slip gaji",
+  "description": "Slip gaji A5 mendatar: pendapatan dan potongan berkelompok, lalu gaji bersih.",
+  "template": {
+    "page": {
+      "width": 595,
+      "height": 420,
+      "margin": 0,
+      "marginTop": 30,
+      "marginRight": 30,
+      "marginBottom": 30,
+      "marginLeft": 30,
+      "background": "",
+      "backgroundImage": ""
+    },
+    "dataKey": "rows",
+    "groupBy": "type",
+    "groupPageBreak": false,
+    "thousands": ".",
+    "decimal": ",",
+    "bands": {
+      "header": {
+        "height": 84,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 0,
+            "w": 300,
+            "h": 18,
+            "text": "{{company}}",
+            "bold": true,
+            "fontSize": 14,
+            "color": "#22543d"
+          },
+          {
+            "type": "text",
+            "x": 335,
+            "y": 0,
+            "w": 200,
+            "h": 18,
+            "text": "SLIP GAJI",
+            "align": "right",
+            "bold": true,
+            "fontSize": 14
+          },
+          {
+            "type": "text",
+            "x": 335,
+            "y": 20,
+            "w": 200,
+            "h": 12,
+            "text": "Periode {{period}}",
+            "align": "right",
+            "fontSize": 9
+          },
+          {
+            "type": "line",
+            "x": 0,
+            "y": 38,
+            "w": 535,
+            "h": 1,
+            "border": 1.5,
+            "color": "#22543d"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 46,
+            "w": 60,
+            "h": 12,
+            "text": "Nama",
+            "fontSize": 9,
+            "color": "#666666"
+          },
+          {
+            "type": "text",
+            "x": 62,
+            "y": 46,
+            "w": 200,
+            "h": 12,
+            "text": "{{employee.name}}",
+            "fontSize": 9,
+            "bold": true
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 60,
+            "w": 60,
+            "h": 12,
+            "text": "Jabatan",
+            "fontSize": 9,
+            "color": "#666666"
+          },
+          {
+            "type": "text",
+            "x": 62,
+            "y": 60,
+            "w": 200,
+            "h": 12,
+            "text": "{{employee.position}}",
+            "fontSize": 9
+          },
+          {
+            "type": "text",
+            "x": 290,
+            "y": 46,
+            "w": 60,
+            "h": 12,
+            "text": "NIK",
+            "fontSize": 9,
+            "color": "#666666"
+          },
+          {
+            "type": "text",
+            "x": 352,
+            "y": 46,
+            "w": 180,
+            "h": 12,
+            "text": "{{employee.id}}",
+            "fontSize": 9
+          },
+          {
+            "type": "text",
+            "x": 290,
+            "y": 60,
+            "w": 60,
+            "h": 12,
+            "text": "Bank",
+            "fontSize": 9,
+            "color": "#666666"
+          },
+          {
+            "type": "text",
+            "x": 352,
+            "y": 60,
+            "w": 180,
+            "h": 12,
+            "text": "{{employee.bank}}",
+            "fontSize": 9
+          }
+        ]
+      },
+      "columnHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "groupHeader": {
+        "height": 18,
+        "elements": [
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 0,
+            "w": 535,
+            "h": 16,
+            "fill": "#e6f4ea"
+          },
+          {
+            "type": "text",
+            "x": 4,
+            "y": 3,
+            "w": 300,
+            "h": 12,
+            "text": "{{type}}",
+            "bold": true,
+            "fontSize": 9,
+            "color": "#22543d"
+          }
+        ]
+      },
+      "detail": {
+        "height": 15,
+        "elements": [
+          {
+            "type": "text",
+            "x": 12,
+            "y": 2,
+            "w": 300,
+            "h": 11,
+            "text": "{{name}}",
+            "fontSize": 9
+          },
+          {
+            "type": "text",
+            "x": 415,
+            "y": 2,
+            "w": 116,
+            "h": 11,
+            "text": "{{amount:0}}",
+            "align": "right",
+            "fontSize": 9
+          }
+        ]
+      },
+      "groupFooter": {
+        "height": 22,
+        "elements": [
+          {
+            "type": "line",
+            "x": 300,
+            "y": 1,
+            "w": 235,
+            "h": 1,
+            "border": 0.5,
+            "color": "#999999"
+          },
+          {
+            "type": "text",
+            "x": 300,
+            "y": 5,
+            "w": 110,
+            "h": 12,
+            "text": "Total {{type}}",
+            "align": "right",
+            "fontSize": 9,
+            "bold": true
+          },
+          {
+            "type": "text",
+            "x": 415,
+            "y": 5,
+            "w": 116,
+            "h": 12,
+            "text": "{{sum(amount):0}}",
+            "align": "right",
+            "fontSize": 9,
+            "bold": true
+          }
+        ]
+      },
+      "summary": {
+        "height": 74,
+        "elements": [
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 4,
+            "w": 535,
+            "h": 26,
+            "fill": "#22543d"
+          },
+          {
+            "type": "text",
+            "x": 8,
+            "y": 10,
+            "w": 200,
+            "h": 16,
+            "text": "GAJI BERSIH",
+            "bold": true,
+            "fontSize": 12,
+            "color": "#ffffff"
+          },
+          {
+            "type": "text",
+            "x": 335,
+            "y": 10,
+            "w": 196,
+            "h": 16,
+            "text": "Rp {{sum(net):0}}",
+            "align": "right",
+            "bold": true,
+            "fontSize": 12,
+            "color": "#ffffff"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 36,
+            "w": 300,
+            "h": 22,
+            "text": "Slip ini dibuat otomatis oleh sistem dan sah tanpa tanda tangan.",
+            "fontSize": 7,
+            "italic": true,
+            "color": "#666666"
+          }
+        ]
+      },
+      "footer": {
+        "height": 0,
+        "elements": []
+      }
+    }
+  },
+  "data": {
+    "company": "PT Sinar Teknologi",
+    "period": "September 2026",
+    "employee": {
+      "name": "Rina Wulandari",
+      "position": "Staf Keuangan",
+      "id": "3273-0142-2019",
+      "bank": "Mandiri 142-00-9988776"
+    },
+    "rows": [
+      {
+        "type": "Pendapatan",
+        "name": "Gaji pokok",
+        "amount": 7500000,
+        "net": 7500000
+      },
+      {
+        "type": "Pendapatan",
+        "name": "Tunjangan transportasi",
+        "amount": 600000,
+        "net": 600000
+      },
+      {
+        "type": "Pendapatan",
+        "name": "Tunjangan makan",
+        "amount": 880000,
+        "net": 880000
+      },
+      {
+        "type": "Pendapatan",
+        "name": "Lembur (12 jam)",
+        "amount": 520000,
+        "net": 520000
+      },
+      {
+        "type": "Potongan",
+        "name": "BPJS Kesehatan",
+        "amount": 75000,
+        "net": -75000
+      },
+      {
+        "type": "Potongan",
+        "name": "BPJS Ketenagakerjaan",
+        "amount": 150000,
+        "net": -150000
+      },
+      {
+        "type": "Potongan",
+        "name": "PPh 21",
+        "amount": 312500,
+        "net": -312500
+      }
+    ]
+  }
+}

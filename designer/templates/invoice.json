@@ -1,0 +1,355 @@
+{
+  "name": "Faktur",
+  "description": "Faktur penjualan dengan tabel barang, pajak, total, dan QR nomor faktur.",
+  "template": {
+    "page": {
+      "width": 595,
+      "height": 842,
+      "margin": 0,
+      "marginTop": 36,
+      "marginRight": 36,
+      "marginBottom": 36,
+      "marginLeft": 36,
+      "background": "",
+      "backgroundImage": ""
+    },
+    "dataKey": "rows",
+    "groupBy": "",
+    "groupPageBreak": false,
+    "thousands": ".",
+    "decimal": ",",
+    "bands": {
+      "header": {
+        "height": 150,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 0,
+            "w": 300,
+            "h": 24,
+            "text": "{{company.name}}",
+            "fontSize": 18,
+            "bold": true,
+            "color": "#1f4e79"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 26,
+            "w": 300,
+            "h": 26,
+            "text": "{{company.address}}",
+            "fontSize": 9,
+            "color": "#555555",
+            "grow": true
+          },
+          {
+            "type": "text",
+            "x": 323,
+            "y": 0,
+            "w": 200,
+            "h": 28,
+            "text": "FAKTUR",
+            "fontSize": 22,
+            "bold": true,
+            "align": "right"
+          },
+          {
+            "type": "text",
+            "x": 323,
+            "y": 30,
+            "w": 200,
+            "h": 12,
+            "text": "No. <b>{{number}}</b>",
+            "align": "right",
+            "fontSize": 9
+          },
+          {
+            "type": "text",
+            "x": 323,
+            "y": 43,
+            "w": 200,
+            "h": 12,
+            "text": "Tanggal {{date}}",
+            "align": "right",
+            "fontSize": 9
+          },
+          {
+            "type": "line",
+            "x": 0,
+            "y": 66,
+            "w": 523,
+            "h": 1,
+            "border": 2,
+            "color": "#1f4e79"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 78,
+            "w": 100,
+            "h": 12,
+            "text": "DITAGIHKAN KEPADA",
+            "fontSize": 8,
+            "color": "#888888"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 92,
+            "w": 300,
+            "h": 14,
+            "text": "{{customer.name}}",
+            "bold": true,
+            "fontSize": 11
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 108,
+            "w": 300,
+            "h": 26,
+            "text": "{{customer.address}}",
+            "fontSize": 9,
+            "grow": true
+          }
+        ]
+      },
+      "columnHeader": {
+        "height": 22,
+        "elements": [
+          {
+            "type": "table",
+            "x": 0,
+            "y": 0,
+            "w": 523,
+            "h": 22,
+            "border": 1,
+            "color": "#999999",
+            "fontSize": 9,
+            "cells": [
+              [
+                "Deskripsi",
+                "Qty",
+                "Harga",
+                "Jumlah"
+              ]
+            ],
+            "cols": [
+              5,
+              1,
+              2,
+              2
+            ],
+            "aligns": [
+              "left",
+              "right",
+              "right",
+              "right"
+            ],
+            "bold": true,
+            "fill": "#eaf1f8"
+          }
+        ]
+      },
+      "groupHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "detail": {
+        "height": 20,
+        "elements": [
+          {
+            "type": "table",
+            "x": 0,
+            "y": 0,
+            "w": 523,
+            "h": 20,
+            "border": 1,
+            "color": "#999999",
+            "fontSize": 9,
+            "cells": [
+              [
+                "{{name}}",
+                "{{qty}}",
+                "{{price:0}}",
+                "{{qty * price:0}}"
+              ]
+            ],
+            "cols": [
+              5,
+              1,
+              2,
+              2
+            ],
+            "aligns": [
+              "left",
+              "right",
+              "right",
+              "right"
+            ],
+            "grow": true
+          }
+        ]
+      },
+      "groupFooter": {
+        "height": 0,
+        "elements": []
+      },
+      "summary": {
+        "height": 120,
+        "elements": [
+          {
+            "type": "text",
+            "x": 313,
+            "y": 12,
+            "w": 110,
+            "h": 14,
+            "text": "Subtotal",
+            "align": "right"
+          },
+          {
+            "type": "text",
+            "x": 433,
+            "y": 12,
+            "w": 87,
+            "h": 14,
+            "text": "{{sum(qty * price):0}}",
+            "align": "right"
+          },
+          {
+            "type": "text",
+            "x": 313,
+            "y": 30,
+            "w": 110,
+            "h": 14,
+            "text": "PPN 11%",
+            "align": "right"
+          },
+          {
+            "type": "text",
+            "x": 433,
+            "y": 30,
+            "w": 87,
+            "h": 14,
+            "text": "{{sum(qty * price) * 0.11:0}}",
+            "align": "right"
+          },
+          {
+            "type": "rect",
+            "x": 313,
+            "y": 50,
+            "w": 210,
+            "h": 24,
+            "fill": "#1f4e79"
+          },
+          {
+            "type": "text",
+            "x": 318,
+            "y": 55,
+            "w": 105,
+            "h": 16,
+            "text": "TOTAL",
+            "align": "right",
+            "bold": true,
+            "fontSize": 12,
+            "color": "#ffffff"
+          },
+          {
+            "type": "text",
+            "x": 433,
+            "y": 55,
+            "w": 87,
+            "h": 16,
+            "text": "{{sum(qty * price) * 1.11:0}}",
+            "align": "right",
+            "bold": true,
+            "fontSize": 12,
+            "color": "#ffffff"
+          },
+          {
+            "type": "barcode",
+            "x": 0,
+            "y": 12,
+            "w": 62,
+            "h": 62,
+            "text": "{{number}}",
+            "format": "qr"
+          },
+          {
+            "type": "text",
+            "x": 72,
+            "y": 12,
+            "w": 220,
+            "h": 12,
+            "text": "Catatan",
+            "fontSize": 8,
+            "color": "#888888"
+          },
+          {
+            "type": "text",
+            "x": 72,
+            "y": 26,
+            "w": 220,
+            "h": 48,
+            "text": "{{notes}}",
+            "fontSize": 9,
+            "grow": true
+          }
+        ]
+      },
+      "footer": {
+        "height": 20,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 6,
+            "w": 523,
+            "h": 12,
+            "text": "Halaman {{page}} dari {{pages}}",
+            "fontSize": 8,
+            "align": "center",
+            "color": "#666666"
+          }
+        ]
+      }
+    }
+  },
+  "data": {
+    "company": {
+      "name": "PT Kopi Nusantara",
+      "address": "Jl. Braga No. 12, Bandung 40111\nTelp. (022) 555-0188"
+    },
+    "number": "INV-2026-0142",
+    "date": "14 Oktober 2026",
+    "customer": {
+      "name": "CV Maju Bersama",
+      "address": "Jl. Asia Afrika No. 88\nBandung 40261"
+    },
+    "notes": "Pembayaran paling lambat 14 hari setelah tanggal faktur.\nTransfer ke BCA 123-456-7890 a.n. PT Kopi Nusantara.",
+    "rows": [
+      {
+        "name": "Biji kopi Arabika Gayo 1 kg",
+        "qty": 12,
+        "price": 185000
+      },
+      {
+        "name": "Biji kopi Robusta Lampung 1 kg",
+        "qty": 20,
+        "price": 96000
+      },
+      {
+        "name": "Paper filter V60 ukuran 02 (isi 100 lembar)",
+        "qty": 15,
+        "price": 42000
+      },
+      {
+        "name": "Jasa kalibrasi mesin espresso, termasuk penggantian gasket dan pembersihan group head",
+        "qty": 1,
+        "price": 750000
+      }
+    ]
+  }
+}

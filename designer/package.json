@@ -1,0 +1,10 @@
+{
+  "name": "ddreport-designer",
+  "version": "0.1.0",
+  "description": "Drag-and-drop report designer for DdDesignReport",
+  "type": "module",
+  "main": "designer.js",
+  "exports": "./designer.js",
+  "files": ["designer.js", "index.html"],
+  "license": "MIT"
+}

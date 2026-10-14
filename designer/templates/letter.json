@@ -1,0 +1,254 @@
+{
+  "name": "Surat resmi",
+  "description": "Surat dengan kop, isi yang panjangnya mengikuti teks, dan blok tanda tangan.",
+  "template": {
+    "page": {
+      "width": 595,
+      "height": 842,
+      "margin": 0,
+      "marginTop": 56,
+      "marginRight": 56,
+      "marginBottom": 56,
+      "marginLeft": 56,
+      "background": "",
+      "backgroundImage": ""
+    },
+    "dataKey": "rows",
+    "groupBy": "",
+    "groupPageBreak": false,
+    "thousands": ".",
+    "decimal": ",",
+    "bands": {
+      "header": {
+        "height": 78,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 0,
+            "w": 483,
+            "h": 20,
+            "text": "{{org.name}}",
+            "align": "center",
+            "bold": true,
+            "fontSize": 16
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 22,
+            "w": 483,
+            "h": 24,
+            "text": "{{org.address}}",
+            "align": "center",
+            "fontSize": 9,
+            "grow": true
+          },
+          {
+            "type": "line",
+            "x": 0,
+            "y": 54,
+            "w": 483,
+            "h": 1,
+            "border": 2
+          },
+          {
+            "type": "line",
+            "x": 0,
+            "y": 58,
+            "w": 483,
+            "h": 1,
+            "border": 0.5
+          }
+        ]
+      },
+      "columnHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "groupHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "detail": {
+        "height": 0,
+        "elements": []
+      },
+      "groupFooter": {
+        "height": 0,
+        "elements": []
+      },
+      "summary": {
+        "height": 420,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 0,
+            "w": 60,
+            "h": 13,
+            "text": "Nomor"
+          },
+          {
+            "type": "text",
+            "x": 62,
+            "y": 0,
+            "w": 240,
+            "h": 13,
+            "text": ": {{number}}"
+          },
+          {
+            "type": "text",
+            "x": 303,
+            "y": 0,
+            "w": 180,
+            "h": 13,
+            "text": "{{city}}, {{date}}",
+            "align": "right"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 15,
+            "w": 60,
+            "h": 13,
+            "text": "Perihal"
+          },
+          {
+            "type": "text",
+            "x": 62,
+            "y": 15,
+            "w": 240,
+            "h": 13,
+            "text": ": <b>{{subject}}</b>"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 50,
+            "w": 300,
+            "h": 13,
+            "text": "Kepada Yth."
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 64,
+            "w": 300,
+            "h": 13,
+            "text": "{{recipient.name}}",
+            "bold": true
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 78,
+            "w": 300,
+            "h": 26,
+            "text": "{{recipient.address}}",
+            "grow": true
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 126,
+            "w": 483,
+            "h": 13,
+            "text": "Dengan hormat,"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 148,
+            "w": 483,
+            "h": 60,
+            "text": "{{body}}",
+            "lineHeight": 1.5,
+            "grow": true
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 226,
+            "w": 483,
+            "h": 13,
+            "text": "Demikian surat ini kami sampaikan. Atas perhatian Bapak/Ibu, kami ucapkan terima kasih."
+          },
+          {
+            "type": "text",
+            "x": 283,
+            "y": 262,
+            "w": 200,
+            "h": 13,
+            "text": "Hormat kami,",
+            "align": "center"
+          },
+          {
+            "type": "text",
+            "x": 283,
+            "y": 330,
+            "w": 200,
+            "h": 13,
+            "text": "<u>{{signer.name}}</u>",
+            "align": "center",
+            "bold": true
+          },
+          {
+            "type": "text",
+            "x": 283,
+            "y": 344,
+            "w": 200,
+            "h": 13,
+            "text": "{{signer.title}}",
+            "align": "center"
+          }
+        ]
+      },
+      "footer": {
+        "height": 24,
+        "elements": [
+          {
+            "type": "line",
+            "x": 0,
+            "y": 2,
+            "w": 483,
+            "h": 1,
+            "border": 0.5,
+            "color": "#999999"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 8,
+            "w": 483,
+            "h": 10,
+            "text": "{{org.contact}}",
+            "align": "center",
+            "fontSize": 8,
+            "color": "#666666"
+          }
+        ]
+      }
+    }
+  },
+  "data": {
+    "org": {
+      "name": "YAYASAN CERDAS BERSAMA",
+      "address": "Jl. Pendidikan No. 7, Kota Malang 65145",
+      "contact": "Telp. (0341) 555-0107  ·  halo@cerdasbersama.example  ·  www.cerdasbersama.example"
+    },
+    "number": "042/YCB/X/2026",
+    "subject": "Undangan Rapat Koordinasi",
+    "city": "Malang",
+    "date": "14 Oktober 2026",
+    "recipient": {
+      "name": "Kepala SDN Sumbersari 02",
+      "address": "Jl. Bendungan Sutami No. 15\nKota Malang"
+    },
+    "body": "Sehubungan dengan pelaksanaan Program Literasi Sekolah tahun ajaran 2026/2027, kami mengundang Bapak/Ibu untuk hadir dalam rapat koordinasi yang akan diselenggarakan pada hari Senin, 26 Oktober 2026, pukul 09.00 WIB di Aula Yayasan Cerdas Bersama.\n\nRapat akan membahas jadwal kegiatan, pembagian buku bacaan, serta pelatihan pustakawan sekolah. Mengingat pentingnya agenda tersebut, kami sangat mengharapkan kehadiran Bapak/Ibu tepat pada waktunya.",
+    "signer": {
+      "name": "Bambang Hartono, M.Pd.",
+      "title": "Ketua Yayasan"
+    }
+  }
+}

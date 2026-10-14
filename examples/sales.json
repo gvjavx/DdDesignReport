@@ -1,0 +1,66 @@
+{
+  "page": { "width": 595, "height": 842, "margin": 36 },
+  "dataKey": "rows",
+  "groupBy": "category",
+  "thousands": ".",
+  "decimal": ",",
+  "bands": {
+    "header": {
+      "height": 50,
+      "elements": [
+        { "type": "text", "x": 0, "y": 0, "w": 400, "h": 24, "text": "{{title}}", "fontSize": 18, "bold": true },
+        { "type": "text", "x": 0, "y": 26, "w": 400, "h": 14, "text": "Periode: {{period}}", "color": "#555555" },
+        { "type": "line", "x": 0, "y": 44, "w": 523, "h": 1, "border": 1 }
+      ]
+    },
+    "columnHeader": {
+      "height": 20,
+      "elements": [
+        { "type": "rect", "x": 0, "y": 0, "w": 523, "h": 18, "fill": "#eeeeee" },
+        { "type": "text", "x": 4, "y": 3, "w": 290, "h": 14, "text": "Produk", "bold": true },
+        { "type": "text", "x": 300, "y": 3, "w": 50, "h": 14, "text": "Qty", "bold": true, "align": "right" },
+        { "type": "text", "x": 360, "y": 3, "w": 70, "h": 14, "text": "Harga", "bold": true, "align": "right" },
+        { "type": "text", "x": 440, "y": 3, "w": 79, "h": 14, "text": "Total", "bold": true, "align": "right" }
+      ]
+    },
+    "groupHeader": {
+      "height": 20,
+      "elements": [
+        { "type": "text", "x": 4, "y": 5, "w": 400, "h": 14, "text": "{{category}} ({{count()}} produk)", "bold": true, "color": "#1f4e79" }
+      ]
+    },
+    "detail": {
+      "height": 16,
+      "elements": [
+        { "type": "text", "x": 4, "y": 2, "w": 290, "h": 12, "text": "{{name}}", "grow": true },
+        { "type": "text", "x": 300, "y": 2, "w": 50, "h": 12, "text": "{{qty}}", "align": "right" },
+        { "type": "text", "x": 360, "y": 2, "w": 70, "h": 12, "text": "{{price:0}}", "align": "right" },
+        { "type": "text", "x": 440, "y": 2, "w": 79, "h": 12, "text": "{{qty * price:0}}", "align": "right" },
+        { "type": "line", "x": 0, "y": 15, "w": 523, "h": 1, "border": 0.5, "color": "#dddddd" }
+      ]
+    },
+    "groupFooter": {
+      "height": 22,
+      "elements": [
+        { "type": "text", "x": 300, "y": 3, "w": 130, "h": 14, "text": "Subtotal", "bold": true, "align": "right" },
+        { "type": "text", "x": 440, "y": 3, "w": 79, "h": 14, "text": "{{sum(qty * price):0}}", "bold": true, "align": "right" }
+      ]
+    },
+    "summary": {
+      "height": 190,
+      "elements": [
+        { "type": "line", "x": 0, "y": 4, "w": 523, "h": 1, "border": 1 },
+        { "type": "text", "x": 300, "y": 10, "w": 130, "h": 16, "text": "Total", "fontSize": 12, "bold": true, "align": "right" },
+        { "type": "text", "x": 440, "y": 10, "w": 79, "h": 16, "text": "{{sum(qty * price):0}}", "fontSize": 12, "bold": true, "align": "right" },
+        { "type": "chart", "x": 0, "y": 40, "w": 250, "h": 130, "chart": "donut", "label": "category", "value": "qty * price" },
+        { "type": "chart", "x": 270, "y": 40, "w": 250, "h": 130, "chart": "bar", "label": "category", "value": "qty * price", "color": "#4e79a7" }
+      ]
+    },
+    "footer": {
+      "height": 20,
+      "elements": [
+        { "type": "text", "x": 0, "y": 6, "w": 523, "h": 12, "text": "Halaman {{page}} dari {{pages}}", "fontSize": 8, "align": "center", "color": "#555555" }
+      ]
+    }
+  }
+}

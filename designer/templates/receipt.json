@@ -1,0 +1,269 @@
+{
+  "name": "Struk kasir",
+  "description": "Struk untuk printer thermal 80 mm dengan total, kembalian, dan barcode.",
+  "template": {
+    "page": {
+      "width": 226,
+      "height": 520,
+      "margin": 0,
+      "marginTop": 10,
+      "marginRight": 10,
+      "marginBottom": 10,
+      "marginLeft": 10,
+      "background": "",
+      "backgroundImage": ""
+    },
+    "dataKey": "rows",
+    "groupBy": "",
+    "groupPageBreak": false,
+    "thousands": ".",
+    "decimal": ",",
+    "bands": {
+      "header": {
+        "height": 64,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 0,
+            "w": 206,
+            "h": 16,
+            "text": "{{store.name}}",
+            "align": "center",
+            "bold": true,
+            "fontSize": 12
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 17,
+            "w": 206,
+            "h": 20,
+            "text": "{{store.address}}",
+            "align": "center",
+            "fontSize": 7,
+            "grow": true
+          },
+          {
+            "type": "line",
+            "x": 0,
+            "y": 42,
+            "w": 206,
+            "h": 1,
+            "border": 0.5
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 47,
+            "w": 100,
+            "h": 10,
+            "text": "{{number}}",
+            "fontSize": 7,
+            "font": "Courier"
+          },
+          {
+            "type": "text",
+            "x": 106,
+            "y": 47,
+            "w": 100,
+            "h": 10,
+            "text": "{{date}}",
+            "align": "right",
+            "fontSize": 7,
+            "font": "Courier"
+          }
+        ]
+      },
+      "columnHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "groupHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "detail": {
+        "height": 24,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 0,
+            "w": 206,
+            "h": 11,
+            "text": "{{name}}",
+            "fontSize": 8,
+            "grow": true
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 11,
+            "w": 110,
+            "h": 10,
+            "text": "{{qty}} x {{price:0}}",
+            "fontSize": 7,
+            "color": "#555555",
+            "font": "Courier"
+          },
+          {
+            "type": "text",
+            "x": 116,
+            "y": 11,
+            "w": 90,
+            "h": 10,
+            "text": "{{qty * price:0}}",
+            "align": "right",
+            "fontSize": 8,
+            "font": "Courier"
+          }
+        ]
+      },
+      "groupFooter": {
+        "height": 0,
+        "elements": []
+      },
+      "summary": {
+        "height": 128,
+        "elements": [
+          {
+            "type": "line",
+            "x": 0,
+            "y": 2,
+            "w": 206,
+            "h": 1,
+            "border": 0.5
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 8,
+            "w": 100,
+            "h": 14,
+            "text": "TOTAL",
+            "bold": true,
+            "fontSize": 11
+          },
+          {
+            "type": "text",
+            "x": 106,
+            "y": 8,
+            "w": 100,
+            "h": 14,
+            "text": "{{sum(qty * price):0}}",
+            "align": "right",
+            "bold": true,
+            "fontSize": 11,
+            "font": "Courier"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 26,
+            "w": 100,
+            "h": 10,
+            "text": "Tunai",
+            "fontSize": 8
+          },
+          {
+            "type": "text",
+            "x": 106,
+            "y": 26,
+            "w": 100,
+            "h": 10,
+            "text": "{{cash:0}}",
+            "align": "right",
+            "fontSize": 8,
+            "font": "Courier"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 38,
+            "w": 100,
+            "h": 10,
+            "text": "Kembali",
+            "fontSize": 8
+          },
+          {
+            "type": "text",
+            "x": 106,
+            "y": 38,
+            "w": 100,
+            "h": 10,
+            "text": "{{cash - sum(qty * price):0}}",
+            "align": "right",
+            "fontSize": 8,
+            "font": "Courier"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 50,
+            "w": 206,
+            "h": 10,
+            "text": "{{count()}} barang, {{sum(qty)}} item",
+            "fontSize": 7,
+            "color": "#555555"
+          },
+          {
+            "type": "barcode",
+            "x": 28,
+            "y": 68,
+            "w": 150,
+            "h": 28,
+            "text": "{{number}}",
+            "format": "code128"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 100,
+            "w": 206,
+            "h": 10,
+            "text": "Terima kasih atas kunjungan Anda",
+            "align": "center",
+            "fontSize": 8,
+            "italic": true
+          }
+        ]
+      },
+      "footer": {
+        "height": 0,
+        "elements": []
+      }
+    }
+  },
+  "data": {
+    "store": {
+      "name": "WARUNG BU SARI",
+      "address": "Jl. Kaliurang Km 5 No. 21, Sleman\nWA 0812-5550-142"
+    },
+    "number": "TRX-20261014-0031",
+    "date": "14/10/2026 12:47",
+    "cash": 100000,
+    "rows": [
+      {
+        "name": "Nasi goreng spesial",
+        "qty": 2,
+        "price": 22000
+      },
+      {
+        "name": "Es teh manis",
+        "qty": 2,
+        "price": 5000
+      },
+      {
+        "name": "Kerupuk udang",
+        "qty": 3,
+        "price": 3000
+      },
+      {
+        "name": "Pisang goreng keju cokelat",
+        "qty": 1,
+        "price": 15000
+      }
+    ]
+  }
+}

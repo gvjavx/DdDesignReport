@@ -1,0 +1,14 @@
+{
+  "title": "Laporan Penjualan",
+  "period": "September 2026",
+  "rows": [
+    { "category": "Minuman", "name": "Kopi susu gula aren", "qty": 42, "price": 18000 },
+    { "category": "Minuman", "name": "Teh tarik", "qty": 30, "price": 12000 },
+    { "category": "Makanan", "name": "Nasi goreng spesial", "qty": 25, "price": 28000 },
+    { "category": "Minuman", "name": "Es jeruk peras", "qty": 18, "price": 10000 },
+    { "category": "Makanan", "name": "Mie ayam bakso dengan pangsit goreng, ceker, dan tambahan sawi hijau (porsi jumbo)", "qty": 20, "price": 24000 },
+    { "category": "Makanan", "name": "Sate ayam 10 tusuk", "qty": 15, "price": 30000 },
+    { "category": "Camilan", "name": "Pisang goreng keju", "qty": 22, "price": 15000 },
+    { "category": "Camilan", "name": "Kentang goreng", "qty": 16, "price": 17000 }
+  ]
+}

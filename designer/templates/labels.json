@@ -1,0 +1,154 @@
+{
+  "name": "Label produk",
+  "description": "Label 10 × 6 cm, satu label per baris data, dengan Code 128 dan QR.",
+  "template": {
+    "page": {
+      "width": 283,
+      "height": 170,
+      "margin": 0,
+      "marginTop": 12,
+      "marginRight": 12,
+      "marginBottom": 12,
+      "marginLeft": 12,
+      "background": "",
+      "backgroundImage": ""
+    },
+    "dataKey": "rows",
+    "groupBy": "",
+    "groupPageBreak": false,
+    "thousands": ".",
+    "decimal": ",",
+    "bands": {
+      "header": {
+        "height": 0,
+        "elements": []
+      },
+      "columnHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "groupHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "detail": {
+        "height": 146,
+        "elements": [
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 0,
+            "w": 259,
+            "h": 146,
+            "border": 1,
+            "color": "#333333"
+          },
+          {
+            "type": "text",
+            "x": 8,
+            "y": 8,
+            "w": 170,
+            "h": 34,
+            "text": "{{name}}",
+            "bold": true,
+            "fontSize": 13,
+            "grow": true
+          },
+          {
+            "type": "text",
+            "x": 8,
+            "y": 48,
+            "w": 170,
+            "h": 12,
+            "text": "{{sku}}  ·  {{unit}}",
+            "fontSize": 8,
+            "color": "#555555",
+            "font": "Courier"
+          },
+          {
+            "type": "text",
+            "x": 8,
+            "y": 64,
+            "w": 170,
+            "h": 24,
+            "text": "Rp {{price:0}}",
+            "bold": true,
+            "fontSize": 20
+          },
+          {
+            "type": "barcode",
+            "x": 8,
+            "y": 98,
+            "w": 170,
+            "h": 30,
+            "text": "{{sku}}",
+            "format": "code128"
+          },
+          {
+            "type": "text",
+            "x": 8,
+            "y": 130,
+            "w": 170,
+            "h": 10,
+            "text": "{{sku}}",
+            "align": "center",
+            "fontSize": 7,
+            "font": "Courier"
+          },
+          {
+            "type": "barcode",
+            "x": 188,
+            "y": 8,
+            "w": 63,
+            "h": 63,
+            "text": "https://example.com/p/{{sku}}",
+            "format": "qr"
+          },
+          {
+            "type": "text",
+            "x": 188,
+            "y": 74,
+            "w": 63,
+            "h": 20,
+            "text": "Pindai untuk detail",
+            "align": "center",
+            "fontSize": 6,
+            "color": "#555555"
+          }
+        ]
+      },
+      "groupFooter": {
+        "height": 0,
+        "elements": []
+      },
+      "summary": {
+        "height": 0,
+        "elements": []
+      },
+      "footer": {
+        "height": 0,
+        "elements": []
+      }
+    }
+  },
+  "data": [
+    {
+      "sku": "KP-ARB-250",
+      "name": "Kopi Arabika Gayo",
+      "unit": "250 g",
+      "price": 68000
+    },
+    {
+      "sku": "KP-RBS-250",
+      "name": "Kopi Robusta Lampung",
+      "unit": "250 g",
+      "price": 42000
+    },
+    {
+      "sku": "TH-MLT-050",
+      "name": "Teh Melati Premium",
+      "unit": "50 g",
+      "price": 27500
+    }
+  ]
+}

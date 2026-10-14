@@ -1,0 +1,287 @@
+{
+  "name": "Daftar stok",
+  "description": "Daftar stok mendatar per kategori dengan nilai persediaan dan chart batang horizontal.",
+  "template": {
+    "page": {
+      "width": 842,
+      "height": 595,
+      "margin": 0,
+      "marginTop": 30,
+      "marginRight": 30,
+      "marginBottom": 30,
+      "marginLeft": 30,
+      "background": "",
+      "backgroundImage": ""
+    },
+    "dataKey": "rows",
+    "groupBy": "category",
+    "groupPageBreak": false,
+    "thousands": ".",
+    "decimal": ",",
+    "bands": {
+      "header": {
+        "height": 44,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 0,
+            "w": 400,
+            "h": 22,
+            "text": "Daftar Stok Barang",
+            "bold": true,
+            "fontSize": 16
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 24,
+            "w": 400,
+            "h": 12,
+            "text": "{{warehouse}}",
+            "fontSize": 9,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 482,
+            "y": 6,
+            "w": 300,
+            "h": 12,
+            "text": "Dicetak {{printed}}",
+            "align": "right",
+            "fontSize": 9,
+            "color": "#555555"
+          }
+        ]
+      },
+      "columnHeader": {
+        "height": 20,
+        "elements": [
+          {
+            "type": "table",
+            "x": 0,
+            "y": 0,
+            "w": 782,
+            "h": 20,
+            "border": 1,
+            "color": "#999999",
+            "fontSize": 9,
+            "cells": [
+              [
+                "Kode",
+                "Nama barang",
+                "Stok",
+                "Minimum",
+                "Harga satuan",
+                "Nilai"
+              ]
+            ],
+            "cols": [
+              2,
+              6,
+              2,
+              2,
+              3,
+              3
+            ],
+            "aligns": [
+              "left",
+              "left",
+              "right",
+              "right",
+              "right",
+              "right"
+            ],
+            "bold": true,
+            "fill": "#f0f0f0"
+          }
+        ]
+      },
+      "groupHeader": {
+        "height": 18,
+        "elements": [
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 0,
+            "w": 782,
+            "h": 18,
+            "fill": "#fafafa",
+            "border": 1,
+            "color": "#999999"
+          },
+          {
+            "type": "text",
+            "x": 4,
+            "y": 4,
+            "w": 500,
+            "h": 12,
+            "text": "<b>{{category}}</b> · {{count()}} barang · stok {{sum(stock)}}",
+            "fontSize": 9
+          }
+        ]
+      },
+      "detail": {
+        "height": 18,
+        "elements": [
+          {
+            "type": "table",
+            "x": 0,
+            "y": 0,
+            "w": 782,
+            "h": 18,
+            "border": 1,
+            "color": "#999999",
+            "fontSize": 9,
+            "cells": [
+              [
+                "{{sku}}",
+                "{{name}}",
+                "{{stock}}",
+                "{{min}}",
+                "{{price:0}}",
+                "{{stock * price:0}}"
+              ]
+            ],
+            "cols": [
+              2,
+              6,
+              2,
+              2,
+              3,
+              3
+            ],
+            "aligns": [
+              "left",
+              "left",
+              "right",
+              "right",
+              "right",
+              "right"
+            ],
+            "grow": true
+          }
+        ]
+      },
+      "groupFooter": {
+        "height": 0,
+        "elements": []
+      },
+      "summary": {
+        "height": 150,
+        "elements": [
+          {
+            "type": "text",
+            "x": 482,
+            "y": 10,
+            "w": 300,
+            "h": 16,
+            "text": "Nilai persediaan  <b>Rp {{sum(stock * price):0}}</b>",
+            "align": "right",
+            "fontSize": 12
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 12,
+            "w": 300,
+            "h": 12,
+            "text": "Nilai persediaan per kategori",
+            "fontSize": 9,
+            "bold": true
+          },
+          {
+            "type": "chart",
+            "x": 0,
+            "y": 30,
+            "w": 460,
+            "h": 100,
+            "chart": "hbar",
+            "label": "category",
+            "value": "stock * price",
+            "color": "#59a14f"
+          }
+        ]
+      },
+      "footer": {
+        "height": 20,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 6,
+            "w": 782,
+            "h": 12,
+            "text": "Halaman {{page}} dari {{pages}}",
+            "fontSize": 8,
+            "align": "center",
+            "color": "#666666"
+          }
+        ]
+      }
+    }
+  },
+  "data": {
+    "warehouse": "Gudang Utama, Surabaya",
+    "printed": "14 Oktober 2026 08:15",
+    "rows": [
+      {
+        "category": "Alat tulis",
+        "sku": "ATK-001",
+        "name": "Pulpen gel hitam 0.5 mm",
+        "stock": 420,
+        "min": 100,
+        "price": 4500
+      },
+      {
+        "category": "Alat tulis",
+        "sku": "ATK-014",
+        "name": "Buku tulis 58 lembar",
+        "stock": 260,
+        "min": 150,
+        "price": 6200
+      },
+      {
+        "category": "Alat tulis",
+        "sku": "ATK-027",
+        "name": "Spidol papan tulis biru",
+        "stock": 75,
+        "min": 80,
+        "price": 9800
+      },
+      {
+        "category": "Kertas",
+        "sku": "KRT-002",
+        "name": "Kertas HVS A4 80 gsm (rim)",
+        "stock": 180,
+        "min": 60,
+        "price": 58000
+      },
+      {
+        "category": "Kertas",
+        "sku": "KRT-009",
+        "name": "Amplop cokelat ukuran folio (pak isi 100)",
+        "stock": 40,
+        "min": 20,
+        "price": 47500
+      },
+      {
+        "category": "Elektronik",
+        "sku": "ELK-003",
+        "name": "Kalkulator 12 digit",
+        "stock": 35,
+        "min": 10,
+        "price": 135000
+      },
+      {
+        "category": "Elektronik",
+        "sku": "ELK-011",
+        "name": "Baterai AA alkaline (isi 4)",
+        "stock": 96,
+        "min": 40,
+        "price": 32000
+      }
+    ]
+  }
+}

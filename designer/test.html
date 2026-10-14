@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DdDesignReport designer tests</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 16px }
+  li.fail { color: #b00020; font-weight: 600 }
+  #host { position: absolute; left: -9999px; top: 0; width: 1400px }
+</style>
+</head>
+<body>
+<h1>Designer tests</h1>
+<p>Open this page through a web server (for example <code>npx serve designer</code>, then <code>/test.html</code>). It drives the designer with synthetic events and lists what failed.</p>
+<p id="summary" role="status">running…</p>
+<ul id="log"></ul>
+<div id="host"></div>
+<script type="module">
+import { createDesigner, emptyTemplate } from './designer.js'
+
+const host = document.getElementById('host'), log = document.getElementById('log')
+let failed = 0, total = 0
+const check = (name, ok, detail = '') => {
+  total++
+  if (!ok) failed++
+  const li = log.appendChild(document.createElement('li'))
+  li.className = ok ? 'ok' : 'fail'
+  li.textContent = (ok ? '✓ ' : '✗ ') + name + (ok || !detail ? '' : ' — ' + detail)
+}
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+
+// a fresh designer for every test
+function open(template, options = {}) {
+  host.replaceChildren(document.createElement('div'))
+  const root = host.firstChild
+  let last
+  const d = createDesigner(root, { template, onChange: t => { last = t }, ...options })
+  const q = s => root.querySelector(s), qa = s => [...root.querySelectorAll(s)]
+  return {
+    d, root, q, qa,
+    get tpl() { return d.getTemplate() },
+    get last() { return last },
+    els: band => d.getTemplate().bands[band].elements,
+    click: cmd => q(`[data-cmd="${cmd}"]`).click(),
+    set(sel, v) { const c = q(sel); if (c.type === 'checkbox') c.checked = v; else c.value = v; c.dispatchEvent(new Event('change', { bubbles: true })) },
+    drop(type, band, x, y) {
+      const dt = new DataTransfer(), b = q(`.ddr-band[data-name=${band}]`), r = b.getBoundingClientRect()
+      dt.setData('text/plain', type)
+      b.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + x, clientY: r.top + y }))
+    },
+    ptr: (n, type, x, y, o = {}) => n.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX: x, clientY: y, ...o })),
+    key: (k, o = {}) => (root.contains(document.activeElement) ? document.activeElement : q('.ddr-page')).dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...o })),
+    prop(label, v) {
+      const input = qa('.ddr-props label').find(l => l.firstChild.textContent === label).querySelector('input,select,textarea')
+      input.value = v
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    },
+    drag(n, dx, dy, o = {}) {
+      const r = n.getBoundingClientRect(), x = r.left + 4, y = r.top + 4
+      this.ptr(n, 'pointerdown', x, y); this.ptr(n, 'pointermove', x + dx, y + dy, o); this.ptr(n, 'pointerup', x + dx, y + dy)
+    },
+  }
+}
+const edit = (node, html) => { node.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); node.innerHTML = html; node.dispatchEvent(new FocusEvent('blur')) }
+
+const tests = {
+  'starts with an empty A4 page and seven bands'() {
+    const t = open()
+    check('seven bands', t.qa('.ddr-band').length === 7)
+    check('A4', t.tpl.page.width === 595 && t.tpl.page.height === 842)
+    check('undo is disabled at the start', t.q('[data-cmd=undo]').disabled)
+  },
+  'inserts every kind of element'() {
+    const t = open()
+    for (const type of ['text', 'table', 'rect', 'line', 'chart', 'barcode']) t.click('add:' + type)
+    check('six elements', same(t.els('header').map(e => e.type), ['text', 'table', 'rect', 'line', 'chart', 'barcode']))
+    const at = t.els('header').map(e => e.x + ',' + e.y)
+    check('new elements do not land exactly on top of each other', new Set(at).size === at.length, at.join(' '))
+    t.drop('text', 'detail', 30, 4)
+    check('drop puts the element where it was dropped', same(t.els('detail').map(e => [e.x, e.y]), [[30, 4]]))
+  },
+  'formats text from the ribbon'() {
+    const t = open()
+    t.click('add:text')
+    t.set('[data-prop=font]', 'Times'); t.set('[data-prop=fontSize]', 16); t.click('bold'); t.click('italic'); t.click('align:center')
+    t.set('[data-prop=color]', '#ff0000'); t.set('[data-prop=fill]', '#ffff00'); t.set('[data-prop=lineHeight]', '1.5'); t.set('[data-prop=grow]', true)
+    const e = t.els('header')[0]
+    check('properties saved', e.font === 'Times' && e.fontSize === 16 && e.bold && e.italic && e.align === 'center' && e.color === '#ff0000' && e.fill === '#ffff00' && e.lineHeight === 1.5 && e.grow, JSON.stringify(e))
+    check('buttons show the state', t.q('[data-cmd=bold]').getAttribute('aria-pressed') === 'true' && t.q('[data-cmd="align:center"]').getAttribute('aria-pressed') === 'true')
+    t.click('noFill')
+    check('no fill', t.els('header')[0].fill === '')
+  },
+  'types in place, with styled parts and literal tags'() {
+    const t = open()
+    t.click('add:text')
+    edit(t.q('.ddr-el'), 'Hello <i>world</i><br>two <b>x</b>')
+    check('rich text is saved as tags', t.els('header')[0].text === 'Hello <i>world</i>\ntwo <b>x</b>', t.els('header')[0].text)
+    const node = t.q('.ddr-el')
+    node.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); node.textContent = 'type <b> literally'; node.dispatchEvent(new FocusEvent('blur'))
+    check('a typed "<b>" stays text', t.els('header')[0].text === 'type &lt;b> literally' && t.q('.ddr-el').textContent === 'type <b> literally' && !t.q('.ddr-el b'), t.els('header')[0].text)
+  },
+  'Escape throws the typing away'() {
+    const t = open()
+    t.click('add:text')
+    const node = t.q('.ddr-el')
+    node.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    node.textContent = 'never mind'
+    node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    node.dispatchEvent(new FocusEvent('blur'))
+    check('text unchanged', t.els('header')[0].text === 'Text' && t.q('.ddr-el').textContent === 'Text', t.els('header')[0].text)
+  },
+  'edits tables'() {
+    const t = open()
+    t.q('[data-tab=Insert]').click()
+    t.set('[data-id=rows]', 1); t.set('[data-id=cols]', 4); t.drop('table', 'detail', 0, 0)
+    check('1 x 4 table', same(t.els('detail')[0].cells, [['', '', '', '']]))
+    const cell = t.qa('.ddr-cell')[2]
+    cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); cell.textContent = '{{price:2}}'; cell.dispatchEvent(new FocusEvent('blur'))
+    const c = t.qa('.ddr-cell')[2].getBoundingClientRect()
+    t.ptr(t.qa('.ddr-cell')[2], 'pointerdown', c.left + 2, c.top + 2); t.ptr(t.q('.ddr-el'), 'pointerup', c.left + 2, c.top + 2)
+    t.click('align:right')
+    check('cell text and column alignment', t.els('detail')[0].cells[0][2] === '{{price:2}}' && same(t.els('detail')[0].aligns, ['left', 'left', 'right', 'left']), JSON.stringify(t.els('detail')[0]))
+    t.prop('columns', 5); t.prop('column widths', '3,1,1')
+    check('columns and widths from the panel', t.els('detail')[0].cells[0].length === 5 && same(t.els('detail')[0].cols, [3, 1, 1, 1, 1]))
+  },
+  'moves, snaps and changes band'() {
+    const t = open()
+    t.drop('rect', 'summary', 5, 5); t.drop('rect', 'summary', 300, 5)
+    const second = t.qa('.ddr-band[data-name=summary] .ddr-el')[1]
+    t.drag(second, -172, 0)
+    check('snaps to the edge of its neighbour', t.els('summary')[1].x === 125, 'x=' + t.els('summary')[1].x)
+    t.drag(t.qa('.ddr-band[data-name=summary] .ddr-el')[1], 40, 0, { altKey: true })
+    check('Alt turns snapping off', t.els('summary')[1].x === 165, 'x=' + t.els('summary')[1].x)
+    const el = t.qa('.ddr-band[data-name=summary] .ddr-el')[0], r = el.getBoundingClientRect(), into = t.q('.ddr-band[data-name=detail]').getBoundingClientRect()
+    t.ptr(el, 'pointerdown', r.left + 4, r.top + 4); t.ptr(el, 'pointermove', r.left + 4, into.top + 6, { altKey: true }); t.ptr(el, 'pointerup', r.left + 4, into.top + 6)
+    check('dragging into another band moves it there', t.els('detail').length === 1 && t.els('summary').length === 1)
+    check('the band grew to hold it', t.tpl.bands.detail.height >= t.els('detail')[0].y + t.els('detail')[0].h)
+  },
+  'keeps elements on the paper'() {
+    const t = open()
+    t.click('add:rect')
+    t.prop('x', 5000); t.prop('y', 300)
+    const e = t.els('header')[0]
+    check('x is limited to the printable width', e.x === 523 - e.w, 'x=' + e.x)
+    check('the band grows instead of letting the element spill out', t.tpl.bands.header.height === 300 + e.h, 'height=' + t.tpl.bands.header.height)
+  },
+  'copies, pastes, selects several and arranges'() {
+    const t = open()
+    t.drop('rect', 'summary', 5, 5); t.click('copy')
+    check('paste is enabled after copy', !t.q('[data-cmd=paste]').disabled)
+    t.click('paste'); t.click('paste')
+    check('three copies, each a step further', same(t.els('summary').map(e => [e.x, e.y]), [[5, 5], [15, 15], [25, 25]]))
+    const nodes = t.qa('.ddr-band[data-name=summary] .ddr-el')
+    t.ptr(nodes[0], 'pointerdown', 0, 0, { shiftKey: true }); t.ptr(nodes[1], 'pointerdown', 0, 0, { shiftKey: true })
+    check('shift-click adds to the selection', t.qa('.ddr-sel').length === 3)
+    t.click('arrange:x:0'); t.click('arrange:y:0')
+    check('aligned', same(t.els('summary').map(e => [e.x, e.y]), [[5, 5], [5, 5], [5, 5]]))
+    t.click('delete')
+    check('delete removes all selected', t.els('summary').length === 0)
+  },
+  'selects with a dragged box'() {
+    const t = open()
+    t.drop('rect', 'header', 10, 5); t.drop('rect', 'header', 200, 5); t.drop('rect', 'summary', 10, 2)
+    const band = t.q('.ddr-band[data-name=header]'), b = band.getBoundingClientRect(), page = t.q('.ddr-page')
+    t.ptr(band, 'pointerdown', b.left + 400, b.top + 2); t.ptr(page, 'pointermove', b.left + 5, b.top + 50)
+    check('the box is drawn', !!t.q('.ddr-marquee'))
+    t.ptr(page, 'pointerup', b.left + 5, b.top + 50)
+    check('two elements selected', t.qa('.ddr-sel').length === 2)
+    check('the keyboard stays with the designer', t.root.contains(document.activeElement))
+    t.key('Delete')
+    check('Delete removes what the box selected', t.els('header').length === 0 && t.els('summary').length === 1)
+    t.ptr(band, 'pointerdown', b.left + 500, b.top + 2); t.ptr(page, 'pointerup', b.left + 500, b.top + 2)
+    check('a click on empty paper selects nothing', t.qa('.ddr-sel').length === 0)
+  },
+  'keyboard keeps working after a delete'() {
+    const t = open()
+    t.click('add:text'); t.click('add:rect')
+    const node = t.q('.ddr-el[data-type=text]')
+    node.focus(); t.ptr(node, 'pointerdown', 0, 0); t.ptr(node, 'pointerup', 0, 0)
+    t.key('Delete')
+    check('deleted', t.els('header').length === 1)
+    check('focus is still inside the designer', t.root.contains(document.activeElement), document.activeElement.tagName)
+    t.key('z', { ctrlKey: true })
+    check('Ctrl+Z brings it back', t.els('header').length === 2)
+    t.key('y', { ctrlKey: true })
+    check('Ctrl+Y deletes it again', t.els('header').length === 1)
+  },
+  'nudges with the arrow keys'() {
+    const t = open()
+    t.drop('rect', 'summary', 50, 0)
+    const node = t.q('.ddr-el'); node.focus(); t.ptr(node, 'pointerdown', 0, 0); t.ptr(node, 'pointerup', 0, 0)
+    t.key('ArrowRight', { shiftKey: true }); t.key('ArrowLeft')
+    check('moved 10 right and 1 back', t.els('summary')[0].x === 59, 'x=' + t.els('summary')[0].x)
+    t.key('ArrowUp')
+    check('cannot leave the band at the top', t.els('summary')[0].y === 0)
+  },
+  'replacing the template can be undone'() {
+    const t = open()
+    t.click('add:text')
+    t.d.setTemplate()
+    check('empty after setTemplate', t.els('header').length === 0)
+    check('undo is available', !t.q('[data-cmd=undo]').disabled)
+    t.click('undo')
+    check('undo restores the previous report', t.els('header').length === 1)
+  },
+  'page layout'() {
+    const t = open()
+    t.set('[data-id=paper]', 'Letter'); t.set('[data-id=orientation]', 'Landscape'); t.set('[data-page=marginLeft]', 50)
+    t.set('[data-page=background]', '#eef6ff'); t.set('[data-tpl=groupBy]', 'category'); t.set('[data-tpl=groupPageBreak]', true)
+    const p = t.tpl.page
+    check('paper, orientation, margin, background', p.width === 792 && p.height === 612 && p.marginLeft === 50 && p.background === '#eef6ff', JSON.stringify(p))
+    check('grouping', t.tpl.groupBy === 'category' && t.tpl.groupPageBreak === true)
+    check('the page is drawn that way', t.q('.ddr-page').style.width === '792px' && t.q('.ddr-page').style.paddingLeft === '50px')
+    t.click('noBackground')
+    check('background removed', t.tpl.page.background === '')
+  },
+  'zoom keeps positions in points'() {
+    const t = open()
+    t.click('zoom:1'); t.click('zoom:1')
+    check('120%', t.q('[data-id=zoom]').value === '120%')
+    t.drop('rect', 'summary', 60, 6)
+    check('a drop at 60px on screen is 50pt on paper', t.els('summary')[0].x === 50, 'x=' + t.els('summary')[0].x)
+    t.click('zoom:0')
+    check('back to 100%', t.q('[data-id=zoom]').value === '100%')
+  },
+  'band height by its bottom edge'() {
+    const t = open()
+    const grip = t.q('.ddr-band[data-name=detail] .ddr-grip'), r = grip.getBoundingClientRect()
+    t.ptr(grip, 'pointerdown', r.left + 5, r.top); t.ptr(grip, 'pointermove', r.left + 5, r.top + 15); t.ptr(grip, 'pointerup', r.left + 5, r.top + 15)
+    check('15pt taller', t.tpl.bands.detail.height === 35, 'height=' + t.tpl.bands.detail.height)
+  },
+  'loads templates that are damaged or old'() {
+    const cases = {
+      'table without cells': { bands: { header: { height: 40, elements: [{ type: 'table', x: 0, y: 0, w: 50, h: 20 }] } } },
+      'elements is not a list': { bands: { header: { height: 40, elements: 'oops' } } },
+      'elements with junk in it': { bands: { header: { height: 40, elements: [null, 7, 'x', { type: 'text' }] } } },
+      'band is null': { bands: { header: null } },
+      'an array': [1, 2, 3],
+      'a string': 'hello',
+      'page is a string': { page: 'A4' },
+      'numbers as text': { page: { width: '400', height: 'tall' }, bands: { detail: { height: '25', elements: [{ type: 'rect', x: '10', y: null, w: '30', h: 'x' }] } } },
+      'unknown element type': { bands: { header: { height: 40, elements: [{ type: 'hologram', x: 0, y: 0, w: 50, h: 20 }] } } },
+    }
+    for (const [name, template] of Object.entries(cases)) {
+      try {
+        const t = open(template)
+        const first = t.q('.ddr-el')
+        if (first) { t.ptr(first, 'pointerdown', 0, 0); t.ptr(first, 'pointerup', 0, 0) }
+        check(name, t.qa('.ddr-band').length === 7 && t.qa('.ddr-props label').length > 0)
+      } catch (err) { check(name, false, err.message) }
+    }
+    const t = open(cases['numbers as text'])
+    check('text numbers become numbers', t.tpl.page.width === 400 && t.tpl.page.height === 842 && t.tpl.bands.detail.height === 40 && same(t.els('detail').map(e => [e.x, e.y, e.w, e.h]), [[10, 0, 30, 40]]), JSON.stringify(t.tpl.bands.detail))
+    check('an unknown element survives a round trip', open(cases['unknown element type']).els('header')[0].type === 'hologram')
+    const old = open({ page: { width: 595, height: 842, margin: 20 } })
+    check('one old margin becomes four', same(['marginTop', 'marginRight', 'marginBottom', 'marginLeft'].map(s => old.tpl.page[s]), [20, 20, 20, 20]))
+  },
+  'Indonesian interface'() {
+    const t = open(undefined, { lang: 'id' })
+    check('tabs', same(t.qa('[data-tab]').map(b => b.textContent), ['Beranda', 'Sisipkan', 'Tata Letak', 'Tampilan']))
+    check('buttons and tooltips', t.q('[data-cmd=copy]').textContent === 'Salin' && t.q('[data-cmd=undo]').title === 'Urungkan (Ctrl+Z)')
+    check('commands still work', (t.click('add:text'), t.els('header').length === 1))
+    check('English by default', open().q('[data-cmd=copy]').textContent === 'Copy')
+  },
+  'tells the host about changes, with a copy on request'() {
+    const t = open()
+    t.click('add:text')
+    check('onChange was called with the template', t.last?.bands.header.elements.length === 1)
+    const copy = t.d.getTemplate()
+    copy.bands.header.elements.length = 0
+    check('getTemplate returns a copy', t.els('header').length === 1)
+    check('emptyTemplate is a fresh template', emptyTemplate().bands.detail.elements.length === 0)
+  },
+}
+
+for (const [name, test] of Object.entries(tests)) {
+  log.appendChild(document.createElement('li')).outerHTML = `<li><b>${name}</b></li>`
+  try { test() } catch (err) { check(name + ' threw', false, err.stack) }
+}
+host.replaceChildren()
+document.getElementById('summary').textContent = failed ? `${failed} of ${total} checks FAILED` : `all ${total} checks passed`
+document.title = (failed ? 'FAILED' : 'passed') + ' — designer tests'
+window.result = { failed, total, failures: [...log.querySelectorAll('.fail')].map(li => li.textContent) }
+</script>
+</body>
+</html>

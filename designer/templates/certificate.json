@@ -1,0 +1,217 @@
+{
+  "name": "Sertifikat",
+  "description": "Sertifikat mendatar satu halaman dengan bingkai, latar berwarna, dan QR verifikasi.",
+  "template": {
+    "page": {
+      "width": 842,
+      "height": 595,
+      "margin": 0,
+      "marginTop": 40,
+      "marginRight": 40,
+      "marginBottom": 40,
+      "marginLeft": 40,
+      "background": "#fffdf5",
+      "backgroundImage": ""
+    },
+    "dataKey": "rows",
+    "groupBy": "",
+    "groupPageBreak": false,
+    "thousands": ".",
+    "decimal": ",",
+    "bands": {
+      "header": {
+        "height": 515,
+        "elements": [
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 0,
+            "w": 762,
+            "h": 515,
+            "border": 3,
+            "color": "#b8860b"
+          },
+          {
+            "type": "rect",
+            "x": 8,
+            "y": 8,
+            "w": 746,
+            "h": 499,
+            "border": 0.75,
+            "color": "#b8860b"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 60,
+            "w": 762,
+            "h": 46,
+            "text": "SERTIFIKAT",
+            "align": "center",
+            "font": "Times",
+            "fontSize": 38,
+            "bold": true,
+            "color": "#7a5c00"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 108,
+            "w": 762,
+            "h": 18,
+            "text": "P E N G H A R G A A N",
+            "align": "center",
+            "font": "Times",
+            "fontSize": 13,
+            "color": "#7a5c00"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 160,
+            "w": 762,
+            "h": 16,
+            "text": "Diberikan kepada",
+            "align": "center",
+            "font": "Times",
+            "fontSize": 13,
+            "italic": true
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 186,
+            "w": 762,
+            "h": 40,
+            "text": "{{name}}",
+            "align": "center",
+            "font": "Times",
+            "fontSize": 32,
+            "bold": true,
+            "italic": true
+          },
+          {
+            "type": "line",
+            "x": 231,
+            "y": 232,
+            "w": 300,
+            "h": 1,
+            "border": 1,
+            "color": "#b8860b"
+          },
+          {
+            "type": "text",
+            "x": 131,
+            "y": 252,
+            "w": 500,
+            "h": 50,
+            "text": "atas partisipasinya sebagai <b>{{role}}</b> dalam kegiatan <b>{{event}}</b> yang diselenggarakan pada {{date}}.",
+            "align": "center",
+            "font": "Times",
+            "fontSize": 13,
+            "lineHeight": 1.4,
+            "grow": true
+          },
+          {
+            "type": "text",
+            "x": 481,
+            "y": 390,
+            "w": 220,
+            "h": 14,
+            "text": "{{city}}, {{issued}}",
+            "align": "center",
+            "font": "Times",
+            "fontSize": 11
+          },
+          {
+            "type": "line",
+            "x": 511,
+            "y": 448,
+            "w": 160,
+            "h": 1,
+            "border": 0.75
+          },
+          {
+            "type": "text",
+            "x": 481,
+            "y": 452,
+            "w": 220,
+            "h": 14,
+            "text": "{{signer.name}}",
+            "align": "center",
+            "font": "Times",
+            "fontSize": 12,
+            "bold": true
+          },
+          {
+            "type": "text",
+            "x": 481,
+            "y": 467,
+            "w": 220,
+            "h": 12,
+            "text": "{{signer.title}}",
+            "align": "center",
+            "font": "Times",
+            "fontSize": 10
+          },
+          {
+            "type": "barcode",
+            "x": 40,
+            "y": 400,
+            "w": 70,
+            "h": 70,
+            "text": "https://example.com/verify/{{id}}",
+            "format": "qr"
+          },
+          {
+            "type": "text",
+            "x": 40,
+            "y": 474,
+            "w": 160,
+            "h": 10,
+            "text": "No. {{id}}",
+            "fontSize": 8,
+            "font": "Courier"
+          }
+        ]
+      },
+      "columnHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "groupHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "detail": {
+        "height": 0,
+        "elements": []
+      },
+      "groupFooter": {
+        "height": 0,
+        "elements": []
+      },
+      "summary": {
+        "height": 0,
+        "elements": []
+      },
+      "footer": {
+        "height": 0,
+        "elements": []
+      }
+    }
+  },
+  "data": {
+    "id": "CERT-2026-00417",
+    "name": "Dimas Prasetyo",
+    "role": "Peserta",
+    "event": "Pelatihan Analisis Data untuk UMKM",
+    "date": "10–12 Oktober 2026",
+    "city": "Yogyakarta",
+    "issued": "14 Oktober 2026",
+    "signer": {
+      "name": "Dr. Laras Anindya",
+      "title": "Ketua Panitia"
+    }
+  }
+}
