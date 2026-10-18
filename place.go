@@ -14,9 +14,6 @@ import (
 // moves by the first one's growth and then pushes by its own), while texts side
 // by side push by the larger of the two. Boxes and vertical rules that reach
 // past a grown text stretch, so frames stay closed.
-//
-// ponytail: text is measured with the PDF font, so in HTML a browser font that
-// runs wider can still clip the last line of a grown text.
 func (r *report) place(b Band, sc scope) ([]Element, float64) {
 	type grower struct{ top, bottom, grow, shift float64 }
 	els := slices.Clone(b.Elements)

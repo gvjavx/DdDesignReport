@@ -88,7 +88,7 @@ func TestExpressionsInAReport(t *testing.T) {
 			t.Errorf("html: missing %q", want)
 		}
 	}
-	if n := strings.Count(html, ">6,000<"); n != 2 { // once as the subtotal, once above the chart's bar
-		t.Errorf("6,000 appears %d times, want 2", n)
+	if n := strings.Count(html, ">6,000<"); n != 3 { // the subtotal, above the chart's bar, and the top of its scale
+		t.Errorf("6,000 appears %d times, want 3", n)
 	}
 }

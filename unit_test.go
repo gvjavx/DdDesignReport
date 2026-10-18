@@ -1,6 +1,7 @@
 package ddreport
 
 import (
+	"fmt"
 	"math"
 	"reflect"
 	"strings"
@@ -366,7 +367,7 @@ func TestChart(t *testing.T) {
 		map[string]any{"cat": "A", "v": 10.0},
 		map[string]any{"cat": "B", "v": 30.0},
 		map[string]any{"cat": "A", "v": 20.0}, // summed into A
-		map[string]any{"cat": "C", "v": -5.0}, // negative: drawn as zero
+		map[string]any{"cat": "C", "v": -5.0}, // negative: below the zero line, zero in a pie
 	}
 	types := func(els []Element) map[string]int {
 		n := map[string]int{}
@@ -380,32 +381,39 @@ func TestChart(t *testing.T) {
 	bar := base
 	bar.Chart = "bar"
 	els := chart(tpl, bar, rows)
-	if n := types(els); n["rect"] != 3 || n["text"] != 6 || n["line"] != 1 || n["poly"] != 0 {
+	// scale -10..30 in steps of 10: five grid lines with labels, then rect, value, label per bar, then the zero line
+	if n := types(els); n["rect"] != 3 || n["text"] != 11 || n["line"] != 6 || n["poly"] != 0 {
 		t.Fatalf("bar chart = %v", n)
 	}
-	a, b, c := els[0], els[3], els[6]
-	if a.H != b.H || a.H != 100 || c.H != 0 { // A = 30 ties the maximum, plot area is H-20
-		t.Errorf("bar heights %v %v %v", a.H, b.H, c.H)
+	if els[1].Text != "-10" || els[9].Text != "30" || els[9].Y != 50+10-4.5 || els[8].Y != 60 {
+		t.Errorf("scale %q..%q, top label at %v", els[1].Text, els[9].Text, els[9].Y)
 	}
-	if a.X != 115 || a.W != 70 || a.Y+a.H != 160 || a.Fill != palette[0] { // slots of 100, bars 70% wide, on the axis
+	a, b, c := els[10], els[13], els[16]
+	if a.H != b.H || a.H != 75 || a.Y != 60 || c.Y != 135 || c.H != 12.5 { // plot of 100pt for 40 units, zero at 85
+		t.Errorf("bars %+v %+v %+v", a, b, c)
+	}
+	if axis := 15.7; math.Abs(a.X-(100+axis+(300-axis)/3*0.15)) > 1e-9 || a.Fill != palette[0] {
 		t.Errorf("first bar %+v", a)
 	}
-	if els[1].Text != "30" || els[2].Text != "A" || els[7].Text != "0" {
-		t.Errorf("labels %q %q %q", els[1].Text, els[2].Text, els[7].Text)
+	if els[11].Text != "30" || els[12].Text != "A" || els[17].Text != "-5" || els[17].Y != 50+85-9 {
+		t.Errorf("labels %q %q %q at %v", els[11].Text, els[12].Text, els[17].Text, els[17].Y)
+	}
+	if zero := els[len(els)-1]; zero.Y != 135 || zero.Color != "#888888" {
+		t.Errorf("zero line %+v", zero)
 	}
 	bar.Color = "#123456"
-	if chart(tpl, bar, rows)[0].Fill != "#123456" {
+	if chart(tpl, bar, rows)[10].Fill != "#123456" {
 		t.Error("bar colour not applied")
 	}
 
 	line := base
 	line.Chart = "line"
 	els = chart(tpl, line, rows)
-	if n := types(els); n["poly"] != 1 || n["rect"] != 0 || n["text"] != 6 {
+	if n := types(els); n["poly"] != 1 || n["rect"] != 0 || n["text"] != 11 {
 		t.Fatalf("line chart = %v", n)
 	}
 	for _, e := range els {
-		if e.Type == "poly" && (len(e.Points) != 6 || e.Fill != "" || e.Points[0] != 50 || e.Points[1] != 10) {
+		if e.Type == "poly" && (len(e.Points) != 6 || e.Fill != "" || e.Points[1] != 10 || e.Points[5] != 97.5) {
 			t.Errorf("line poly %+v", e)
 		}
 	}
@@ -666,7 +674,7 @@ func TestRenderWordFeatures(t *testing.T) {
 
 func TestRenderIsSafeAgainstTemplateInjection(t *testing.T) {
 	tpl := []byte(`{"bands":{"detail":{"height":40,"elements":[
-	  {"type":"text","w":100,"h":12,"text":"<script>alert(1)</script>{{x}}","color":"red;background:url(//evil)","align":"left;position:fixed"},
+	  {"type":"text","w":500,"h":12,"text":"<script>alert(1)</script>{{x}}","color":"red;background:url(//evil)","align":"left;position:fixed"},
 	  {"type":"rect","w":10,"h":10,"fill":"#000000\"><script>","border":1,"color":"expression(1)"},
 	  {"type":"poly","w":10,"h":10,"points":[0,0,5,5],"fill":"#000000\"><script>","color":"url(x)"}]}}}`)
 	html := string(render(t, tpl, []map[string]any{{"x": `"><img src=x onerror=alert(1)>`}}, "html"))
@@ -708,11 +716,52 @@ func TestRenderErrors(t *testing.T) {
 
 func TestChartLabelsUseTheTemplateNumberFormat(t *testing.T) {
 	tpl := &Template{Thousands: ".", Decimal: ","}
-	els := chart(tpl, Element{W: 100, H: 100, Chart: "bar", Label: "c", Value: "v"}, []any{
+	els := chart(tpl, Element{W: 300, H: 100, Chart: "bar", Label: "c", Value: "v"}, []any{
 		map[string]any{"c": "A", "v": 1296000.0},
 		map[string]any{"c": "B", "v": 1234.5},
 	})
-	if els[1].Text != "1.296.000" || els[4].Text != "1.234,50" {
-		t.Errorf("labels %q %q", els[1].Text, els[4].Text)
+	texts := map[string]bool{}
+	for _, e := range els {
+		texts[e.Text] = true
+	}
+	for _, want := range []string{"1.296.000", "1.234,50", "1.500.000"} { // values, and the top of the scale
+		if !texts[want] {
+			t.Errorf("no label %q in %v", want, texts)
+		}
+	}
+}
+
+func TestDenseChartsThinTheirLabels(t *testing.T) {
+	var rows []any
+	for i := range 40 {
+		rows = append(rows, map[string]any{"c": fmt.Sprint("item ", i), "v": float64(i)})
+	}
+	for _, kind := range []string{"bar", "hbar"} {
+		labels := 0
+		for _, e := range chart(&Template{}, Element{W: 300, H: 100, Chart: kind, Label: "c", Value: "v"}, rows) {
+			if strings.HasPrefix(e.Text, "item ") {
+				labels++
+			}
+		}
+		if labels == 0 || labels > 15 {
+			t.Errorf("%s: %d of 40 labels", kind, labels)
+		}
+	}
+}
+
+func TestHbarNegative(t *testing.T) {
+	els := chart(&Template{}, Element{W: 300, H: 50, Chart: "hbar", Label: "c", Value: "v"}, []any{
+		map[string]any{"c": "up", "v": 10.0},
+		map[string]any{"c": "down", "v": -10.0},
+	})
+	var bars []Element
+	for _, e := range els {
+		if e.Type == "rect" {
+			bars = append(bars, e)
+		}
+	}
+	zero := els[len(els)-1]
+	if len(bars) != 2 || bars[0].X != zero.X || bars[1].X+bars[1].W != zero.X || bars[0].W != bars[1].W {
+		t.Errorf("bars %+v around zero at %v", bars, zero.X)
 	}
 }

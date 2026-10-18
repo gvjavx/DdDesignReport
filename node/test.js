@@ -41,3 +41,9 @@ test('throws when the binary is missing', () => {
     else process.env.DDREPORT_BIN = bin
   }
 })
+
+test('renderAsync gives the same output without blocking', async () => {
+  const { renderAsync } = require('.')
+  assert.strictEqual((await renderAsync(template, data, 'csv')).toString(), render(template, data, 'csv').toString())
+  await assert.rejects(renderAsync(template, data, 'docx'), /unknown format "docx"/)
+})

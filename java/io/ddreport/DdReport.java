@@ -11,7 +11,7 @@ public final class DdReport {
     /**
      * @param templateJson template exported by the designer
      * @param dataJson     JSON object (fields plus the row array) or JSON array of rows
-     * @param format       pdf, html, xlsx or csv
+     * @param format       pdf, html, xlsx, xls or csv
      */
     public static byte[] render(String templateJson, String dataJson, String format)
             throws IOException, InterruptedException {

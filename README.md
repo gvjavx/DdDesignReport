@@ -88,7 +88,7 @@ Delapan template ada di `designer/templates/` (faktur, laporan penjualan, struk 
 
 **Teks panjang**: centang `grow` pada elemen teks agar teks dibungkus dan band ikut bertambah tinggi. Elemen di bawahnya turun, kotak dan garis vertikal di sekelilingnya ikut memanjang.
 
-**Chart**: `bar`, `hbar` (batang mendatar), `line`, `pie`, atau `donut`. `label` adalah nama field baris dan `value` nama field atau perhitungan (`qty * price`); nilai dijumlahkan per label.
+**Chart**: `bar`, `hbar` (batang mendatar), `line`, `pie`, atau `donut`. `label` adalah nama field baris dan `value` nama field atau perhitungan (`qty * price`); nilai dijumlahkan per label. `bar`, `hbar`, dan `line` punya skala nilai yang selalu memuat nol, jadi nilai negatif tampil di bawah garis nol; label kategori ditampilkan selang-seling bila terlalu rapat. `pie` dan `donut` menggambar nilai negatif sebagai nol.
 
 **Barcode**: elemen `barcode` dengan `format` `qr` (default) atau `code128`. Isinya ada di `text` dan boleh memuat placeholder, misalnya `https://example.com/verify/{{id}}`.
 
@@ -125,8 +125,9 @@ val pdf = DdReport.render(templateJson, dataJson, "pdf")
 **Node.js**
 
 ```js
-const { render } = require('ddreport')
-const pdf = render(template, data, 'pdf') // Buffer
+const { render, renderAsync } = require('ddreport')
+const pdf = render(template, data, 'pdf')            // Buffer, sinkron
+const pdf2 = await renderAsync(template, data, 'pdf') // tidak memblokir event loop; pakai ini di server
 ```
 
 **HTTP**: `ddreport -serve` juga menerima `POST /render?format=pdf` dengan body `{"template": ..., "data": ...}`.

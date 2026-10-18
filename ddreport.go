@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"codeberg.org/go-pdf/fpdf"
 )
@@ -558,8 +559,8 @@ func str(v any) string {
 var palette = []string{"#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948", "#b07aa1", "#9c755f"}
 
 // chart turns a chart element into the rects, lines, texts and polys that draw it.
-// ponytail: negative values are drawn as zero, there is no value axis and no
-// label thinning. Fine for a handful of categories, revisit for dense series.
+// Bars, lines and hbars get a value scale that includes zero, so negative values
+// reach below it; a pie or donut cannot show them and draws them as zero.
 func chart(t *Template, e Element, rows []any) []Element {
 	var labels []string
 	sums := map[string]float64{}
@@ -571,7 +572,7 @@ func chart(t *Template, e Element, rows []any) []Element {
 		}
 		v, _ := (scope{t, nil, []map[string]any{row}}).eval(e.Value) // a field or an expression such as qty * price
 		f, _ := v.(float64)
-		sums[l] += max(f, 0)
+		sums[l] += f
 	}
 	if len(labels) == 0 {
 		return nil
@@ -590,13 +591,13 @@ func chart(t *Template, e Element, rows []any) []Element {
 	if e.Chart == "pie" || e.Chart == "donut" {
 		total := 0.0
 		for _, v := range sums {
-			total += v
+			total += max(v, 0)
 		}
 		rad, angle := min(e.W, e.H)/2, -math.Pi/2
 		for i, l := range labels {
 			c := palette[i%len(palette)]
 			if total > 0 {
-				sweep := 2 * math.Pi * sums[l] / total
+				sweep := 2 * math.Pi * max(sums[l], 0) / total
 				steps := int(sweep/0.1) + 1
 				arc := func(radius float64, k int) (float64, float64) {
 					a := angle + sweep*float64(k)/float64(steps)
@@ -625,41 +626,93 @@ func chart(t *Template, e Element, rows []any) []Element {
 		return out
 	}
 
-	hi := 0.0
+	lo, hi := 0.0, 0.0 // the scale always includes zero
 	for _, v := range sums {
-		hi = max(hi, v)
+		lo, hi = min(lo, v), max(hi, v)
 	}
-	if hi == 0 {
-		hi = 1
+	step := tickStep(hi - lo)
+	lo, hi = math.Floor(lo/step)*step, math.Ceil(hi/step)*step
+	if hi == lo {
+		hi = lo + step
+	}
+	var ticks []float64
+	for i := 0; i <= int(math.Round((hi-lo)/step)); i++ {
+		ticks = append(ticks, lo+float64(i)*step)
+	}
+	// ponytail: label widths are estimated (7pt, ~3.9pt per character) rather than
+	// measured with the PDF font, so long labels in a wide font can still touch.
+	wide := func(s string) float64 { return float64(utf8.RuneCountInString(s)) * 3.9 }
+	grid := func(x, y, w, h float64, c string) Element {
+		return Element{Type: "line", X: e.X + x, Y: e.Y + y, W: w, H: h, Border: 0.5, Color: c}
 	}
 	c := color(e.Color, palette[0])
-	if e.Chart == "hbar" { // label, bar, value on each line
-		slot, labelW, valueW := e.H/float64(len(labels)), min(e.W*0.3, 90), 50.0
-		for i, l := range labels {
-			y, bar := slot*float64(i), (e.W-labelW-valueW)*sums[l]/hi
-			out = append(out,
-				text(0, y+slot/2-4.5, labelW-4, l, "right"),
-				Element{Type: "rect", X: e.X + labelW, Y: e.Y + y + slot*0.15, W: bar, H: slot * 0.7, Fill: c},
-				text(labelW+bar+3, y+slot/2-4.5, valueW-3, num(sums[l]), "left"))
+	n := float64(len(labels))
+
+	if e.Chart == "hbar" { // label, bar, value on each line; the value scale runs along the bottom
+		labelW, valueW := min(e.W*0.3, 90), 50.0
+		plotW, slot := e.W-labelW-valueW, (e.H-10)/n
+		x := func(v float64) float64 { return labelW + plotW*(v-lo)/(hi-lo) }
+		for _, v := range ticks {
+			out = append(out, grid(x(v), 0, 0, e.H-10, "#dddddd"), text(x(v)-25, e.H-9, 50, num(v), "center"))
 		}
-		return append(out, Element{Type: "line", X: e.X + labelW, Y: e.Y, H: e.H, Border: 0.5, Color: "#888888"})
+		every := int(math.Ceil(9 / slot)) // rows thinner than a line of text are labelled every few bars
+		for i, l := range labels {
+			v, y := sums[l], slot*float64(i)
+			out = append(out, Element{Type: "rect", X: e.X + x(min(v, 0)), Y: e.Y + y + slot*0.15, W: x(max(v, 0)) - x(min(v, 0)), H: slot * 0.7, Fill: c})
+			if i%every == 0 {
+				out = append(out, text(0, y+slot/2-4.5, labelW-4, l, "right"), text(x(max(v, 0))+3, y+slot/2-4.5, valueW-3, num(v), "left"))
+			}
+		}
+		return append(out, grid(x(0), 0, 0, e.H-10, "#888888"))
 	}
-	plot, slot := e.H-20, e.W/float64(len(labels)) // 10pt above for values, 10pt below for labels
+
+	axisW := 0.0 // tick labels on the left
+	for _, v := range ticks {
+		axisW = max(axisW, wide(num(v))+4)
+	}
+	plot, slot := e.H-20, (e.W-axisW)/n // 10pt above for values, 10pt below for labels
+	y := func(v float64) float64 { return 10 + plot*(hi-v)/(hi-lo) }
+	for _, v := range ticks {
+		out = append(out, grid(axisW, y(v), e.W-axisW, 0, "#dddddd"), text(0, y(v)-4.5, axisW-4, num(v), "right"))
+	}
+	widest := 0.0
+	for _, l := range labels {
+		widest = max(widest, wide(l), wide(num(sums[l])))
+	}
+	every := int(math.Ceil((widest + 2) / slot)) // labels wider than their slot show every few bars
 	var pts []float64
 	for i, l := range labels {
-		x, bar := slot*float64(i), plot*sums[l]/hi
-		top := 10 + plot - bar
+		v, x := sums[l], axisW+slot*float64(i)
+		at := y(v) // the value goes above its point, or above the zero line where a negative bar leaves room
 		if e.Chart == "line" {
-			pts = append(pts, x+slot/2, top)
+			pts = append(pts, x+slot/2, y(v))
 		} else {
-			out = append(out, Element{Type: "rect", X: e.X + x + slot*0.15, Y: e.Y + top, W: slot * 0.7, H: bar, Fill: c})
+			at = y(max(v, 0))
+			out = append(out, Element{Type: "rect", X: e.X + x + slot*0.15, Y: e.Y + at, W: slot * 0.7, H: y(min(v, 0)) - at, Fill: c})
 		}
-		out = append(out, text(x, top-9, slot, num(sums[l]), "center"), text(x, e.H-9, slot, l, "center"))
+		if i%every == 0 {
+			out = append(out, text(x, at-9, slot, num(v), "center"), text(x, e.H-9, slot, l, "center"))
+		}
 	}
 	if e.Chart == "line" {
 		out = append(out, Element{Type: "poly", X: e.X, Y: e.Y, W: e.W, H: e.H, Points: pts, Color: c, Border: 1.5})
 	}
-	return append(out, Element{Type: "line", X: e.X, Y: e.Y + 10 + plot, W: e.W, Border: 0.5, Color: "#888888"})
+	return append(out, grid(axisW, y(0), e.W-axisW, 0, "#888888"))
+}
+
+// tickStep is a round step (1, 2 or 5 times a power of ten) that cuts span into about four.
+func tickStep(span float64) float64 {
+	raw := span / 4
+	if raw <= 0 {
+		return 1
+	}
+	mag := math.Pow(10, math.Floor(math.Log10(raw)))
+	for _, m := range []float64{1, 2, 5} {
+		if m*mag >= raw {
+			return m * mag
+		}
+	}
+	return 10 * mag
 }
 
 var dataImage = regexp.MustCompile(`^data:image/[a-z0-9.+-]+;base64,`)
@@ -712,7 +765,7 @@ func (r *report) toHTML(pages [][]Element) []byte {
 	fmt.Fprintf(&b, `<!doctype html><html><head><meta charset="utf-8"><style>`+
 		`@page{size:%[1]gpt %[2]gpt;margin:0}body{margin:0;font:10pt/1.2 Helvetica,Arial,sans-serif}`+
 		`.p{position:relative;width:%[1]gpt;height:%[2]gpt;overflow:hidden;page-break-after:always}`+
-		`.p>*{position:absolute;box-sizing:border-box;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere}`+
+		`.p>*{position:absolute;box-sizing:border-box;overflow:hidden;white-space:pre}`+
 		`</style></head><body>`, r.t.Page.Width, r.t.Page.Height)
 	for _, page := range pages {
 		b.WriteString(`<div class="p">`)
@@ -732,17 +785,32 @@ func (r *report) toHTML(pages [][]Element) []byte {
 					style += "background:" + e.Fill + ";"
 				}
 				fmt.Fprintf(&b, `<div style="%s">`, style)
-				for _, p := range e.pieces() {
-					open, end := "", ""
-					for _, tag := range []struct {
-						on   bool
-						name string
-					}{{p.bold, "b"}, {p.italic, "i"}, {p.underline, "u"}} {
-						if tag.on {
-							open, end = open+"<"+tag.name+">", "</"+tag.name+">"+end
+				// the lines are broken where the PDF breaks them, so a browser font that
+				// runs wider cannot add a line and clip the last one of a grown text
+				for i, line := range r.layout(e) {
+					if i > 0 {
+						b.WriteString("\n")
+					}
+					var runs []run // the line's words, joined back into one run per style
+					for _, s := range line.spans {
+						if k := len(runs) - 1; k >= 0 && runs[k].bold == s.bold && runs[k].italic == s.italic && runs[k].underline == s.underline {
+							runs[k].text += s.text
+						} else {
+							runs = append(runs, s.run)
 						}
 					}
-					b.WriteString(open + html.EscapeString(p.text) + end)
+					for _, p := range runs {
+						open, end := "", ""
+						for _, tag := range []struct {
+							on   bool
+							name string
+						}{{p.bold, "b"}, {p.italic, "i"}, {p.underline, "u"}} {
+							if tag.on {
+								open, end = open+"<"+tag.name+">", "</"+tag.name+">"+end
+							}
+						}
+						b.WriteString(open + html.EscapeString(p.text) + end)
+					}
 				}
 				b.WriteString(`</div>`)
 			case "rect":

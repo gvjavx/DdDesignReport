@@ -3,6 +3,7 @@ package ddreport
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -269,10 +270,21 @@ func TestImagesMustBeDataURIs(t *testing.T) {
 	}
 }
 
-func TestHTMLBreaksLongWordsLikeThePDF(t *testing.T) {
-	out := string(render(t, []byte(`{"bands":{"detail":{"height":10,"elements":[{"type":"text","w":40,"h":10,"text":"x"}]}}}`), []any{1}, "html"))
-	if !strings.Contains(out, "overflow-wrap:anywhere") {
-		t.Error("html does not break over-long words")
+func TestHTMLBreaksLinesLikeThePDF(t *testing.T) {
+	// a grown text gets exactly as many lines in HTML as its height was measured
+	// for, whatever font the browser picks; long words are cut like in the PDF
+	out := string(render(t, []byte(`{"bands":{"detail":{"height":12,"elements":[
+	  {"type":"text","w":40,"h":12,"grow":true,"text":"abcdefghijklmnopqrstuvwxyz one two"}]}}}`), []any{1}, "html"))
+	m := regexp.MustCompile(`height:([\d.]+)pt;[^>]*>([^<]*)</div>`).FindStringSubmatch(out)
+	if m == nil {
+		t.Fatalf("no text in %s", out)
+	}
+	lines := strings.Count(m[2], "\n") + 1
+	if lines < 3 || m[1] != fmt.Sprint(float64(lines)*12) {
+		t.Errorf("%d lines in a %spt box: %q", lines, m[1], m[2])
+	}
+	if !strings.Contains(out, "white-space:pre}") {
+		t.Error("the browser may still wrap the lines again")
 	}
 }
 

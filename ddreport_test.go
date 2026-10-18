@@ -132,7 +132,7 @@ func TestGroupsAggregatesGrowCharts(t *testing.T) {
 		f, _ := strconv.ParseFloat(m[1], 64)
 		return f
 	}
-	note, box := h(`height:([\d.]+)pt;[^>]*>`+long), h(`height:([\d.]+)pt;border`)
+	note, box := h(`height:([\d.]+)pt;[^>]*>a note long`), h(`height:([\d.]+)pt;border`)
 	if note <= 12 || box-14 != note-12 {
 		t.Errorf("grow: note is %gpt high, its box %gpt", note, box)
 	}
