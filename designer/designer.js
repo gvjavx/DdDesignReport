@@ -212,7 +212,7 @@ const CSS = `
 
 .ddr-work{position:relative;display:flex;flex:1;min-height:0}
 .ddr-stage{flex:1;min-width:0;overflow:auto;padding:16px;touch-action:pan-x pan-y;background:var(--stage) radial-gradient(circle,color-mix(in srgb,var(--muted) 28%,transparent) 1px,transparent 1.2px) 0 0/16px 16px}
-.ddr-sizer{margin:0 auto}
+.ddr-sizer{margin:0} /* its left margin centres the page on a whole pixel, see center() */
 .ddr-zoom{transform-origin:0 0;width:max-content}
 .ddr-ruler{position:relative;height:18px;margin-bottom:6px;font-size:9px;color:#555;background-color:#fff;border-radius:3px;box-shadow:0 0 0 1px #0002}
 .ddr-ruler span{position:absolute;top:1px;padding-left:3px}
@@ -377,6 +377,11 @@ const markup = node => [...node.childNodes].map(c => {
 // ---- drawings on the canvas: charts from the sample data, barcodes -------------
 // They show what will print; the renderer draws the real thing (an exact,
 // scannable code; the chart from the real data with its value scale).
+
+// capture keeps a drag's pointer events coming to el. A browser that refuses
+// (Firefox, for a pointer it does not know) leaves the drag working on the
+// events it gets anyway, instead of stopping it.
+const capture = (el, ev) => { try { el.setPointerCapture(ev.pointerId) } catch {} }
 
 const PALETTE = ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc948', '#b07aa1', '#9c755f']
 const SVG = 'http://www.w3.org/2000/svg'
@@ -724,7 +729,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       grab()
     }
     handle.onpointerup = () => { handle.onpointermove = handle.onpointerup = null; redraw() }
-    handle.setPointerCapture(ev.pointerId)
+    capture(handle, ev)
   }
 
   // fit keeps an element on the paper: inside the left and right margins, and
@@ -947,7 +952,15 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     sizer.style.height = px(zoomer.offsetHeight * zoom)
     $('[data-id=zoom]').value = Math.round(zoom * 100) + '%'
     $('[data-id=zoomrange]').value = Math.round(zoom * 100)
+    center()
   }
+  // center puts the page in the middle of the stage on a whole pixel: lines stay
+  // sharp, and a pointer lands on the same point of the page in every browser
+  function center() {
+    const pad = parseFloat(getComputedStyle(stage).paddingLeft) || 0
+    sizer.style.marginLeft = px(Math.max(0, Math.floor((stage.clientWidth - 2 * pad - sizer.offsetWidth) / 2)))
+  }
+  new ResizeObserver(center).observe(stage)
   const fitZoom = () => (stage.clientWidth - 34) / tpl.page.width || 1
   // zoomAt keeps the point of the page under (cx, cy) where it is
   function zoomAt(z, cx, cy) {
@@ -1151,7 +1164,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       renderProps()
       keepFocus() // so Delete, Ctrl+C and the arrow keys act on what was just selected
     }
-    page.setPointerCapture(ev.pointerId)
+    capture(page, ev)
   }
 
   if (preview) {
@@ -1256,7 +1269,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
         const y0 = ev.clientY, h0 = band.height
         grip.onpointermove = mv => { band.height = Math.max(0, Math.round(h0 + (mv.clientY - y0) / zoom)); el.style.height = px(band.height); el.toggleAttribute('data-thin', band.height < 12) }
         grip.onpointerup = () => { grip.onpointermove = grip.onpointerup = null; redraw() } // a band never ends up shorter than what is in it
-        grip.setPointerCapture(ev.pointerId)
+        capture(grip, ev)
       }
       el.append(...band.elements.map(node), grip)
       return el
@@ -1389,7 +1402,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
             else { e.heights = now; s.gridTemplateRows = now.map(v => `minmax(0,${v}fr)`).join(' ') }
           }
           g.onpointerup = () => { g.onpointermove = g.onpointerup = null; redraw() }
-          g.setPointerCapture(ev.pointerId)
+          capture(g, ev)
         }
       }
       let x = 0, y = 0
@@ -1451,7 +1464,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
         trash.hidden = false
         trash.classList.toggle('over', overTrash(mv))
       }
-      n.setPointerCapture(ev.pointerId)
+      capture(n, ev)
     }
     n.onpointerup = ev => {
       if (!n.onpointermove) return

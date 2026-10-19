@@ -35,7 +35,8 @@ jobs:
         shell: bash
         run: |
           go build -o ddreport${{ runner.os == 'Windows' && '.exe' || '' }} ./cmd/ddreport
-          echo "DDREPORT_BIN=$PWD/ddreport${{ runner.os == 'Windows' && '.exe' || '' }}" >> "$GITHUB_ENV"
+          # on Windows the path must be D:/a/..., which Node can start a program from, not /d/a/...
+          echo "DDREPORT_BIN=$(pwd -W 2>/dev/null || pwd)/ddreport${{ runner.os == 'Windows' && '.exe' || '' }}" >> "$GITHUB_ENV"
       - name: Node.js wrapper
         run: node --test node/test.js
       - name: Java wrapper

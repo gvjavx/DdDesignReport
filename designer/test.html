@@ -28,6 +28,11 @@ const check = (name, ok, detail = '') => {
   li.textContent = (ok ? '✓ ' : '✗ ') + name + (ok || !detail ? '' : ' — ' + detail)
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+// clipboard events made by a script carry their data in Chromium and Safari, not in Firefox;
+// where they do not, the clipboard checks are skipped (real Ctrl+C and Ctrl+V work there)
+const clipboardWorks = (() => {
+  try { const d = new DataTransfer(); d.setData('text/plain', 'x'); return new ClipboardEvent('paste', { clipboardData: d }).clipboardData?.getData('text/plain') === 'x' } catch { return false }
+})()
 
 // a fresh designer for every test
 function open(template, options = {}) {
@@ -576,6 +581,7 @@ const tests = {
     const grip = t.q('.ddr-tgrip[data-kind=col]'), r = grip.getBoundingClientRect(), x = r.left + 3
     t.ptr(grip, 'pointerdown', x, r.top + 5); t.ptr(grip, 'pointermove', x + 30, r.top + 5); t.ptr(grip, 'pointerup', x + 30, r.top + 5)
     check('column drag', table().cols[0] > table().cols[1] && Math.round(table().cols[0] + table().cols[1]) === Math.round(table().w * 2 / 3), JSON.stringify(table().cols))
+    if (!clipboardWorks) return
     // pasting cells copied from a spreadsheet fills the table from the clicked cell
     click(1, 1)
     t.q('.ddr-el').focus()
@@ -635,6 +641,7 @@ const tests = {
     check('Close leaves it as it was', e().report.bands.header.elements.length === 1)
   },
   'the system clipboard'() {
+    if (!clipboardWorks) return check('skipped: this browser does not let a script fill a clipboard event', true)
     const a = open()
     a.click('add:rect')
     a.q('.ddr-el').focus()

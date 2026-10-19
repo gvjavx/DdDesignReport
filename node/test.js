@@ -51,7 +51,9 @@ test('renderAsync gives the same output without blocking', async () => {
 })
 
 test('a render that takes too long is stopped', async () => {
+  // fifty thousand rows take seconds; a limit of 100 ms stops them, on a fast machine too
   const { renderAsync } = require('.')
-  assert.throws(() => render(template, data, 'pdf', { timeout: 1 }), /longer than 1 ms/)
-  await assert.rejects(renderAsync(template, data, 'pdf', { timeout: 1 }), /longer than 1 ms/)
+  const many = Array.from({ length: 50000 }, () => ({ name: 'x' }))
+  assert.throws(() => render(template, many, 'pdf', { timeout: 100 }), /longer than 100 ms/)
+  await assert.rejects(renderAsync(template, many, 'pdf', { timeout: 100 }), /longer than 100 ms/)
 })

@@ -30,11 +30,13 @@ public class DdReportTest {
         check("xlsx is a zip", text("xlsx").startsWith("PK"));
         check("xls", text("xls").contains("<Data ss:Type=\"String\">Kopi</Data>"));
         check("null data", new String(DdReport.render(TEMPLATE, null, "csv"), StandardCharsets.UTF_8).equals(bom));
+        // fifty thousand rows take seconds; a limit of 100 ms stops them, on a fast machine too
+        String many = "[" + "{\"name\":\"x\"},".repeat(50_000) + "{\"name\":\"y\"}]";
         try {
-            DdReport.render(TEMPLATE, DATA, "pdf", java.time.Duration.ofMillis(1));
+            DdReport.render(TEMPLATE, many, "pdf", java.time.Duration.ofMillis(100));
             check("a render that takes too long is stopped", false);
         } catch (java.io.IOException e) {
-            check("a render that takes too long is stopped", e.getMessage().contains("longer than 1 ms"));
+            check("a render that takes too long is stopped", e.getMessage().contains("longer than 100 ms"));
         }
 
         try {
