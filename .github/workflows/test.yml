@@ -1,0 +1,59 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Go formatting and vet
+        if: runner.os == 'Linux'
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+      - name: Go tests
+        run: go test ./...
+
+      - name: Build the binary
+        shell: bash
+        run: |
+          go build -o ddreport${{ runner.os == 'Windows' && '.exe' || '' }} ./cmd/ddreport
+          echo "DDREPORT_BIN=$PWD/ddreport${{ runner.os == 'Windows' && '.exe' || '' }}" >> "$GITHUB_ENV"
+      - name: Node.js wrapper
+        run: node --test node/test.js
+      - name: Java wrapper
+        shell: bash
+        run: |
+          javac -encoding UTF-8 -d out java/io/ddreport/DdReport.java java/DdReportTest.java
+          java -Dfile.encoding=UTF-8 -cp out DdReportTest
+
+  # the designer in the three browser engines: Chromium (Chrome, Edge), Firefox and WebKit (Safari)
+  designer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Designer tests in Chromium, Firefox and WebKit
+        run: |
+          npm install --no-save playwright@1.47.2
+          npx playwright install --with-deps chromium firefox webkit
+          node designer/run-tests.mjs

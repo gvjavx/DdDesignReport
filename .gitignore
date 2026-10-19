@@ -1,2 +1,5 @@
 examples/out/
 java/target/
+/ddreport
+/ddreport.exe
+node_modules/
