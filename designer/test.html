@@ -118,7 +118,7 @@ const tests = {
     t.set('[data-id=rows]', 1); t.set('[data-id=cols]', 4); t.drop('table', 'detail', 0, 0)
     check('1 x 4 table', same(t.els('detail')[0].cells, [['', '', '', '']]))
     const cell = t.qa('.ddr-cell')[2]
-    cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); cell.textContent = '{{price:2}}'; cell.dispatchEvent(new FocusEvent('blur'))
+    const box = editable(cell); box.textContent = '{{price:2}}'; box.dispatchEvent(new FocusEvent('blur'))
     const c = t.qa('.ddr-cell')[2].getBoundingClientRect()
     t.ptr(t.qa('.ddr-cell')[2], 'pointerdown', c.left + 2, c.top + 2); t.ptr(t.q('.ddr-el'), 'pointerup', c.left + 2, c.top + 2)
     t.click('align:right')
@@ -384,7 +384,7 @@ const tests = {
     const cells = t.qa('.ddr-cell')
     check('header cell drawn bold on its fill', cells[0].style.fontWeight === 'bold' && cells[0].style.background.includes('rgb(0, 255, 0)'))
     check('total row drawn on its fill', cells[4].style.fontWeight === 'bold' && cells[4].style.background.includes('rgb(255, 0, 0)'))
-    check('body text in its colour', cells[2].style.color === 'rgb(18, 52, 86)' && !cells[2].style.fontWeight)
+    check('body text in its colour', cells[2].style.color === 'rgb(18, 52, 86)' && cells[2].style.fontWeight !== 'bold')
     check('rows grid has no vertical lines', !cells[0].style.borderRight && !!cells[0].style.borderBottom)
     box('total row fill').querySelector('button').click()
     check('× clears a colour', t.els('header')[0].footerFill === '')
@@ -532,6 +532,56 @@ const tests = {
     check('no thousands separator', t.tpl.thousands === 'none' && t.q('[data-tpl=thousands]').disabled)
     t.set('[data-tpl=sortBy]', 'name, -total')
     check('sort by', t.tpl.sortBy === 'name, -total')
+  },
+  'tables for custom reports'() {
+    const t = open()
+    t.set('[data-id=rows]', 3); t.set('[data-id=cols]', 3)
+    t.click('add:table')
+    const at = (r, c) => t.q(`.ddr-cell[data-row="${r}"][data-col="${c}"]`)
+    const click = (r, c) => { const n = at(r, c); n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 })); n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 })) }
+    const op = name => t.q(`[data-table=${name}]`).click()
+    const table = () => t.els('header')[0]
+    // typing in a cell: rich like a text box, a typed "<b>" stays text, Tab goes on to the next cell
+    const words = editable(at(0, 0))
+    words.textContent = 'a <b> b'
+    words.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
+    check('a typed tag stays text', table().cells[0][0] === 'a &lt;b> b', table().cells[0][0])
+    check('Tab edits the next cell', document.activeElement?.closest('.ddr-cell') === at(0, 1))
+    document.activeElement.textContent = 'Judul'
+    document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    check('Enter keeps it', table().cells[0][1] === 'Judul' && !t.root.querySelector('[contenteditable=true]'))
+    // merging takes in the neighbour's words, and the covered cell is gone from the canvas
+    click(0, 1)
+    op('mergeRight')
+    check('merge right', table().cellStyle['0,1'].colSpan === 2 && !at(0, 2) && at(0, 1).style.gridColumn.includes('span 2'), JSON.stringify(table().cellStyle))
+    click(0, 1); op('unmerge')
+    check('unmerge', !table().cellStyle['0,1']?.colSpan && !!at(0, 2))
+    // the cell section: a colour of its own, drawn on the canvas
+    click(1, 1)
+    const fill = t.q('[data-cell=fill]')
+    fill.value = '#ff0000'; fill.dispatchEvent(new Event('input', { bubbles: true }))
+    t.q('[data-cell=align]').value = 'right'; t.q('[data-cell=align]').dispatchEvent(new Event('change', { bubbles: true }))
+    check('cell style saved and drawn', table().cellStyle['1,1'].fill === '#ff0000' && table().cellStyle['1,1'].align === 'right' && at(1, 1).style.background.includes('255, 0, 0'))
+    // the style moves with its cell when a row goes in above it
+    click(0, 0); op('rowBelow')
+    check('styles follow their cells', table().cellStyle['2,1']?.fill === '#ff0000' && !table().cellStyle['1,1'], JSON.stringify(table().cellStyle))
+    // row heights, padding, rows from data
+    t.prop('row heights', '2,1,1,1')
+    t.prop('cell padding', '0')
+    t.prop('rows from data', 'items')
+    check('row heights, padding, data', table().heights.join() === '2,1,1,1' && table().padding === 0 && table().data === 'items' && t.q('.ddr-el').dataset.repeat === 'items' && t.q('.ddr-el').style.gridTemplateRows.startsWith('minmax(0px, 2fr)'), JSON.stringify(table()))
+    t.prop('cell padding', '')
+    check('an empty padding is the default', !('padding' in table()))
+    // dragging a column edge shares the room between the two columns
+    const grip = t.q('.ddr-tgrip[data-kind=col]'), r = grip.getBoundingClientRect(), x = r.left + 3
+    t.ptr(grip, 'pointerdown', x, r.top + 5); t.ptr(grip, 'pointermove', x + 30, r.top + 5); t.ptr(grip, 'pointerup', x + 30, r.top + 5)
+    check('column drag', table().cols[0] > table().cols[1] && Math.round(table().cols[0] + table().cols[1]) === Math.round(table().w * 2 / 3), JSON.stringify(table().cols))
+    // pasting cells copied from a spreadsheet fills the table from the clicked cell
+    click(1, 1)
+    t.q('.ddr-el').focus()
+    const d = new DataTransfer(); d.setData('text/plain', 'a\tb\tc\td\nx\ty\tz\tw\n')
+    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: d, bubbles: true, cancelable: true }))
+    check('paste from a spreadsheet', table().cells[1].join() === ',a,b,c,d' && table().cells[0].length === 5 && table().cells[2][4] === 'w', JSON.stringify(table().cells))
   },
   'the system clipboard'() {
     const a = open()

@@ -109,6 +109,24 @@ Gaya tabel, semuanya bisa diatur di panel properti:
 | `stripe` | warna latar baris isi selang-seling |
 | `textColor` | warna teks isi; `color` adalah warna garis |
 | `grid` | garis yang digambar: `all` (default), `outer` (bingkai luar saja), `rows` (garis antar-baris saja) |
+| `heights` | tinggi relatif baris, seperti `cols`: `[2,1,1]` membuat baris pertama dua kali lebih tinggi |
+| `padding` | jarak teks dari tepi sel dalam pt (default 3 mendatar, 2 tegak) |
+| `cellStyle` | gaya per sel, dengan kunci `"baris,kolom"` dari 0: `fill`, `color`, `align`, `bold`, `italic`, serta `colSpan` / `rowSpan` untuk menggabung sel |
+| `data` | nama daftar di data, misalnya `items`: baris di antara judul dan baris total diulang untuk setiap item (lihat di bawah) |
+
+**Tabel data** (`data`): satu tabel untuk daftar di dalam data, misalnya item sebuah pesanan. Baris pertama (`header`) dan terakhir (`footer`) dicetak sekali; baris di antaranya diulang per item. Di baris yang diulang, `{{field}}` adalah field item itu dan `{{index}}` nomor urutnya; di judul dan baris total, agregat menghitung semua item (`{{sum(qty * price):0}}`). Taruh di band `detail` untuk daftar per baris data (pesanan dengan itemnya), atau di `summary`/`header` untuk daftar di data utama.
+
+```json
+{ "type": "table", "data": "items", "header": true, "footer": true, "border": 1, "grow": true,
+  "cells": [["No", "Barang", "Jumlah"],
+            ["{{index}}", "{{name}}", "{{qty * price:0}}"],
+            ["Total", "", "{{sum(qty * price):0}}"]],
+  "cellStyle": { "2,0": { "colSpan": 2, "align": "right" } } }
+```
+
+Tabel yang lebih panjang dari satu halaman berlanjut ke halaman berikutnya: baris tidak pernah terpotong di tengah, dan baris judul diulang di atas setiap halaman. Dengan `grow`, setiap baris setinggi selnya yang paling panjang. Di XLSX dan XLS, warna latar dan warna teks sel ikut terbawa, dan tabel data menghasilkan satu baris spreadsheet per item.
+
+Di designer: klik sebuah sel, lalu bagian **Sel** di panel kanan mengatur warna, rata, tebal/miring, serta **Gabung ke kanan** / **Gabung ke bawah** / **Pisahkan** (teks sel yang tergabung ikut dipindahkan). Seret garis antar kolom atau antar baris pada tabel terpilih untuk mengubah lebar dan tingginya. Saat mengetik di sel, `Enter` menyimpan, `Shift+Enter` membuat baris baru, `Tab` / `Shift+Tab` pindah ke sel berikutnya / sebelumnya. Sel yang disalin dari Excel bisa ditempel langsung ke tabel mulai dari sel yang diklik.
 
 **Tampil jika**: setiap elemen bisa punya `showIf`, misalnya `paid = 'yes'` atau `total > 0`. Jika kondisinya salah, elemen tidak dicetak (di Excel dan CSV selnya kosong). Kondisi yang salah tulis tetap menampilkan elemen, agar kesalahannya terlihat.
 

@@ -525,17 +525,28 @@ func (s scope) resolve(text string) string {
 // placeholder stays a number so it can be summed. A field such as a code
 // ("007") stays text unless its placeholder asks for decimals.
 func (s scope) cell(e Element) cell {
+	if e.own != nil { // a cell of a data table: filled in from its item
+		s = *e.own
+	}
 	text := e.plain()
 	bold := e.Bold || strings.HasPrefix(e.Text, "<b>") && strings.HasSuffix(e.Text, "</b>")
+	fill := e.bg
+	if fill == "" && hexColor.MatchString(e.Fill) {
+		fill = e.Fill
+	}
+	ink := ""
+	if hexColor.MatchString(e.Color) && e.Color != "#000000" {
+		ink = e.Color
+	}
 	if m := placeholder.FindStringSubmatch(text); m != nil && m[0] == text {
 		v, _ := s.eval(m[1])
 		spec := strings.TrimSpace(m[2])
 		_, isNumber := v.(float64)
 		if f, ok := num(v); ok && (isNumber || digits.MatchString(spec)) {
-			return cell{f, bold, decimals(spec)}
+			return cell{f, bold, decimals(spec), fill, ink}
 		}
 	}
-	return cell{s.resolve(text), bold, -1}
+	return cell{s.resolve(text), bold, -1, fill, ink}
 }
 
 // asTime reads a date: a time, an ISO date text, or a Unix time in seconds or milliseconds.

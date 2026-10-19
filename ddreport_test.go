@@ -38,17 +38,23 @@ func TestCSVForExcel(t *testing.T) {
 
 func sheet(t *testing.T, xlsx []byte) string {
 	t.Helper()
+	return string(unzip(t, xlsx, "xl/worksheets/sheet1.xml"))
+}
+
+// unzip reads one file of an xlsx.
+func unzip(t *testing.T, xlsx []byte, name string) []byte {
+	t.Helper()
 	z, err := zip.NewReader(bytes.NewReader(xlsx), int64(len(xlsx)))
 	if err != nil {
 		t.Fatalf("xlsx: %v", err)
 	}
-	f, err := z.Open("xl/worksheets/sheet1.xml")
+	f, err := z.Open(name)
 	if err != nil {
 		t.Fatalf("xlsx: %v", err)
 	}
 	var b bytes.Buffer
 	b.ReadFrom(f)
-	return b.String()
+	return b.Bytes()
 }
 
 func TestRender(t *testing.T) {

@@ -15,7 +15,7 @@ func texts(t *testing.T, tpl string, data any) string {
 	var got []string
 	for _, part := range strings.Split(out, `;">`)[1:] {
 		if i := strings.Index(part, "</div>"); i >= 0 {
-			got = append(got, part[:i])
+			got = append(got, styleTag.ReplaceAllString(part[:i], "")) // the words, not their bold or italic
 		}
 	}
 	return strings.Join(got, " | ")

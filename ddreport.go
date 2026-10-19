@@ -114,11 +114,20 @@ type Element struct {
 	Header, Footer          bool
 	HeaderFill, HeaderColor string
 	FooterFill, FooterColor string
-	Stripe                  string // table: background of every second body row
-	Grid                    string // table: which lines a border draws: all (default) | outer | rows
+	Stripe                  string               // table: background of every second body row
+	Grid                    string               // table: which lines a border draws: all (default) | outer | rows
+	Data                    string               // table: field with a list; the rows between header and total row repeat for each item
+	Heights                 []float64            // table: relative row heights, default equal
+	Padding                 *float64             // table: room around a cell's text, default 3pt across and 2pt down
+	CellStyle               map[string]CellStyle // table: the look and merging of single cells, keyed "row,column" from 0
 
 	Points []float64 // internal: x,y pairs of a "poly" (charts), x,y,w,h of the dark runs of a "code" (barcodes); relative to X,Y
 	runs   []run     // text split into styled runs, placeholders resolved
+	own    *scope    // a table cell of a data table: the scope of its item
+	unit   int       // table rows with the same unit are kept on one page
+	head   bool      // a table header row, repeated on the next page when its table goes on there
+	tbl    int       // the table a line, background or cell belongs to
+	bg     string    // a table cell's background, for the spreadsheets
 }
 
 // run is a stretch of text in one style.
@@ -167,87 +176,6 @@ func (e Element) pieces() []run {
 		return e.runs
 	}
 	return []run{{e.Text, e.Bold, e.Italic, e.Underline}}
-}
-
-// expand replaces every table by the lines, background and texts that draw
-// it, so the rest of the renderer only knows simple elements.
-func (b *Band) expand() {
-	var out []Element
-	for _, e := range b.Elements {
-		if e.Type != "table" {
-			out = append(out, e)
-			continue
-		}
-		if len(e.Cells) == 0 || len(e.Cells[0]) == 0 {
-			continue
-		}
-		from := len(out)
-		rows, cols := len(e.Cells), len(e.Cells[0])
-		widths, sum := make([]float64, cols), 0.0
-		for c := range widths {
-			widths[c] = 1
-			if len(e.Cols) == cols && e.Cols[c] > 0 {
-				widths[c] = e.Cols[c]
-			}
-			sum += widths[c]
-		}
-		if hexColor.MatchString(e.Fill) {
-			out = append(out, Element{Type: "rect", X: e.X, Y: e.Y, W: e.W, H: e.H, Fill: e.Fill})
-		}
-		rh := e.H / float64(rows)
-		// look gives a row its background, text colour and weight
-		look := func(r int) (fill, ink string, bold bool) {
-			switch {
-			case e.Header && r == 0:
-				return e.HeaderFill, e.HeaderColor, true
-			case e.Footer && r == rows-1 && (r > 0 || !e.Header):
-				return e.FooterFill, e.FooterColor, true
-			case e.Header && r%2 == 0 || !e.Header && r%2 == 1: // every second body row
-				return e.Stripe, e.TextColor, e.Bold
-			}
-			return "", e.TextColor, e.Bold
-		}
-		for r := range rows {
-			if fill, _, _ := look(r); hexColor.MatchString(fill) {
-				out = append(out, Element{Type: "rect", X: e.X, Y: e.Y + float64(r)*rh, W: e.W, H: rh, Fill: fill})
-			}
-		}
-		x := e.X
-		for c := 0; c < cols; c++ {
-			cw := widths[c] / sum * e.W
-			for r, row := range e.Cells {
-				if c >= len(row) {
-					continue
-				}
-				cell := e
-				cell.Type, cell.Text, cell.Fill, cell.Align = "text", row[c], "", ""
-				_, cell.Color, cell.Bold = look(r)
-				cell.X, cell.Y, cell.W, cell.H = x+3, e.Y+float64(r)*rh+2, cw-6, rh-4
-				if c < len(e.Aligns) {
-					cell.Align = e.Aligns[c]
-				}
-				out = append(out, cell)
-			}
-			if e.Border > 0 && (e.Grid == "" || e.Grid == "all" || e.Grid == "outer" && c == 0) {
-				out = append(out, Element{Type: "line", X: x, Y: e.Y, H: e.H, Border: e.Border, Color: e.Color})
-			}
-			x += cw
-		}
-		if e.Border > 0 {
-			if e.Grid != "rows" {
-				out = append(out, Element{Type: "line", X: e.X + e.W, Y: e.Y, H: e.H, Border: e.Border, Color: e.Color})
-			}
-			for r := 0; r <= rows; r++ {
-				if e.Grid != "outer" || r == 0 || r == rows {
-					out = append(out, Element{Type: "line", X: e.X, Y: e.Y + float64(r)*rh, W: e.W, Border: e.Border, Color: e.Color})
-				}
-			}
-		}
-		for i := from; i < len(out); i++ { // the lines and backgrounds hide with the table
-			out[i].ShowIf = e.ShowIf
-		}
-	}
-	b.Elements = out
 }
 
 // Render fills template with data and returns the report in the given format:
@@ -339,7 +267,6 @@ func newReport(template []byte, data any) (*report, error) {
 	bands := &t.Bands
 	images := []string{t.Page.BackgroundImage}
 	for _, b := range []*Band{&bands.Header, &bands.ColumnHeader, &bands.GroupHeader, &bands.Detail, &bands.GroupFooter, &bands.Summary, &bands.Footer} {
-		b.expand()
 		for _, e := range b.Elements {
 			if e.Type == "image" {
 				images = append(images, e.Src)
@@ -431,6 +358,8 @@ type report struct {
 	familyTr func(string) string
 	tr       func(string) string // UTF-8 to the current PDF font's encoding
 	added    map[string]bool     // faces from Families already in the PDF
+	tables   int                 // numbers the tables laid out, so their rows know which table they belong to
+	units    int                 // numbers table rows that stay together on a page
 }
 
 func (r *report) initPDF() error {
@@ -578,6 +507,42 @@ func (r *report) layout(e Element) []textLine {
 	return lines
 }
 
+// repeatHeads puts the header rows of a table that goes on over the cut at
+// the top of what continues, so every page of a long table has its headings.
+func (r *report) repeatHeads(now, rest []Element, restH float64) ([]Element, float64) {
+	heads := map[int][]Element{}
+	for _, e := range now {
+		if e.head {
+			heads[e.tbl] = append(heads[e.tbl], e)
+		}
+	}
+	var copies []Element
+	room := 0.0
+	done := map[int]bool{}
+	for _, e := range rest {
+		if e.tbl == 0 || e.head || done[e.tbl] || heads[e.tbl] == nil {
+			continue
+		}
+		done[e.tbl] = true
+		top, bottom := math.Inf(1), math.Inf(-1)
+		for _, x := range heads[e.tbl] {
+			top, bottom = min(top, x.Y), max(bottom, x.Y+x.H)
+		}
+		for _, x := range heads[e.tbl] {
+			x.Y += room - top
+			copies = append(copies, x)
+		}
+		room += bottom - top
+	}
+	if room == 0 {
+		return rest, restH
+	}
+	for i := range rest {
+		rest[i].Y += room
+	}
+	return append(copies, rest...), restH + room
+}
+
 // carry turns lines back into runs that lay out as the same lines.
 func carry(lines []textLine) []run {
 	out := []run{}
@@ -601,6 +566,27 @@ func carry(lines []textLine) []run {
 // is divided, line by line for a text. It returns the part that continues and
 // its height.
 func (r *report) split(els []Element, h, cut float64) (now, rest []Element, restH float64) {
+	// a table row is never cut through: the cut moves up to the top of the
+	// first row it would cross (and again, as a merged cell may reach higher)
+	unitTop := map[int]float64{}
+	for _, e := range els {
+		if e.unit != 0 {
+			if top, ok := unitTop[e.unit]; !ok || e.Y < top {
+				unitTop[e.unit] = e.Y
+			}
+		}
+	}
+	for moved := true; moved; {
+		moved = false
+		for _, e := range els {
+			if e.unit != 0 && e.Y < cut && e.Y+e.H > cut && unitTop[e.unit] < cut {
+				cut, moved = unitTop[e.unit], true
+			}
+		}
+	}
+	if cut <= 0 {
+		return nil, els, h
+	}
 	restH = h - cut
 	for _, e := range els {
 		switch {
@@ -632,6 +618,7 @@ func (r *report) split(els []Element, h, cut float64) (now, rest []Element, rest
 		rest = append(rest, e)
 		restH = max(restH, e.Y+e.H)
 	}
+	rest, restH = r.repeatHeads(now, rest, restH)
 	return now, rest, restH
 }
 
@@ -1368,53 +1355,113 @@ func toCSV(rows [][]cell, sep string) ([]byte, error) {
 	return buf.Bytes(), w.Error()
 }
 
+// sheetStyles numbers the looks of spreadsheet cells. The plain ones are the
+// same in every sheet: 2*format + bold, where format 0 is General and format
+// d+1 a number with d decimals. Those with a background or a text colour (a
+// table's header, a highlighted text) follow, in the order they come.
+type sheetStyles struct {
+	extra []cell
+	index map[cell]int
+}
+
+const plainStyles = 2 * (maxDecimals + 2)
+
+func (s *sheetStyles) of(c cell) int {
+	n := 2 * (c.dec + 1)
+	if c.bold {
+		n++
+	}
+	if c.fill == "" && c.color == "" {
+		return n
+	}
+	k := cell{dec: c.dec, bold: c.bold, fill: c.fill, color: c.color}
+	if i, ok := s.index[k]; ok {
+		return i
+	}
+	if s.index == nil {
+		s.index = map[cell]int{}
+	}
+	s.index[k] = plainStyles + len(s.extra)
+	s.extra = append(s.extra, k)
+	return s.index[k]
+}
+
+// looks lists every style: the plain ones, then the extra ones.
+func (s *sheetStyles) looks() []cell {
+	var all []cell
+	for f := 0; f <= maxDecimals+1; f++ {
+		all = append(all, cell{dec: f - 1}, cell{dec: f - 1, bold: true})
+	}
+	return append(all, s.extra...)
+}
+
+// numberCode is the Excel number format for d decimals, "" for General.
+func numberCode(d int) string {
+	if d < 0 {
+		return ""
+	}
+	code := "#,##0"
+	if d > 0 {
+		code += "." + strings.Repeat("0", d)
+	}
+	return code
+}
+
 // toXLS writes XML Spreadsheet 2003, which Excel opens as .xls (after one
 // "format and extension don't match" prompt). Styles are numbered like toXLSX.
 func toXLS(rows [][]cell, widths []float64) ([]byte, error) {
-	var b bytes.Buffer
-	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>` +
-		`<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles>`)
-	for f := 0; f <= maxDecimals+1; f++ {
-		format := ""
-		if f > 0 {
-			code := "#,##0"
-			if f > 1 {
-				code += "." + strings.Repeat("0", f-1)
-			}
-			format = `<NumberFormat ss:Format="` + code + `"/>`
-		}
-		fmt.Fprintf(&b, `<Style ss:ID="s%d">%s</Style><Style ss:ID="s%d"><Font ss:Bold="1"/>%s</Style>`, 2*f, format, 2*f+1, format)
-	}
-	b.WriteString(`</Styles><Worksheet ss:Name="Report"><Table>`)
+	var st sheetStyles
+	var table bytes.Buffer
 	for _, w := range widths {
-		fmt.Fprintf(&b, `<Column ss:Width="%g"/>`, max(w, 20))
+		fmt.Fprintf(&table, `<Column ss:Width="%g"/>`, max(w, 20))
 	}
 	for _, r := range rows {
-		b.WriteString(`<Row>`)
+		table.WriteString(`<Row>`)
 		for _, c := range r {
 			if c.v == nil {
-				b.WriteString(`<Cell/>`)
+				table.WriteString(`<Cell/>`)
 				continue
 			}
-			style, kind := 2*(c.dec+1), "String"
-			if c.bold {
-				style++
-			}
+			kind := "String"
 			if _, ok := c.v.(float64); ok {
 				kind = "Number"
 			}
-			fmt.Fprintf(&b, `<Cell ss:StyleID="s%d"><Data ss:Type="%s">`, style, kind)
-			xml.EscapeText(&b, []byte(str(c.v)))
-			b.WriteString(`</Data></Cell>`)
+			fmt.Fprintf(&table, `<Cell ss:StyleID="s%d"><Data ss:Type="%s">`, st.of(c), kind)
+			xml.EscapeText(&table, []byte(str(c.v)))
+			table.WriteString(`</Data></Cell>`)
 		}
-		b.WriteString(`</Row>`)
+		table.WriteString(`</Row>`)
 	}
+	var b bytes.Buffer
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>` +
+		`<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles>`)
+	for i, l := range st.looks() {
+		inner := ""
+		if l.bold || l.color != "" {
+			inner = `<Font`
+			if l.bold {
+				inner += ` ss:Bold="1"`
+			}
+			if l.color != "" {
+				inner += ` ss:Color="` + l.color + `"`
+			}
+			inner += "/>"
+		}
+		if l.fill != "" {
+			inner += `<Interior ss:Color="` + l.fill + `" ss:Pattern="Solid"/>`
+		}
+		if code := numberCode(l.dec); code != "" {
+			inner += `<NumberFormat ss:Format="` + code + `"/>`
+		}
+		fmt.Fprintf(&b, `<Style ss:ID="s%d">%s</Style>`, i, inner)
+	}
+	b.WriteString(`</Styles><Worksheet ss:Name="Report"><Table>`)
+	b.Write(table.Bytes())
 	b.WriteString(`</Table></Worksheet></Workbook>`)
 	return b.Bytes(), nil
 }
 
-// toXLSX writes a one-sheet workbook. Cell style index = 2*format + bold,
-// where format 0 is General and format d+1 is a number with d decimals.
+// toXLSX writes a one-sheet workbook, with the styles of sheetStyles.
 func toXLSX(rows [][]cell, widths []float64) ([]byte, error) {
 	const (
 		head  = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
@@ -1423,6 +1470,7 @@ func toXLSX(rows [][]cell, widths []float64) ([]byte, error) {
 		rel   = `<Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/%s" Target="%s"/>`
 		ctype = `application/vnd.openxmlformats-officedocument.spreadsheetml.`
 	)
+	var st sheetStyles
 	var sheet bytes.Buffer
 	sheet.WriteString(head + `<worksheet ` + main + `>`)
 	if len(widths) > 0 {
@@ -1440,15 +1488,11 @@ func toXLSX(rows [][]cell, widths []float64) ([]byte, error) {
 				sheet.WriteString(`<c/>`)
 				continue
 			}
-			style := 2 * (c.dec + 1)
-			if c.bold {
-				style++
-			}
 			if f, ok := c.v.(float64); ok {
-				fmt.Fprintf(&sheet, `<c s="%d"><v>%s</v></c>`, style, str(f))
+				fmt.Fprintf(&sheet, `<c s="%d"><v>%s</v></c>`, st.of(c), str(f))
 				continue
 			}
-			fmt.Fprintf(&sheet, `<c s="%d" t="inlineStr"><is><t xml:space="preserve">`, style)
+			fmt.Fprintf(&sheet, `<c s="%d" t="inlineStr"><is><t xml:space="preserve">`, st.of(c))
 			xml.EscapeText(&sheet, []byte(str(c.v)))
 			sheet.WriteString(`</t></is></c>`)
 		}
@@ -1456,27 +1500,47 @@ func toXLSX(rows [][]cell, widths []float64) ([]byte, error) {
 	}
 	sheet.WriteString(`</sheetData></worksheet>`)
 
+	// fonts and fills are numbered as they are needed: font 0 plain, 1 bold; fill 0 none, 1 the required gray125
+	fonts := []string{`<font><sz val="11"/><name val="Calibri"/></font>`, `<font><b/><sz val="11"/><name val="Calibri"/></font>`}
+	fills := []string{`<fill><patternFill patternType="none"/></fill>`, `<fill><patternFill patternType="gray125"/></fill>`}
+	number := func(list *[]string, item string) int {
+		if i := slices.Index(*list, item); i >= 0 {
+			return i
+		}
+		*list = append(*list, item)
+		return len(*list) - 1
+	}
+	argb := func(c string) string { return "FF" + strings.ToUpper(strings.TrimPrefix(c, "#")) }
 	var fmts, xfs strings.Builder
-	for f := 0; f <= maxDecimals+1; f++ {
+	for f := 0; f <= maxDecimals; f++ {
+		fmt.Fprintf(&fmts, `<numFmt numFmtId="%d" formatCode="%s"/>`, 164+f, numberCode(f))
+	}
+	looks := st.looks()
+	for _, l := range looks {
+		font := `<font>`
+		if l.bold {
+			font += `<b/>`
+		}
+		if l.color != "" {
+			font += `<color rgb="` + argb(l.color) + `"/>`
+		}
+		font += `<sz val="11"/><name val="Calibri"/></font>`
+		fill := 0
+		if l.fill != "" {
+			fill = number(&fills, `<fill><patternFill patternType="solid"><fgColor rgb="`+argb(l.fill)+`"/><bgColor indexed="64"/></patternFill></fill>`)
+		}
 		id := 0
-		if f > 0 {
-			id = 163 + f
-			code := "#,##0"
-			if f > 1 {
-				code += "." + strings.Repeat("0", f-1)
-			}
-			fmt.Fprintf(&fmts, `<numFmt numFmtId="%d" formatCode="%s"/>`, id, code)
+		if l.dec >= 0 {
+			id = 164 + l.dec
 		}
-		for bold := 0; bold <= 1; bold++ {
-			fmt.Fprintf(&xfs, `<xf numFmtId="%d" fontId="%d" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>`, id, bold)
-		}
+		fmt.Fprintf(&xfs, `<xf numFmtId="%d" fontId="%d" fillId="%d" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>`, id, number(&fonts, font), fill)
 	}
 	styles := head + `<styleSheet ` + main + `><numFmts count="` + strconv.Itoa(maxDecimals+1) + `">` + fmts.String() + `</numFmts>` +
-		`<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>` +
-		`<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>` +
+		`<fonts count="` + strconv.Itoa(len(fonts)) + `">` + strings.Join(fonts, "") + `</fonts>` +
+		`<fills count="` + strconv.Itoa(len(fills)) + `">` + strings.Join(fills, "") + `</fills>` +
 		`<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>` +
 		`<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
-		`<cellXfs count="` + strconv.Itoa(2*(maxDecimals+2)) + `">` + xfs.String() + `</cellXfs></styleSheet>`
+		`<cellXfs count="` + strconv.Itoa(len(looks)) + `">` + xfs.String() + `</cellXfs></styleSheet>`
 
 	files := [][2]string{
 		{"[Content_Types].xml", head + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +

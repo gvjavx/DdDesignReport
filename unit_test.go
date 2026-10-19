@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -133,13 +134,13 @@ func TestCell(t *testing.T) {
 		e    Element
 		want cell
 	}{
-		{Element{Text: "{{price}}"}, cell{12.5, false, -1}},  // stays a number
-		{Element{Text: "{{price:2}}"}, cell{12.5, false, 2}}, // with its format
-		{Element{Text: "{{sum(amt):0}}", Bold: true}, cell{3.0, true, 0}},
-		{Element{Text: "Rp {{price:2}}"}, cell{"Rp 12.50", false, -1}}, // mixed text is a string
-		{Element{Text: "{{name}}"}, cell{"Kopi", false, -1}},
-		{Element{Text: "<b>{{price}}</b>"}, cell{12.5, true, -1}}, // tags are not part of the value
-		{Element{Text: "a <i>b</i>"}, cell{"a b", false, -1}},
+		{Element{Text: "{{price}}"}, cell{12.5, false, -1, "", ""}},  // stays a number
+		{Element{Text: "{{price:2}}"}, cell{12.5, false, 2, "", ""}}, // with its format
+		{Element{Text: "{{sum(amt):0}}", Bold: true}, cell{3.0, true, 0, "", ""}},
+		{Element{Text: "Rp {{price:2}}"}, cell{"Rp 12.50", false, -1, "", ""}}, // mixed text is a string
+		{Element{Text: "{{name}}"}, cell{"Kopi", false, -1, "", ""}},
+		{Element{Text: "<b>{{price}}</b>"}, cell{12.5, true, -1, "", ""}}, // tags are not part of the value
+		{Element{Text: "a <i>b</i>"}, cell{"a b", false, -1, "", ""}},
 	} {
 		if got := sc.cell(c.e); got != c.want {
 			t.Errorf("cell(%q) = %+v, want %+v", c.e.Text, got, c.want)
@@ -232,6 +233,35 @@ func TestGroups(t *testing.T) {
 	}
 }
 
+// expand lays out the tables of a band as the report does, without data and without growing.
+func expand(b Band) Band {
+	r := &report{t: &Template{}}
+	var out []Element
+	for _, e := range b.Elements {
+		if e.Type != "table" {
+			out = append(out, e)
+			continue
+		}
+		els, _ := r.grid(e, scope{r.t, nil, nil}, false, false)
+		out = append(out, els...)
+	}
+	b.Elements = out
+	return b
+}
+
+// edges are the distinct positions of the horizontal and the vertical lines.
+func edges(b Band) (horizontal, vertical []float64) {
+	for _, e := range b.Elements {
+		switch {
+		case e.Type == "line" && e.H > e.W && !slices.Contains(vertical, e.X):
+			vertical = append(vertical, e.X)
+		case e.Type == "line" && e.H <= e.W && !slices.Contains(horizontal, e.Y):
+			horizontal = append(horizontal, e.Y)
+		}
+	}
+	return
+}
+
 func TestExpandTable(t *testing.T) {
 	count := func(b Band) map[string]int {
 		n := map[string]int{}
@@ -245,10 +275,11 @@ func TestExpandTable(t *testing.T) {
 		{Type: "table", X: 10, Y: 5, W: 300, H: 40, Border: 1, Fill: "#eeeeee", Bold: true, FontSize: 9,
 			Cells: [][]string{{"a", "b", "c"}, {"d", "e", "f"}}, Cols: []float64{2, 1, 1}, Aligns: []string{"left", "right"}},
 	}}
-	b.expand()
-	// the plain rect, the table's background, 6 cells, 4 vertical and 3 horizontal lines
-	if n := count(b); n["rect"] != 2 || n["text"] != 6 || n["line"] != 7 || n["table"] != 0 {
-		t.Fatalf("expanded to %v", n)
+	b = expand(b)
+	// the plain rect, the table's background, 6 cells with their edges: lines at 4 x and 3 y positions
+	h, v := edges(b)
+	if n := count(b); n["rect"] != 2 || n["text"] != 6 || len(v) != 4 || len(h) != 3 || n["table"] != 0 {
+		t.Fatalf("expanded to %v, lines at %v and %v", n, h, v)
 	}
 	var texts []Element
 	for _, e := range b.Elements {
@@ -256,7 +287,7 @@ func TestExpandTable(t *testing.T) {
 			texts = append(texts, e)
 		}
 	}
-	a, d, bb := texts[0], texts[1], texts[2] // column by column
+	a, bb, d := texts[0], texts[1], texts[3] // row by row
 	if a.Text != "a" || d.Text != "d" || bb.Text != "b" {
 		t.Errorf("cell order = %q %q %q", a.Text, d.Text, bb.Text)
 	}
@@ -266,21 +297,21 @@ func TestExpandTable(t *testing.T) {
 	if a.Y != 7 || d.Y != 27 || a.H != 16 { // rows 20 high, 2pt padding
 		t.Errorf("row geometry: a.Y %v, d.Y %v, a.H %v", a.Y, d.Y, a.H)
 	}
-	if !a.Bold || a.FontSize != 9 || a.Fill != "" || bb.Align != "right" || texts[4].Align != "" {
+	if !a.Bold || a.FontSize != 9 || a.Fill != "" || bb.Align != "right" || texts[5].Align != "" {
 		t.Errorf("cell style: %+v / %+v", a, bb)
 	}
 
 	plain := Band{Elements: []Element{{Type: "table", W: 100, H: 20, Cells: [][]string{{"x", "y"}}, Cols: []float64{1}}}}
-	plain.expand()
+	plain = expand(plain)
 	if n := count(plain); n["text"] != 2 || n["line"] != 0 || n["rect"] != 0 {
 		t.Errorf("borderless table expanded to %v", n)
 	}
-	if plain.Elements[0].W != 44 { // wrong number of widths: equal columns
+	if plain.Elements[0].W != 44 { // a width that is not given is 1, like the others
 		t.Errorf("fallback column width = %v", plain.Elements[0].W)
 	}
 
 	empty := Band{Elements: []Element{{Type: "table", W: 100, H: 20}}}
-	empty.expand()
+	empty = expand(empty)
 	if len(empty.Elements) != 0 {
 		t.Errorf("empty table should disappear, got %v", empty.Elements)
 	}
@@ -787,19 +818,13 @@ func TestTableStyles(t *testing.T) {
 	table := Element{Type: "table", W: 100, H: 80, Border: 1, Cells: [][]string{{"h", "h"}, {"a", "a"}, {"b", "b"}, {"t", "t"}},
 		Header: true, HeaderFill: "#111111", HeaderColor: "#ffffff", Footer: true, FooterFill: "#222222",
 		Stripe: "#eeeeee", TextColor: "#333333", Grid: "rows"}
-	b := Band{Elements: []Element{table}}
-	b.expand()
+	b := expand(Band{Elements: []Element{table}})
 	var fills []string
-	vertical, horizontal := 0, 0
 	look := map[string]Element{}
 	for _, e := range b.Elements {
 		switch {
-		case e.Type == "rect":
+		case e.Type == "rect" && !slices.Contains(fills, fmt.Sprint(e.Fill, "@", e.Y)):
 			fills = append(fills, fmt.Sprint(e.Fill, "@", e.Y))
-		case e.Type == "line" && e.H > e.W:
-			vertical++
-		case e.Type == "line":
-			horizontal++
 		case e.Type == "text":
 			look[e.Text] = e
 		}
@@ -811,23 +836,13 @@ func TestTableStyles(t *testing.T) {
 	if h, a, f := look["h"], look["a"], look["t"]; !h.Bold || h.Color != "#ffffff" || a.Bold || a.Color != "#333333" || !f.Bold || f.Color != "" {
 		t.Errorf("header %+v\nbody %+v\nfooter %+v", h, a, f)
 	}
-	if vertical != 0 || horizontal != 5 {
-		t.Errorf("rows grid: %d vertical, %d horizontal lines", vertical, horizontal)
+	if horizontal, vertical := edges(b); len(vertical) != 0 || len(horizontal) != 5 {
+		t.Errorf("rows grid: lines at %v and %v", horizontal, vertical)
 	}
 
 	table.Grid = "outer"
-	b = Band{Elements: []Element{table}}
-	b.expand()
-	vertical, horizontal = 0, 0
-	for _, e := range b.Elements {
-		if e.Type == "line" && e.H > e.W {
-			vertical++
-		} else if e.Type == "line" {
-			horizontal++
-		}
-	}
-	if vertical != 2 || horizontal != 2 {
-		t.Errorf("outer grid: %d vertical, %d horizontal lines", vertical, horizontal)
+	if horizontal, vertical := edges(expand(Band{Elements: []Element{table}})); len(vertical) != 2 || len(horizontal) != 2 {
+		t.Errorf("outer grid: lines at %v and %v", horizontal, vertical)
 	}
 }
 

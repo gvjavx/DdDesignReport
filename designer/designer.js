@@ -33,7 +33,7 @@ const NEW = {
 const BASE = ['x', 'y', 'w', 'h']
 const FIELDS = {
   text: [...BASE, 'text', 'showIf'],
-  table: [...BASE, 'rows', 'columns', 'cols', 'border', 'grid', 'color', 'textColor', 'stripe', 'header', 'headerFill', 'headerColor', 'footer', 'footerFill', 'footerColor', 'showIf'],
+  table: [...BASE, 'data', 'rows', 'columns', 'cols', 'heights', 'padding', 'border', 'grid', 'color', 'textColor', 'stripe', 'header', 'headerFill', 'headerColor', 'footer', 'footerFill', 'footerColor', 'showIf'],
   image: [...BASE, 'src', 'dataSrc', 'showIf'],
   rect: [...BASE, 'border', 'color', 'showIf'],
   line: [...BASE, 'slope', 'border', 'color', 'showIf'],
@@ -57,8 +57,12 @@ const LABEL = {
   cols: 'column widths', color: 'line colour', grid: 'lines', textColor: 'text colour', stripe: 'banded rows',
   header: 'header row', headerFill: 'header fill', headerColor: 'header text', footer: 'total row', footerFill: 'total row fill', footerColor: 'total row text',
   showIf: 'show when', dataSrc: 'picture from data', slope: 'direction', showText: 'show text', newPage: 'new page',
+  data: 'rows from data', heights: 'row heights', padding: 'cell padding',
 }
-const PLACEHOLDER = { label: 'row field', value: 'field or qty * price', cols: '2,1,1', showIf: "paid = 'yes'", dataSrc: '{{photo}}' }
+const PLACEHOLDER = { label: 'row field', value: 'field or qty * price', cols: '2,1,1', heights: '1,1,1', padding: '3', data: 'items', showIf: "paid = 'yes'", dataSrc: '{{photo}}' }
+const TITLE = {
+  data: 'A list in the data, such as items: the rows between the header and the total row repeat for each of its items. {{field}} is a field of the item, {{index}} its number.',
+}
 const FIELD_TOKENS = ['{{page}}', '{{pages}}', '{{now:dd/MM/yyyy}}', '{{field:2}}', '{{field:dd MMMM yyyy}}', '{{qty * price:2}}', '{{sum(field):2}}', '{{avg(field):2}}', '{{min(field)}}', '{{max(field)}}', '{{count()}}', "{{if(field > 0, 'yes', 'no')}}"]
 
 // Indonesian interface. Anything missing here stays English.
@@ -103,6 +107,12 @@ const ID = {
   'Justify': 'Rata kanan-kiri', 'Vertical alignment': 'Perataan vertikal', top: 'atas', middle: 'tengah', bottom: 'bawah',
   'Sort by': 'Urutkan', 'row field, -field for descending': 'field baris, -field untuk menurun', 'Dates in': 'Tanggal dalam', English: 'Inggris', Indonesian: 'Indonesia',
   'CSV separator': 'Pemisah CSV', Tab: 'Tab', 'No thousands separator': 'Tanpa pemisah ribuan',
+  'rows from data': 'baris dari data', 'row heights': 'tinggi baris', 'cell padding': 'jarak tepi sel', Cell: 'Sel', 'cell fill': 'isi sel', 'cell text': 'teks sel',
+  'cell align': 'rata sel', 'cell bold': 'tebal sel', 'cell italic': 'miring sel', 'as the row': 'seperti barisnya', yes: 'ya', no: 'tidak', justify: 'kanan-kiri', left: 'kiri', center: 'tengah', right: 'kanan',
+  'Merge right': 'Gabung ke kanan', 'Merge down': 'Gabung ke bawah', Unmerge: 'Pisahkan',
+  'Drag to change the column width': 'Seret untuk mengubah lebar kolom', 'Drag to change the row height': 'Seret untuk mengubah tinggi baris',
+  'A list in the data, such as items: the rows between the header and the total row repeat for each of its items. {{field}} is a field of the item, {{index}} its number.':
+    'Daftar di data, misalnya items: baris di antara judul dan baris total diulang untuk setiap itemnya. {{field}} adalah field item itu, {{index}} nomor urutnya.',
   Expressions: 'Ekspresi', 'Row above': 'Baris di atas', 'Row below': 'Baris di bawah', 'Delete row': 'Hapus baris', 'Column left': 'Kolom di kiri', 'Column right': 'Kolom di kanan', 'Delete column': 'Hapus kolom',
   'Click a cell first; rows and columns are added next to it': 'Klik sebuah sel dulu; baris dan kolom ditambahkan di sebelahnya',
   'Start here': 'Mulai di sini', 'Open the Insert tab, then click an element or drag it onto the page.': 'Buka tab Sisipkan, lalu klik sebuah elemen atau seret ke halaman.',
@@ -210,6 +220,15 @@ const CSS = `
 .ddr-el:is([data-type=chart],[data-type=barcode],[data-unknown]){background:#eef4fb;color:#334155;font:10px/1.3 system-ui,sans-serif;padding:4px}
 .ddr-el[data-type=table]{display:grid}
 .ddr-cell{overflow:hidden;padding:2px 3px;min-width:0}
+.ddr-tgrip{position:absolute;z-index:2;display:none}
+.ddr-el.ddr-sel .ddr-tgrip{display:block}
+.ddr-tgrip[data-kind=col]{cursor:col-resize}
+.ddr-tgrip[data-kind=row]{cursor:row-resize}
+.ddr-tgrip:hover,.ddr-tgrip:active{background:#2563eb55}
+.ddr-el.ddr-sel .ddr-cell[data-active]{outline:2px solid #f59e0b;outline-offset:-2px}
+.ddr-cell[data-body]{box-shadow:inset 3px 0 #93c5fd}
+.ddr-el[data-repeat]::after{content:"\\21BB  " attr(data-repeat);position:absolute;right:2px;bottom:1px;padding:0 4px;border-radius:3px;font:600 9px/14px system-ui,sans-serif;color:#1d4ed8;background:#dbeafe;pointer-events:none}
+.ddr-props .ddr-celltitle{margin:8px 0 2px;font-weight:700;color:var(--text)}
 .ddr-el[data-cond]{outline:1px dashed #f59e0b}
 .ddr-el.ddr-sel{outline:2px solid #2563eb}
 .ddr-handle{position:absolute;z-index:3;width:11px;height:11px;margin:-6px 0 0 -6px;background:#2563eb;border:2px solid #fff;border-radius:3px;box-shadow:0 0 0 1px #2563eb;cursor:nwse-resize;touch-action:none}
@@ -300,7 +319,13 @@ function clean(t) {
           const rows = (Array.isArray(e.cells) ? e.cells : []).filter(Array.isArray), width = Math.max(1, ...rows.map(r => r.length))
           e.cells = (rows.length ? rows : [[]]).map(r => Array.from({ length: width }, (_, c) => String(r[c] ?? '')))
           e.cols = Array.from({ length: width }, (_, c) => num(e.cols?.[c]) > 0 ? num(e.cols[c]) : 1)
+          e.heights = Array.from({ length: e.cells.length }, (_, r) => num(e.heights?.[r]) > 0 ? num(e.heights[r]) : 1)
           e.aligns = Array.isArray(e.aligns) ? e.aligns : []
+          // per-cell styles: only those of cells that exist, and only objects
+          e.cellStyle = Object.fromEntries(Object.entries(isObject(e.cellStyle) ? e.cellStyle : {}).filter(([k, v]) => {
+            const [r, c] = k.split(',').map(Number)
+            return isObject(v) && r >= 0 && c >= 0 && r < e.cells.length && c < width
+          }))
         }
         return e
       }),
@@ -573,22 +598,80 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   // tableEdit inserts or deletes a row or a column next to the cell last clicked;
   // rows keep their height, so the table grows or shrinks with them
   function tableEdit(e, op) {
-    const r = Math.min(activeRow, e.cells.length - 1), c = Math.min(activeCol, e.cells[0].length - 1), rh = e.h / e.cells.length
+    const r = Math.min(activeRow, e.cells.length - 1), c = Math.min(activeCol, e.cells[0].length - 1)
+    const heights = rowWeights(e), unit = e.h / heights.reduce((a, b) => a + b, 0) // points per height unit
     e.aligns = e.cells[0].map((_, i) => e.aligns?.[i] || 'left')
-    if (op === 'rowAbove' || op === 'rowBelow') e.cells.splice(r + (op === 'rowBelow'), 0, e.cells[0].map(() => ''))
-    else if (op === 'rowDelete' && e.cells.length > 1) e.cells.splice(r, 1)
-    else if (op === 'colLeft' || op === 'colRight') {
+    e.heights = heights
+    if (op === 'rowAbove' || op === 'rowBelow') {
+      const at = r + (op === 'rowBelow')
+      e.cells.splice(at, 0, e.cells[0].map(() => ''))
+      e.heights.splice(at, 0, heights[r])
+      shiftStyles(e, 0, at, 1)
+    } else if (op === 'rowDelete' && e.cells.length > 1) {
+      e.cells.splice(r, 1)
+      e.heights.splice(r, 1)
+      shiftStyles(e, 0, r, -1)
+    } else if (op === 'colLeft' || op === 'colRight') {
       const at = c + (op === 'colRight')
       for (const row of e.cells) row.splice(at, 0, '')
       e.cols.splice(at, 0, 1)
       e.aligns.splice(at, 0, 'left')
+      shiftStyles(e, 1, at, 1)
     } else if (op === 'colDelete' && e.cells[0].length > 1) {
       for (const row of e.cells) row.splice(c, 1)
       e.cols.splice(c, 1)
       e.aligns.splice(c, 1)
+      shiftStyles(e, 1, c, -1)
+    } else if (op === 'mergeRight' || op === 'mergeDown') {
+      // the cell takes in its neighbour, and the neighbour's words, so nothing goes missing
+      const st = (e.cellStyle ??= {})[`${r},${c}`] ??= {}, cs = st.colSpan || 1, rs = st.rowSpan || 1
+      const taken = op === 'mergeRight'
+        ? c + cs < e.cells[0].length && Array.from({ length: rs }, (_, i) => [r + i, c + cs])
+        : r + rs < e.cells.length && Array.from({ length: cs }, (_, j) => [r + rs, c + j])
+      if (!taken) return
+      for (const [tr, tc] of taken) {
+        if (e.cells[tr]?.[tc]) e.cells[r][c] = [e.cells[r][c], e.cells[tr][tc]].filter(Boolean).join(' ')
+        if (e.cells[tr]) e.cells[tr][tc] = ''
+        delete e.cellStyle[`${tr},${tc}`]
+      }
+      if (op === 'mergeRight') st.colSpan = cs + 1
+      else st.rowSpan = rs + 1
+    } else if (op === 'unmerge') {
+      const st = e.cellStyle?.[`${r},${c}`]
+      if (st) { delete st.colSpan; delete st.rowSpan }
     }
-    e.h = Math.round(rh * e.cells.length)
+    e.h = Math.round(unit * e.heights.reduce((a, b) => a + b, 0)) // rows keep their height
     redraw()
+  }
+
+  // pasteCells fills a table with cells copied from a spreadsheet (tab-separated
+  // lines), from the cell last clicked, adding rows and columns as needed
+  function pasteCells(e, text) {
+    const grid = text.replace(/\r/g, '').replace(/\n$/, '').split('\n').map(line => line.split('\t'))
+    const r0 = Math.min(activeRow, e.cells.length - 1), c0 = Math.min(activeCol, e.cells[0].length - 1)
+    const unit = e.h / rowWeights(e).reduce((a, b) => a + b, 0)
+    tableSize(e, Math.max(e.cells.length, r0 + grid.length), Math.max(e.cells[0].length, c0 + Math.max(...grid.map(l => l.length))))
+    grid.forEach((line, i) => line.forEach((v, j) => {
+      if (e.cells[r0 + i]?.[c0 + j] != null) e.cells[r0 + i][c0 + j] = v.replace(/<(\/?[biu]>)/g, '&lt;$1')
+    }))
+    e.h = Math.round(unit * rowWeights(e).reduce((a, b) => a + b, 0)) // new rows as tall as the others
+    redraw()
+  }
+
+  // rowWeights are a table's relative row heights, one per row
+  const rowWeights = e => e.cells.map((_, i) => e.heights?.[i] > 0 ? e.heights[i] : 1)
+
+  // shiftStyles keeps the per-cell styles with their cells when a row (axis 0)
+  // or a column (axis 1) is inserted at `at` (by 1) or deleted there (by -1)
+  function shiftStyles(e, axis, at, by) {
+    const moved = {}
+    for (const [k, v] of Object.entries(e.cellStyle ?? {})) {
+      const rc = k.split(',').map(Number), i = rc[axis]
+      if (by < 0 && i === at) continue // the row or column deleted
+      if (by > 0 ? i >= at : i > at) rc[axis] += by
+      moved[rc.join(',')] = v
+    }
+    e.cellStyle = moved
   }
 
   // toggle is bold / italic / underline: on the selected words while typing, on whole elements otherwise
@@ -609,20 +692,26 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     node.focus()
     getSelection().selectAllChildren(node)
     node.onpaste = ev => { ev.preventDefault(); document.execCommand('insertText', false, ev.clipboardData.getData('text/plain')) }
-    node.onblur = ev => {
-      node.onblur = null
+    // finishing is the same whether the typing ends by a click elsewhere (blur) or by a key
+    finish = ev => {
+      node.onblur = finish = null
       node.contentEditable = 'false'
       editing = null
       if (cancelled) draw()
       else save()
-      if (!ev.relatedTarget) keepFocus() // unless the user went on to another control
+      if (!ev?.relatedTarget) keepFocus() // unless the user went on to another control
     }
+    node.onblur = finish
   }
+  let finish = null // ends the typing under way
 
   function tableSize(e, rows, cols) {
     rows = clamp(rows, 1, 50); cols = clamp(cols, 1, 20)
     e.cells = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => e.cells[r]?.[c] ?? ''))
     e.cols = Array.from({ length: cols }, (_, c) => e.cols?.[c] ?? 1)
+    e.heights = Array.from({ length: rows }, (_, r) => e.heights?.[r] ?? 1)
+    // styles of cells that are gone go with them
+    e.cellStyle = Object.fromEntries(Object.entries(e.cellStyle ?? {}).filter(([k]) => { const [r, c] = k.split(',').map(Number); return r < rows && c < cols }))
   }
 
   function arrange(axis, mode) {
@@ -771,6 +860,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     let list
     try { list = JSON.parse(text).ddreport } catch {}
     if (Array.isArray(list) && list.length && list.every(i => BANDS.includes(i?.[0]) && typeof i[1] === 'string')) clip = paste(list)
+    else if (sel.length === 1 && sel[0].type === 'table' && /[\t\n]/.test(text.trim())) pasteCells(sel[0], text)
     else if (text.trim()) add('text', target(), 0, 0, { text: text.replace(/<(\/?[biu]>)/g, '&lt;$1') })
     else if (clip.length) clip = paste(clip)
   })
@@ -819,8 +909,19 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
 
   root.addEventListener('keydown', ev => {
     if (editing) {
-      if (ev.key === 'Escape') { cancelled = true; editing.blur() }
-      if (ev.key === 'Enter') { ev.preventDefault(); editing.dataset.rich ? document.execCommand('insertLineBreak') : editing.blur() }
+      const inCell = editing.closest('.ddr-cell')
+      if (ev.key === 'Escape') { cancelled = true; finish() }
+      // in a table cell Enter keeps the text and Shift+Enter starts a new line; in a text box Enter is a new line
+      if (ev.key === 'Enter') { ev.preventDefault(); inCell && !ev.shiftKey ? finish() : document.execCommand('insertLineBreak') }
+      if (ev.key === 'Tab' && inCell) { // on to the next cell, or back with Shift
+        ev.preventDefault()
+        const all = [...inCell.parentNode.querySelectorAll('.ddr-cell')], next = all[all.indexOf(inCell) + (ev.shiftKey ? -1 : 1)]
+        finish()
+        if (next) {
+          activeCol = +next.dataset.col; activeRow = +next.dataset.row
+          next.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+        }
+      }
       return
     }
     if (ev.target.closest('input,select,textarea,button')) return
@@ -1038,24 +1139,75 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       const look = r => e.header && r === 0 ? [e.headerFill, e.headerColor, true]
         : e.footer && r === rows - 1 && (r > 0 || !e.header) ? [e.footerFill, e.footerColor, true]
         : [(e.header ? r % 2 === 0 : r % 2 === 1) ? e.stripe : '', e.textColor, e.bold]
+      const heights = rowWeights(e), nc = e.cols.length
       s.gridTemplateColumns = e.cols.map(c => `minmax(0,${c}fr)`).join(' ')
-      s.gridTemplateRows = `repeat(${rows},minmax(0,1fr))`
+      s.gridTemplateRows = heights.map(h => `minmax(0,${h}fr)`).join(' ')
       if (grid === 'outer') s.border = line
       else s.borderTop = line
       if (grid === 'all') s.borderLeft = line
+      if (e.data) n.dataset.repeat = e.data // a data table: its body rows repeat for each item of that list
+      // a merged cell covers its neighbours, inside its part of the table (header, body, total row), as when printed
+      const part = r => e.header && r === 0 ? 0 : e.footer && r === rows - 1 && (r > 0 || !e.header) ? 2 : 1
+      const style = (r, c) => e.cellStyle?.[`${r},${c}`] ?? {}
+      const span = (r, c) => {
+        let rs = 1
+        while (rs < (style(r, c).rowSpan || 1) && r + rs < rows && part(r + rs) === part(r)) rs++
+        return [Math.min(style(r, c).colSpan || 1, nc - c), rs]
+      }
+      const covered = new Set()
+      e.cells.forEach((row, r) => row.forEach((_, c) => {
+        if (covered.has(`${r},${c}`)) return
+        const [cs, rs] = span(r, c)
+        for (let i = 0; i < rs; i++) for (let j = 0; j < cs; j++) if (i || j) covered.add(`${r + i},${c + j}`)
+      }))
+      const pad = e.padding != null && e.padding !== '' ? `${e.padding}px` : '2px 3px'
       e.cells.forEach((row, r) => row.forEach((text, c) => {
-        const cell = document.createElement('div'), [bg, ink, bold] = look(r)
+        if (covered.has(`${r},${c}`)) return
+        const cell = document.createElement('div'), words = cell.appendChild(document.createElement('div')), st = style(r, c), [cs, rs] = span(r, c)
+        const [bg, ink, bold] = look(r)
         cell.className = 'ddr-cell'
-        cell.textContent = text
+        fill(words, text)
         cell.dataset.col = c
         cell.dataset.row = r
+        if (r === activeRow && c === activeCol) cell.dataset.active = ''
+        if (e.data && part(r) === 1 && c === 0) cell.dataset.body = ''
         if (grid !== 'outer') cell.style.borderBottom = line
         if (grid === 'all') cell.style.borderRight = line
-        Object.assign(cell.style, { textAlign: e.aligns?.[c] || 'left', background: bg || '', color: ink || '', fontWeight: bold ? 'bold' : '' })
+        Object.assign(cell.style, {
+          gridColumn: `${c + 1} / span ${cs}`, gridRow: `${r + 1} / span ${rs}`, padding: pad,
+          textAlign: st.align || e.aligns?.[c] || 'left', background: st.fill || bg || '', color: st.color || ink || '',
+          fontWeight: (st.bold ?? bold) ? 'bold' : 'normal', fontStyle: (st.italic ?? e.italic) ? 'italic' : 'normal',
+        })
         if (e.valign === 'middle' || e.valign === 'bottom') Object.assign(cell.style, { display: 'flex', flexDirection: 'column', justifyContent: e.valign === 'middle' ? 'center' : 'flex-end' })
-        cell.ondblclick = () => edit(cell, false, () => { e.cells[r][c] = cell.textContent; changed() })
+        cell.ondblclick = () => edit(words, true, () => { e.cells[r][c] = markup(words).replace(/\n$/, ''); changed() })
         n.append(cell)
       }))
+      // grips on the inner column and row edges: drag to share the room between two neighbours
+      const grip = (kind, i, at) => {
+        const g = n.appendChild(document.createElement('div'))
+        g.className = 'ddr-tgrip'
+        g.dataset.kind = kind
+        g.title = L(kind === 'col' ? 'Drag to change the column width' : 'Drag to change the row height')
+        Object.assign(g.style, kind === 'col' ? { left: px(at - 3), top: 0, bottom: 0, width: '6px' } : { top: px(at - 3), left: 0, right: 0, height: '6px' })
+        g.onpointerdown = ev => {
+          ev.stopPropagation()
+          const total = kind === 'col' ? e.w : e.h, list = kind === 'col' ? e.cols : heights, sum = list.reduce((a, b) => a + b, 0)
+          const size = list.map(v => v / sum * total), start = ev[kind === 'col' ? 'clientX' : 'clientY']
+          g.onpointermove = mv => {
+            const d = (mv[kind === 'col' ? 'clientX' : 'clientY'] - start) / zoom, pair = size[i - 1] + size[i]
+            const a = Math.min(Math.max(6, size[i - 1] + d), pair - 6), now = [...size]
+            now.splice(i - 1, 2, Math.round(a), Math.round(pair - a))
+            if (kind === 'col') { e.cols = now; s.gridTemplateColumns = now.map(v => `minmax(0,${v}fr)`).join(' ') }
+            else { e.heights = now; s.gridTemplateRows = now.map(v => `minmax(0,${v}fr)`).join(' ') }
+          }
+          g.onpointerup = () => { g.onpointermove = g.onpointerup = null; redraw() }
+          g.setPointerCapture(ev.pointerId)
+        }
+      }
+      let x = 0, y = 0
+      const colSum = e.cols.reduce((a, b) => a + b, 0), rowSum = heights.reduce((a, b) => a + b, 0)
+      e.cols.slice(0, -1).forEach((w, i) => { x += w / colSum * e.w; grip('col', i + 1, x) })
+      heights.slice(0, -1).forEach((h, i) => { y += h / rowSum * e.h; grip('row', i + 1, y) })
     } else if (e.type === 'rect') {
       s.background = e.fill || ''
       if (e.border > 0) s.border = `${e.border}px solid ${stroke}`
@@ -1079,10 +1231,17 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     }
 
     let dragged = false
-    n.onfocus = () => { if (!sel.includes(e)) select(e) }
+    // reaching another table with the keyboard starts at its first cell, not at the last table's
+    n.onfocus = () => { if (!sel.includes(e)) { if (e.type === 'table') activeCol = activeRow = 0; select(e) } }
     n.onpointerdown = ev => {
       if (editing && n.contains(editing)) return
-      if (ev.target.dataset.col) { activeCol = +ev.target.dataset.col; activeRow = +ev.target.dataset.row }
+      const hit = ev.target.closest?.('[data-col]')
+      if (hit) { // the cell the cell options and the row and column buttons work on
+        activeCol = +hit.dataset.col; activeRow = +hit.dataset.row
+        for (const c of n.querySelectorAll('[data-active]')) c.removeAttribute('data-active')
+        hit.dataset.active = ''
+        if (sel.length === 1 && sel[0] === e) renderProps()
+      }
       if (ev.shiftKey) return select(e, true) // shift-click adds to / removes from the selection
       if (!sel.includes(e)) select(e)
       else sync()
@@ -1133,9 +1292,9 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       get: e => !!e.footer,
       set: (e, v) => {
         if (v === !!e.footer || e.cells.length < (v ? 2 : 3)) return void (e.footer = v)
-        const h = e.h / e.cells.length
+        const unit = e.h / rowWeights(e).reduce((a, b) => a + b, 0)
         tableSize(e, e.cells.length + (v ? 1 : -1), e.cells[0].length)
-        e.h = Math.round(h * e.cells.length) // the rows keep their height
+        e.h = Math.round(unit * rowWeights(e).reduce((a, b) => a + b, 0)) // the rows keep their height
         e.footer = v
       },
     },
@@ -1149,6 +1308,10 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     },
     // a picture from the data is a placeholder in src, such as {{photo}}
     dataSrc: { get: e => e.src?.startsWith('data:') ? '' : e.src || '', set: (e, v) => { e.src = v } },
+    // relative row heights, like the column widths: "2,1,1" makes the first row twice as tall
+    heights: { get: e => rowWeights(e).map(h => Math.round(h * 100) / 100).join(','), set: (e, v) => { e.heights = e.cells.map((_, i) => +v.split(',')[i] || 1) } },
+    // empty is the default room (3pt across, 2pt down); a number is the same room on every side
+    padding: { get: e => e.padding ?? '', set: (e, v) => { if (v.trim() === '' || isNaN(+v)) delete e.padding; else e.padding = Math.max(0, +v) } },
   }
 
   function renderProps() {
@@ -1184,6 +1347,46 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
         b.dataset.table = op
         b.onclick = () => tableEdit(e, op)
       }
+      cellProps(e)
+    }
+  }
+
+  // cellProps edits the cell last clicked: its own colours, alignment and weight
+  // over those of its row and column, and merging it with its neighbours
+  function cellProps(e) {
+    const r = Math.min(activeRow, e.cells.length - 1), c = Math.min(activeCol, e.cells[0].length - 1), key = `${r},${c}`
+    const st = () => (e.cellStyle ??= {})[key] ??= {}
+    const tidy = () => { if (!Object.keys(e.cellStyle?.[key] ?? {}).length) delete e.cellStyle?.[key] } // no empty styles left behind
+    props.append(Object.assign(document.createElement('p'), { className: 'ddr-celltitle', textContent: `${L('Cell')} ${r + 1}, ${c + 1}` }))
+    const set = (k, v) => { if (v === '' || v == null) delete st()[k]; else st()[k] = v; tidy(); draw(); changed() }
+    for (const [k, label, fallback] of [['fill', 'cell fill', '#ffffff'], ['color', 'cell text', '#000000']]) {
+      const box = document.createElement('span'), input = Object.assign(document.createElement('input'), { type: 'color', value: e.cellStyle?.[key]?.[k] || fallback })
+      input.style.opacity = e.cellStyle?.[key]?.[k] ? '' : '.35'
+      input.dataset.cell = k
+      input.oninput = () => { input.style.opacity = ''; set(k, input.value) }
+      const clear = Object.assign(document.createElement('button'), { type: 'button', textContent: '×', title: L('Clear') })
+      clear.onclick = () => { set(k, ''); renderProps() }
+      box.append(input, clear)
+      row(L(label), box)
+    }
+    const align = choice(['', 'left', 'center', 'right', 'justify'], e.cellStyle?.[key]?.align ?? '')
+    align.options[0].text = L('as the row')
+    align.dataset.cell = 'align'
+    align.onchange = () => set('align', align.value)
+    row(L('cell align'), align)
+    for (const [k, label] of [['bold', 'cell bold'], ['italic', 'cell italic']]) {
+      const v = e.cellStyle?.[key]?.[k], pick = choice(['', 'yes', 'no'], v === true ? 'yes' : v === false ? 'no' : '')
+      pick.options[0].text = L('as the row')
+      pick.dataset.cell = k
+      pick.onchange = () => set(k, pick.value === '' ? '' : pick.value === 'yes')
+      row(L(label), pick)
+    }
+    const bar = props.appendChild(document.createElement('div'))
+    bar.className = 'ddr-tablebar'
+    for (const [op, label] of [['mergeRight', 'Merge right'], ['mergeDown', 'Merge down'], ['unmerge', 'Unmerge']]) {
+      const b = bar.appendChild(Object.assign(document.createElement('button'), { type: 'button', textContent: L(label) }))
+      b.dataset.table = op
+      b.onclick = () => tableEdit(e, op)
     }
   }
 
@@ -1220,6 +1423,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
         input.value = input.type !== 'color' ? v ?? '' : v || (/Fill|stripe/.test(key) ? '#ffffff' : '#000000')
       }
       input.placeholder = L(PLACEHOLDER[key] ?? '')
+      if (TITLE[key]) input.title = L(TITLE[key])
     }
     input.oninput = () => {
       if (input.type === 'file') {

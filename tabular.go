@@ -8,9 +8,10 @@ import (
 
 // cell is one spreadsheet cell. dec is the decimals of a formatted number, or -1.
 type cell struct {
-	v    any
-	bold bool
-	dec  int
+	v           any
+	bold        bool
+	dec         int
+	fill, color string // #rrggbb background and text colour, "" for none
 }
 
 // textLines returns the text elements of a band as the lines a reader sees:
@@ -56,17 +57,26 @@ func (r *report) table() ([][]cell, []float64) {
 		}
 		return e.X
 	}
-	cols := slices.Concat(textLines(b.Detail)...)
+	// the columns come from the detail band as designed: a data table there gives its row once
+	none := scope{t, nil, nil}
+	cols := slices.Concat(textLines(r.flat(b.Detail, none, true))...)
 	fromDetail := len(cols) > 0
 	if !fromDetail {
-		cols = slices.Concat(textLines(b.ColumnHeader)...)
+		cols = slices.Concat(textLines(r.flat(b.ColumnHeader, none, true))...)
+	}
+	// a data table in the detail band has a line per item, so each row is written line by
+	// line, and its header, item and total rows share columns: one column per place
+	nested := slices.ContainsFunc(b.Detail.Elements, func(e Element) bool { return e.Type == "table" && e.Data != "" })
+	if nested {
+		cols = slices.CompactFunc(slices.SortedStableFunc(slices.Values(cols), func(a, b Element) int { return cmp.Compare(a.X, b.X) }),
+			func(a, b Element) bool { return a.X == b.X && a.W == b.W })
 	}
 
 	var out [][]cell
 	// lines adds one row per visual line of the band
 	lines := func(band Band, rows []any, ctx ...map[string]any) {
 		sc := scope{t, rows, ctx}
-		for _, line := range textLines(band) {
+		for _, line := range textLines(r.flat(band, sc, false)) {
 			if len(cols) == 0 { // free-form document: the texts as they read
 				var cells []cell
 				for _, e := range line {
@@ -96,7 +106,7 @@ func (r *report) table() ([][]cell, []float64) {
 				}
 				c := sc.cell(e)
 				if prev := cells[best]; prev.v != nil { // two texts over one column
-					c = cell{v: str(prev.v) + " " + str(c.v), bold: c.bold, dec: -1}
+					c = cell{v: str(prev.v) + " " + str(c.v), bold: c.bold, dec: -1, fill: c.fill, color: c.color}
 				}
 				cells[best] = c
 			}
@@ -132,7 +142,11 @@ func (r *report) table() ([][]cell, []float64) {
 		}
 		for _, row := range g {
 			m, _ := row.(map[string]any)
-			detail(g, m, r.root)
+			if nested {
+				lines(b.Detail, g, m, r.root)
+			} else {
+				detail(g, m, r.root)
+			}
 		}
 		if t.grouped() {
 			lines(b.GroupFooter, g, first, r.root)

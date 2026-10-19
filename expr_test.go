@@ -61,10 +61,10 @@ func TestExpressions(t *testing.T) {
 	}
 
 	// a computed number stays a number in spreadsheets
-	if c := sc.cell(Element{Text: "{{qty * price:2}}"}); c != (cell{10000.0, false, 2}) {
+	if c := sc.cell(Element{Text: "{{qty * price:2}}"}); c != (cell{10000.0, false, 2, "", ""}) {
 		t.Errorf("cell = %+v", c)
 	}
-	if c := sc.cell(Element{Text: "{{price / zero}}"}); c != (cell{"", false, -1}) {
+	if c := sc.cell(Element{Text: "{{price / zero}}"}); c != (cell{"", false, -1, "", ""}) {
 		t.Errorf("cell without a value = %+v", c)
 	}
 }

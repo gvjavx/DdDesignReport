@@ -78,10 +78,18 @@ func TestStackedGrowingTexts(t *testing.T) {
 	if grown <= 0 || cells[1].Y != 22+grown || h != 40+2*grown {
 		t.Errorf("table: first cell %v high, second at %v, band %v", cells[0].H, cells[1].Y, h)
 	}
+	// the left edge is drawn row by row; together the pieces span the grown table without a gap
+	covered, end := 0.0, 0.0
 	for _, e := range els {
-		if e.Type == "line" && e.H > e.W && e.H != h { // the vertical rules span the grown table
-			t.Errorf("vertical rule is %v high, band is %v", e.H, h)
+		if e.Type == "line" && e.H > e.W && e.X == 0 {
+			if e.Y != end {
+				t.Errorf("left edge has a gap at %v", end)
+			}
+			covered, end = covered+e.H, e.Y+e.H
 		}
+	}
+	if covered != h {
+		t.Errorf("left edge covers %v of %v", covered, h)
 	}
 }
 

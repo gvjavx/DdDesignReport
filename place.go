@@ -13,30 +13,43 @@ import (
 	"strings"
 )
 
-// place resolves one instance of a band: placeholders, growing texts, charts
-// and barcodes. Coordinates stay relative to the band; it returns the final height.
+// place resolves one instance of a band: placeholders, tables, growing texts,
+// charts and barcodes. Coordinates stay relative to the band; it returns the
+// final height, which is at least as tall as what is in the band.
 //
 // A text that grows pushes down everything that starts at or below its old
 // bottom edge. Pushes add up down the band (a second grown text under the first
 // moves by the first one's growth and then pushes by its own), while texts side
 // by side push by the larger of the two. Boxes and vertical rules that reach
-// past a grown text stretch, so frames stay closed.
+// past a grown text stretch, so frames stay closed. A table grows as a whole:
+// its rows are as tall as they need, and a data table has a row per item.
 func (r *report) place(b Band, sc scope) ([]Element, float64) {
 	type grower struct{ top, bottom, grow, shift float64 }
 	var els []Element
+	var anchor []float64 // the top of the table an element belongs to, which moves it; NaN for the rest
+	var growers []grower
 	for _, e := range b.Elements {
 		if !sc.shows(e) {
 			continue
 		}
-		if e.Type == "image" && strings.Contains(e.Src, "{{") { // a picture from the data
+		switch {
+		case e.Type == "table":
+			cells, h := r.grid(e, sc, true, false)
+			for _, c := range cells {
+				els, anchor = append(els, c), append(anchor, e.Y)
+			}
+			if h > e.H {
+				growers = append(growers, grower{e.Y, e.Y + e.H, h - e.H, 0})
+			}
+			continue
+		case e.Type == "image" && strings.Contains(e.Src, "{{"): // a picture from the data
 			if e.Src = sc.resolve(e.Src); !picture(e.Src) {
 				continue // no picture, or not one the PDF can draw: the space stays empty
 			}
 		}
-		els = append(els, e)
+		els, anchor = append(els, e), append(anchor, math.NaN())
 	}
 	height := make([]float64, len(els)) // new height of the texts that grew
-	var growers []grower
 	for i := range els {
 		e := &els[i]
 		if e.Type == "barcode" {
@@ -45,10 +58,14 @@ func (r *report) place(b Band, sc scope) ([]Element, float64) {
 		if e.Type != "text" {
 			continue
 		}
+		rs := sc // a cell of a data table is filled in from its item
+		if e.own != nil {
+			rs = *e.own
+		}
 		e.runs = e.parse()
 		e.Text = ""
 		for j := range e.runs {
-			e.runs[j].text = sc.resolve(e.runs[j].text)
+			e.runs[j].text = rs.resolve(e.runs[j].text)
 			e.Text += e.runs[j].text
 		}
 		if !e.Grow {
@@ -79,12 +96,17 @@ func (r *report) place(b Band, sc scope) ([]Element, float64) {
 	var out []Element
 	for i, e := range els {
 		bottom := e.Y + e.H
-		e.Y += shift(e.Y, all)
 		switch {
+		case !math.IsNaN(anchor[i]): // part of a table: moves with the table, already sized
+			e.Y += shift(anchor[i], all)
 		case height[i] > 0:
+			e.Y += shift(e.Y, all)
 			e.H = height[i]
 		case e.Type == "rect" || e.Type == "line" && e.H > e.W && e.Slope == "":
+			e.Y += shift(e.Y, all)
 			e.H = bottom + shift(bottom, all) - e.Y
+		default:
+			e.Y += shift(e.Y, all)
 		}
 		switch e.Type {
 		case "chart":
@@ -95,7 +117,11 @@ func (r *report) place(b Band, sc scope) ([]Element, float64) {
 			out = append(out, e)
 		}
 	}
-	return out, b.Height + shift(math.Inf(1), all)
+	h := b.Height + shift(math.Inf(1), all)
+	for _, e := range out { // a band never cuts off what is in it
+		h = max(h, e.Y+e.H)
+	}
+	return out, h
 }
 
 // picture says whether a value from the data is a picture the PDF can draw: a
