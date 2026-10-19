@@ -13,7 +13,7 @@ node/       wrapper Node.js
 
 ## Designer
 
-Sebagai aplikasi terpisah, lengkap dengan preview:
+Sebagai aplikasi terpisah, lengkap dengan preview. Unduh binary untuk sistem Anda dari [GitHub Release](https://github.com/gvjavx/DdDesignReport/releases/latest) (`ddreport-linux-amd64`, `ddreport-darwin-arm64`, `ddreport-windows-amd64.exe`, ...) dan ganti namanya menjadi `ddreport`, atau build sendiri:
 
 ```sh
 go build -o ddreport ./cmd/ddreport
@@ -232,10 +232,10 @@ Untuk binary (Java, Kotlin, Node.js, `-serve`): set `DDREPORT_FONT` dan `DDREPOR
 Tag versi menjalankan `.github/workflows/release.yml`: binary untuk setiap sistem dibangun dan dilampirkan ke GitHub Release, paketnya dicoba, lalu diterbitkan ke npm (`ddreport`, `@ddreport/<sistem>`, `ddreport-designer`) dan Maven Central (`io.github.gvjavx:ddreport`).
 
 ```sh
-git tag v0.1.0 && git push origin v0.1.0
+git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
-npm memakai *trusted publishing*: setiap paket di npmjs.com mencantumkan `gvjavx/DdDesignReport` dan `release.yml` sebagai trusted publisher, sehingga CI menerbitkan tanpa token; `NPM_TOKEN` hanya dipakai untuk versi pertama paket baru. Untuk Maven dibutuhkan secret `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD` (user token Central Portal), `MAVEN_GPG_PRIVATE_KEY`, dan `MAVEN_GPG_PASSPHRASE` untuk Maven. Registry yang secret-nya belum ada dilewati; versi yang sudah terbit tidak diterbitkan lagi. `node release/build.mjs 0.1.0` membangun semuanya di `dist/` secara lokal.
+npm memakai *trusted publishing*: setiap paket di npmjs.com mencantumkan `gvjavx/DdDesignReport` dan `release.yml` sebagai trusted publisher, sehingga CI menerbitkan tanpa token. Secret `NPM_TOKEN` hanya dibutuhkan untuk versi pertama paket npm yang baru, karena trusted publisher baru bisa dipasang setelah paketnya ada; pasang sementara, lalu hapus lagi setelah trusted publisher-nya terpasang. Untuk Maven dibutuhkan secret `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD` (user token Central Portal), `MAVEN_GPG_PRIVATE_KEY`, dan `MAVEN_GPG_PASSPHRASE`. Registry yang secret-nya belum ada dilewati; versi yang sudah terbit tidak diterbitkan lagi. `node release/build.mjs 0.1.0` membangun semuanya di `dist/` secara lokal.
 
 ## Test
 
