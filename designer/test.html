@@ -171,7 +171,7 @@ const tests = {
     t.drop('rect', 'header', 10, 5); t.drop('rect', 'header', 200, 5); t.drop('rect', 'summary', 10, 2)
     const band = t.q('.ddr-band[data-name=header]'), b = band.getBoundingClientRect(), page = t.q('.ddr-page')
     t.ptr(band, 'pointerdown', b.left + 400, b.top + 2); t.ptr(page, 'pointermove', b.left + 5, b.top + 50)
-    check('the box is drawn', !!t.q('.ddr-marquee'))
+    check('the box is drawn', !!document.querySelector('.ddr-marquee')) // on the page itself, not in the designer
     t.ptr(page, 'pointerup', b.left + 5, b.top + 50)
     check('two elements selected', t.qa('.ddr-sel').length === 2)
     check('the keyboard stays with the designer', t.root.contains(document.activeElement))
