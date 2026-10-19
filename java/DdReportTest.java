@@ -36,7 +36,9 @@ public class DdReportTest {
             DdReport.render(TEMPLATE, many, "pdf", java.time.Duration.ofMillis(100));
             check("a render that takes too long is stopped", false);
         } catch (java.io.IOException e) {
-            check("a render that takes too long is stopped", e.getMessage().contains("longer than 100 ms"));
+            boolean ok = e.getMessage().contains("longer than 100 ms");
+            if (!ok) System.out.println("      got: " + e);
+            check("a render that takes too long is stopped", ok);
         }
 
         try {

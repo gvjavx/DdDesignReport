@@ -226,8 +226,11 @@ const tests = {
     const t = open()
     t.click('zoom:1'); t.click('zoom:1')
     check('120%', t.q('[data-id=zoom]').value === '120%')
+    // at 150% the page's margin is a whole number of pixels, so browsers that round a
+    // made-up mouse position to a pixel (Firefox, Safari) land where the check expects
+    t.click('zoom:1'); t.click('zoom:1'); t.click('zoom:1')
     t.drop('rect', 'summary', 60, 6)
-    check('a drop at 60px on screen is 50pt on paper', t.els('summary')[0].x === 50, 'x=' + t.els('summary')[0].x)
+    check('a drop at 60px on screen is 40pt on paper', t.els('summary')[0].x === 40, 'x=' + t.els('summary')[0].x)
     t.click('zoom:0')
     check('back to 100%', t.q('[data-id=zoom]').value === '100%')
   },

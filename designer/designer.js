@@ -1147,7 +1147,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     const box = document.createElement('div'), s = box.style
     box.className = 'ddr-marquee'
     s.left = px(ev.clientX); s.top = px(ev.clientY)
-    root.append(box)
+    document.body.append(box) // not inside the designer: its container query would make it the box's frame in Firefox and Safari
     page.onpointermove = mv => {
       s.left = px(Math.min(ev.clientX, mv.clientX)); s.top = px(Math.min(ev.clientY, mv.clientY))
       s.width = px(Math.abs(mv.clientX - ev.clientX)); s.height = px(Math.abs(mv.clientY - ev.clientY))
