@@ -1,7 +1,7 @@
 // Builds a release into dist/, for CI (.github/workflows/release.yml) or by hand:
 //   node release/build.mjs 0.1.0
 // dist/bin       the ddreport binary for each system, attached to the GitHub Release
-// dist/npm       the npm packages: ddreport-<system> with its binary, ddreport (the
+// dist/npm       the npm packages: @ddreport/<system> with its binary, ddreport (the
 //                wrapper, which depends on all of them and installs the one that fits),
 //                and ddreport-designer
 // dist/native    the binaries laid out for the Java jars with a classifier per system
@@ -41,9 +41,9 @@ for (const [goos, goarch, os, cpu, system] of targets) {
   execFileSync('go', ['build', '-trimpath', '-ldflags=-s -w', '-o', out, './cmd/ddreport'], {
     cwd: root, stdio: 'inherit', env: { ...process.env, GOOS: goos, GOARCH: goarch, CGO_ENABLED: '0' },
   })
-  const name = `ddreport-${os}-${cpu}`
+  const name = `@ddreport/${os}-${cpu}` // its folder in dist/npm stays ddreport-<system>
   optional[name] = version
-  const pkg = path.join(dist, 'npm', name)
+  const pkg = path.join(dist, 'npm', `ddreport-${os}-${cpu}`)
   fs.mkdirSync(path.join(pkg, 'bin'), { recursive: true })
   fs.copyFileSync(out, path.join(pkg, 'bin', `ddreport${exe}`))
   json(path.join(pkg, 'package.json'), {

@@ -1,6 +1,6 @@
 {
   "name": "ddreport-designer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Drag-and-drop report designer for DdDesignReport",
   "type": "module",
   "main": "designer.js",

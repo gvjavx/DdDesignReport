@@ -169,14 +169,14 @@ Java, Kotlin, dan Node.js memanggil binary `ddreport`. Paketnya membawa binary u
 **Java** (Maven Central, `io.github.gvjavx:ddreport`): tambahkan wrapper-nya dan binary untuk sistem tempat aplikasi berjalan, dengan classifier `linux-x64`, `linux-arm64`, `windows-x64`, `windows-arm64`, `darwin-x64`, atau `darwin-arm64`.
 
 ```xml
-<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.1.1</version></dependency>
-<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.1.1</version><classifier>linux-x64</classifier></dependency>
+<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.1.2</version></dependency>
+<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.1.2</version><classifier>linux-x64</classifier></dependency>
 ```
 
 ```kotlin
 // Gradle
-implementation("io.github.gvjavx:ddreport:0.1.1")
-runtimeOnly("io.github.gvjavx:ddreport:0.1.1:linux-x64")
+implementation("io.github.gvjavx:ddreport:0.1.2")
+runtimeOnly("io.github.gvjavx:ddreport:0.1.2:linux-x64")
 ```
 
 Package Java-nya tetap `io.ddreport` (`import io.ddreport.DdReport`).
@@ -229,7 +229,7 @@ Untuk binary (Java, Kotlin, Node.js, `-serve`): set `DDREPORT_FONT` dan `DDREPOR
 
 ## Rilis
 
-Tag versi menjalankan `.github/workflows/release.yml`: binary untuk setiap sistem dibangun dan dilampirkan ke GitHub Release, paketnya dicoba, lalu diterbitkan ke npm (`ddreport`, `ddreport-<sistem>`, `ddreport-designer`) dan Maven Central (`io.github.gvjavx:ddreport`).
+Tag versi menjalankan `.github/workflows/release.yml`: binary untuk setiap sistem dibangun dan dilampirkan ke GitHub Release, paketnya dicoba, lalu diterbitkan ke npm (`ddreport`, `@ddreport/<sistem>`, `ddreport-designer`) dan Maven Central (`io.github.gvjavx:ddreport`).
 
 ```sh
 git tag v0.1.0 && git push origin v0.1.0

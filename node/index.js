@@ -1,11 +1,11 @@
 const { spawn, spawnSync } = require('node:child_process')
 
 // the binary: DDREPORT_BIN, else the one installed for this system with the package
-// (ddreport-linux-x64, ddreport-win32-x64, ddreport-darwin-arm64...), else ddreport on the PATH
+// (@ddreport/linux-x64, @ddreport/win32-x64, @ddreport/darwin-arm64...), else ddreport on the PATH
 const bin = () => {
   if (process.env.DDREPORT_BIN) return process.env.DDREPORT_BIN
   try {
-    return require.resolve(`ddreport-${process.platform}-${process.arch}/bin/ddreport${process.platform === 'win32' ? '.exe' : ''}`)
+    return require.resolve(`@ddreport/${process.platform}-${process.arch}/bin/ddreport${process.platform === 'win32' ? '.exe' : ''}`)
   } catch {
     return 'ddreport'
   }
