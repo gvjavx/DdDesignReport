@@ -2,6 +2,8 @@
 
 Library reporting dengan designer drag and drop. Template didesain di browser, disimpan sebagai JSON, lalu di-render oleh satu core (Go) menjadi **PDF, HTML, XLSX, XLS, atau CSV** dari backend Go, Java, Kotlin, atau Node.js.
 
+Yang baru di setiap versi: [CHANGELOG.md](CHANGELOG.md).
+
 ```
 designer/   designer drag and drop (vanilla JS, tanpa dependency) + aplikasi standalone
 ddreport.go core renderer (library Go)
