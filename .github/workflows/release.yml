@@ -7,7 +7,7 @@ name: release
 # Each registry is skipped while its secrets are not set, and a version that is
 # out already is not published again, so a run can be repeated (Actions > release
 # > Run workflow, with the tag) after a secret is added.
-#   npm    NPM_TOKEN: an npm access token that may publish
+#   npm    trusted publishing (no secret); NPM_TOKEN only for a package's first version
 #   Maven  MAVEN_CENTRAL_USERNAME, MAVEN_CENTRAL_PASSWORD: a Central Portal user token
 #          MAVEN_GPG_PRIVATE_KEY, MAVEN_GPG_PASSPHRASE: the key the artifacts are signed with
 on:
@@ -28,7 +28,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
-      HAS_NPM: ${{ secrets.NPM_TOKEN != '' }}
       HAS_MAVEN: ${{ secrets.MAVEN_CENTRAL_USERNAME != '' && secrets.MAVEN_GPG_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
@@ -82,11 +81,15 @@ jobs:
             gh release create "$TAG" dist/bin/* --title "$TAG" --generate-notes
           fi
 
+      # Trusted publishing: npm takes this workflow's GitHub identity instead of a token, for every
+      # package that names gvjavx/DdDesignReport and release.yml as its trusted publisher (on
+      # npmjs.com, package Settings > Trusted publishing). NPM_TOKEN is needed only for a package's
+      # very first version, before it can have a trusted publisher.
       - name: npm
-        if: env.HAS_NPM == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          npm install -g npm@11.6.2 # trusted publishing needs npm 11.5.1 or newer
           # the systems' packages first, so the wrapper never names one that is not there yet
           for dir in dist/npm/ddreport-*-* dist/npm/ddreport dist/npm/ddreport-designer; do
             name=$(node -p "require('./$dir/package.json').name")

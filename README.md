@@ -235,7 +235,7 @@ Tag versi menjalankan `.github/workflows/release.yml`: binary untuk setiap siste
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-Secret yang dibutuhkan repository: `NPM_TOKEN` untuk npm; `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD` (user token Central Portal), `MAVEN_GPG_PRIVATE_KEY`, dan `MAVEN_GPG_PASSPHRASE` untuk Maven. Registry yang secret-nya belum ada dilewati; versi yang sudah terbit tidak diterbitkan lagi. `node release/build.mjs 0.1.0` membangun semuanya di `dist/` secara lokal.
+npm memakai *trusted publishing*: setiap paket di npmjs.com mencantumkan `gvjavx/DdDesignReport` dan `release.yml` sebagai trusted publisher, sehingga CI menerbitkan tanpa token; `NPM_TOKEN` hanya dipakai untuk versi pertama paket baru. Untuk Maven dibutuhkan secret `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD` (user token Central Portal), `MAVEN_GPG_PRIVATE_KEY`, dan `MAVEN_GPG_PASSPHRASE` untuk Maven. Registry yang secret-nya belum ada dilewati; versi yang sudah terbit tidak diterbitkan lagi. `node release/build.mjs 0.1.0` membangun semuanya di `dist/` secara lokal.
 
 ## Test
 
