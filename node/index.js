@@ -1,6 +1,20 @@
 const { spawn, spawnSync } = require('node:child_process')
 
-const bin = () => process.env.DDREPORT_BIN || 'ddreport'
+// the binary: DDREPORT_BIN, else the one installed for this system with the package
+// (ddreport-linux-x64, ddreport-win32-x64, ddreport-darwin-arm64...), else ddreport on the PATH
+const bin = () => {
+  if (process.env.DDREPORT_BIN) return process.env.DDREPORT_BIN
+  try {
+    return require.resolve(`ddreport-${process.platform}-${process.arch}/bin/ddreport${process.platform === 'win32' ? '.exe' : ''}`)
+  } catch {
+    return 'ddreport'
+  }
+}
+// a binary that cannot be found says how to get one
+const hint = err => {
+  if (err.code === 'ENOENT') err.message += `: no ddreport binary for ${process.platform}-${process.arch}; reinstall ddreport with its optional dependencies, or set DDREPORT_BIN`
+  return err
+}
 const fail = (status, stderr) => new Error(stderr.toString().trim() || `ddreport exited with ${status}`)
 
 /**
@@ -19,7 +33,7 @@ exports.render = (template, data, format = 'pdf', { timeout = 60000 } = {}) => {
     timeout: timeout || undefined,
   })
   if (r.error?.code === 'ETIMEDOUT') throw new Error(`ddreport took longer than ${timeout} ms`)
-  if (r.error) throw r.error
+  if (r.error) throw hint(r.error)
   if (r.status !== 0) throw fail(r.status, r.stderr)
   return r.stdout
 }
@@ -38,7 +52,7 @@ exports.renderAsync = (template, data, format = 'pdf', { timeout = 60000 } = {})
     p.stdout.on('data', c => out.push(c))
     p.stderr.on('data', c => err.push(c))
     p.stdin.on('error', () => {}) // a binary that exits early closes stdin; its exit code tells why
-    p.on('error', e => { clearTimeout(timer); reject(e) })
+    p.on('error', e => { clearTimeout(timer); reject(hint(e)) })
     p.on('close', status => {
       clearTimeout(timer)
       status === 0 ? resolve(Buffer.concat(out)) : reject(fail(status, Buffer.concat(err)))

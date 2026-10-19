@@ -1,16 +1,55 @@
 package io.ddreport;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Locale;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Renders report templates through the {@code ddreport} binary. Usable from Java and Kotlin. */
+/**
+ * Renders report templates through the {@code ddreport} binary. Usable from Java and Kotlin.
+ *
+ * <p>The binary is DDREPORT_BIN if it is set; else the one in a jar for this system on the
+ * class path (the dependency {@code io.github.gvjavx:ddreport} with the classifier
+ * {@code linux-x64}, {@code windows-x64}, {@code darwin-arm64}...); else {@code ddreport} on the PATH.
+ */
 public final class DdReport {
     private DdReport() {}
+
+    private static String bundled; // the binary from the class path, once it is unpacked
+
+    static synchronized String binary() throws IOException {
+        String env = System.getenv("DDREPORT_BIN");
+        if (env != null && !env.isBlank()) {
+            return env;
+        }
+        if (bundled != null) {
+            return bundled;
+        }
+        String os = System.getProperty("os.name").toLowerCase(Locale.ROOT), arch = System.getProperty("os.arch").toLowerCase(Locale.ROOT);
+        String system = (os.contains("win") ? "windows" : os.contains("mac") ? "darwin" : "linux")
+                + "-" + (arch.contains("aarch64") || arch.contains("arm64") ? "arm64" : "x64");
+        String exe = system.startsWith("windows") ? ".exe" : "";
+        try (InputStream in = DdReport.class.getResourceAsStream("/io/ddreport/native/" + system + "/ddreport" + exe)) {
+            if (in == null) {
+                return "ddreport";
+            }
+            // a program cannot run from inside a jar: it is copied out once, for as long as this JVM runs
+            Path file = Files.createTempFile("ddreport-", exe);
+            file.toFile().deleteOnExit();
+            Files.copy(in, file, StandardCopyOption.REPLACE_EXISTING);
+            file.toFile().setExecutable(true);
+            bundled = file.toString();
+            return bundled;
+        }
+    }
 
     /** Like {@link #render(String, String, String, Duration)} with a one-minute time limit. */
     public static byte[] render(String templateJson, String dataJson, String format)
@@ -27,9 +66,15 @@ public final class DdReport {
     public static byte[] render(String templateJson, String dataJson, String format, Duration timeout)
             throws IOException, InterruptedException {
         // ponytail: one process per report. Embed the core (WASM/JNI) if spawn cost shows up.
-        String bin = System.getenv().getOrDefault("DDREPORT_BIN", "ddreport");
+        String bin = binary();
         String data = dataJson == null || dataJson.isBlank() ? "null" : dataJson;
-        Process p = new ProcessBuilder(bin, "-format", format).start();
+        Process p;
+        try {
+            p = new ProcessBuilder(bin, "-format", format).start();
+        } catch (IOException e) {
+            throw new IOException(e.getMessage() + ". Add the dependency io.github.gvjavx:ddreport with the classifier of this system"
+                    + " (linux-x64, windows-x64, darwin-arm64...), or set DDREPORT_BIN to a ddreport binary", e);
+        }
         // a render that hangs is stopped, so it cannot hold the caller's thread for good
         AtomicBoolean timedOut = new AtomicBoolean();
         CompletableFuture<Void> watchdog = CompletableFuture.runAsync(() -> {

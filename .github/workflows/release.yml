@@ -1,0 +1,111 @@
+name: release
+
+# A version tag builds the ddreport binary for every system, attaches the
+# binaries to a GitHub Release, and publishes the npm packages and the Maven
+# artifacts:
+#   git tag v0.1.0 && git push origin v0.1.0
+# Each registry is skipped while its secrets are not set, and a version that is
+# out already is not published again, so a run can be repeated (Actions > release
+# > Run workflow, with the tag) after a secret is added.
+#   npm    NPM_TOKEN: an npm access token that may publish
+#   Maven  MAVEN_CENTRAL_USERNAME, MAVEN_CENTRAL_PASSWORD: a Central Portal user token
+#          MAVEN_GPG_PRIVATE_KEY, MAVEN_GPG_PASSPHRASE: the key the artifacts are signed with
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The version tag to release, e.g. v0.1.0
+        required: true
+
+permissions:
+  contents: write # the GitHub Release
+  id-token: write # npm provenance: the packages say which build made them
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      HAS_NPM: ${{ secrets.NPM_TOKEN != '' }}
+      HAS_MAVEN: ${{ secrets.MAVEN_CENTRAL_USERNAME != '' && secrets.MAVEN_GPG_PRIVATE_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          server-id: central
+          server-username: MAVEN_CENTRAL_USERNAME
+          server-password: MAVEN_CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Build the binaries and the packages
+        run: |
+          node release/build.mjs "$TAG"
+          mvn -B -q -f java/pom.xml versions:set -DnewVersion="${TAG#v}" -DgenerateBackupPoms=false
+          mvn -B -q -f java/pom.xml -Prelease -Dgpg.skip package
+
+      # what is published is tried first, as a user would get it, with no DDREPORT_BIN
+      - name: Try the packages
+        run: |
+          template='{"bands":{"detail":{"height":20,"elements":[{"type":"text","w":100,"h":14,"text":"{{name}}"}]}}}'
+          dir=$(mktemp -d)
+          (cd dist/npm/ddreport && npm pack --pack-destination "$dir")
+          (cd dist/npm/ddreport-linux-x64 && npm pack --pack-destination "$dir")
+          (cd "$dir" && echo '{"private":true}' > package.json && npm install --omit=optional ./ddreport-linux-x64-*.tgz ./ddreport-[0-9]*.tgz)
+          (cd "$dir" && node -e "
+            const out = require('ddreport').render($template, [{ name: 'Kopi' }], 'csv').toString()
+            if (!out.includes('Kopi')) throw new Error('npm: ' + out)
+            console.log('npm package renders')")
+          javac -d "$dir/java" -cp "java/target/ddreport-${TAG#v}.jar" java/DdReportTest.java
+          java -cp "java/target/ddreport-${TAG#v}.jar:java/target/ddreport-${TAG#v}-linux-x64.jar:$dir/java" DdReportTest
+
+      - name: GitHub Release with the binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/bin/* --clobber
+          else
+            gh release create "$TAG" dist/bin/* --title "$TAG" --generate-notes
+          fi
+
+      - name: npm
+        if: env.HAS_NPM == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # the systems' packages first, so the wrapper never names one that is not there yet
+          for dir in dist/npm/ddreport-*-* dist/npm/ddreport dist/npm/ddreport-designer; do
+            name=$(node -p "require('./$dir/package.json').name")
+            if npm view "$name@${TAG#v}" version > /dev/null 2>&1; then
+              echo "$name@${TAG#v} is out already"
+            else
+              (cd "$dir" && npm publish --access public --provenance)
+            fi
+          done
+
+      - name: Maven Central
+        if: env.HAS_MAVEN == 'true'
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          if curl -sfo /dev/null "https://repo1.maven.org/maven2/io/github/gvjavx/ddreport/${TAG#v}/ddreport-${TAG#v}.pom"; then
+            echo "io.github.gvjavx:ddreport:${TAG#v} is out already"
+          else
+            mvn -B -f java/pom.xml -Prelease deploy
+          fi

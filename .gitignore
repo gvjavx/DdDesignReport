@@ -3,3 +3,4 @@ java/target/
 /ddreport
 /ddreport.exe
 node_modules/
+dist/

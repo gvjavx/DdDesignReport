@@ -1,17 +1,45 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Builds the Java/Kotlin wrapper as a jar: mvn -f java/pom.xml install -->
+<!--
+  The Java/Kotlin wrapper.
+    mvn -f java/pom.xml install                     the jar, for this machine
+    mvn -f java/pom.xml -Prelease deploy            what .github/workflows/release.yml publishes to Maven Central:
+                                                    the jar, its sources and javadoc, and a jar with the ddreport binary
+                                                    for each system (classifier linux-x64, windows-x64, darwin-arm64...),
+                                                    built first by node release/build.mjs <version>
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>io.ddreport</groupId>
+  <groupId>io.github.gvjavx</groupId>
   <artifactId>ddreport</artifactId>
   <version>0.1.0</version>
+  <packaging>jar</packaging>
   <name>ddreport</name>
-  <description>Render DdDesignReport templates to PDF, HTML, XLSX, XLS or CSV through the ddreport binary</description>
+  <description>Render DdDesignReport templates to PDF, HTML, XLSX, XLS or CSV from Java and Kotlin</description>
+  <url>https://github.com/gvjavx/DdDesignReport</url>
+
+  <licenses>
+    <license>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <name>Naufal Hilmi Abdurrahman</name>
+      <url>https://github.com/gvjavx</url>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git:https://github.com/gvjavx/DdDesignReport.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/gvjavx/DdDesignReport.git</developerConnection>
+    <url>https://github.com/gvjavx/DdDesignReport</url>
+  </scm>
 
   <properties>
     <maven.compiler.release>11</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <native>${project.basedir}/../dist/native</native>
   </properties>
 
   <build>
@@ -30,4 +58,84 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>sources</id>
+                <goals><goal>jar-no-fork</goal></goals>
+                <configuration>
+                  <includes><include>io/**/*.java</include></includes>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>3.10.1</version>
+            <configuration>
+              <sourcepath>${project.basedir}</sourcepath>
+              <subpackages>io.ddreport</subpackages>
+              <sourceFileIncludes><include>io/**/*.java</include></sourceFileIncludes>
+            </configuration>
+            <executions>
+              <execution>
+                <id>javadoc</id>
+                <goals><goal>jar</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+          <!-- a jar per system with its ddreport binary, which DdReport finds on the class path -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-jar-plugin</artifactId>
+            <version>3.4.2</version>
+            <executions>
+              <execution><id>windows-x64</id><phase>package</phase><goals><goal>jar</goal></goals><configuration><classifier>windows-x64</classifier><classesDirectory>${native}/windows-x64</classesDirectory></configuration></execution>
+              <execution><id>windows-arm64</id><phase>package</phase><goals><goal>jar</goal></goals><configuration><classifier>windows-arm64</classifier><classesDirectory>${native}/windows-arm64</classesDirectory></configuration></execution>
+              <execution><id>linux-x64</id><phase>package</phase><goals><goal>jar</goal></goals><configuration><classifier>linux-x64</classifier><classesDirectory>${native}/linux-x64</classesDirectory></configuration></execution>
+              <execution><id>linux-arm64</id><phase>package</phase><goals><goal>jar</goal></goals><configuration><classifier>linux-arm64</classifier><classesDirectory>${native}/linux-arm64</classesDirectory></configuration></execution>
+              <execution><id>darwin-x64</id><phase>package</phase><goals><goal>jar</goal></goals><configuration><classifier>darwin-x64</classifier><classesDirectory>${native}/darwin-x64</classesDirectory></configuration></execution>
+              <execution><id>darwin-arm64</id><phase>package</phase><goals><goal>jar</goal></goals><configuration><classifier>darwin-arm64</classifier><classesDirectory>${native}/darwin-arm64</classesDirectory></configuration></execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.7</version>
+            <executions>
+              <execution>
+                <id>sign</id>
+                <phase>verify</phase>
+                <goals><goal>sign</goal></goals>
+                <configuration>
+                  <gpgArguments><arg>--pinentry-mode</arg><arg>loopback</arg></gpgArguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.6.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>true</autoPublish>
+              <waitUntil>published</waitUntil>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

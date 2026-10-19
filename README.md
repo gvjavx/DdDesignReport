@@ -20,7 +20,7 @@ go build -o ddreport ./cmd/ddreport
 ./ddreport -serve 127.0.0.1:8080      # buka http://127.0.0.1:8080
 ```
 
-Sebagai library di frontend apa pun:
+Sebagai library di frontend apa pun (`npm install ddreport-designer`):
 
 ```js
 import { createDesigner } from 'ddreport-designer'
@@ -164,9 +164,22 @@ import ddreport "github.com/gvjavx/DdDesignReport"
 pdf, err := ddreport.Render(templateJSON, data, "pdf") // "pdf" | "html" | "xlsx" | "xls" | "csv"
 ```
 
-Java, Kotlin, dan Node.js memanggil binary `ddreport`. Taruh di `PATH` atau set `DDREPORT_BIN`.
+Java, Kotlin, dan Node.js memanggil binary `ddreport`. Paketnya membawa binary untuk Windows, Linux, dan macOS (x64 dan arm64); `DDREPORT_BIN` menunjuk binary lain bila perlu. Binary-nya juga ada di setiap [GitHub Release](https://github.com/gvjavx/DdDesignReport/releases).
 
-**Java** (salin `java/io/ddreport/DdReport.java` ke project, atau pasang sebagai jar dengan `mvn -f java/pom.xml install` lalu pakai dependency `io.ddreport:ddreport:0.1.0`)
+**Java** (Maven Central, `io.github.gvjavx:ddreport`): tambahkan wrapper-nya dan binary untuk sistem tempat aplikasi berjalan, dengan classifier `linux-x64`, `linux-arm64`, `windows-x64`, `windows-arm64`, `darwin-x64`, atau `darwin-arm64`.
+
+```xml
+<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.1.0</version></dependency>
+<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.1.0</version><classifier>linux-x64</classifier></dependency>
+```
+
+```kotlin
+// Gradle
+implementation("io.github.gvjavx:ddreport:0.1.0")
+runtimeOnly("io.github.gvjavx:ddreport:0.1.0:linux-x64")
+```
+
+Package Java-nya tetap `io.ddreport` (`import io.ddreport.DdReport`).
 
 ```java
 byte[] pdf = DdReport.render(templateJson, dataJson, "pdf");
@@ -179,7 +192,7 @@ byte[] pdf = DdReport.render(templateJson, dataJson, "pdf");
 val pdf = DdReport.render(templateJson, dataJson, "pdf")
 ```
 
-**Node.js**
+**Node.js** (`npm install ddreport`; binary untuk sistemnya ikut terpasang)
 
 ```js
 const { render, renderAsync } = require('ddreport')
@@ -213,6 +226,16 @@ ddreport.FontBold, _ = os.ReadFile("NotoSans-Bold.ttf") // opsional
 ```
 
 Untuk binary (Java, Kotlin, Node.js, `-serve`): set `DDREPORT_FONT` dan `DDREPORT_FONT_BOLD` ke path file `.ttf`.
+
+## Rilis
+
+Tag versi menjalankan `.github/workflows/release.yml`: binary untuk setiap sistem dibangun dan dilampirkan ke GitHub Release, paketnya dicoba, lalu diterbitkan ke npm (`ddreport`, `ddreport-<sistem>`, `ddreport-designer`) dan Maven Central (`io.github.gvjavx:ddreport`).
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Secret yang dibutuhkan repository: `NPM_TOKEN` untuk npm; `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD` (user token Central Portal), `MAVEN_GPG_PRIVATE_KEY`, dan `MAVEN_GPG_PASSPHRASE` untuk Maven. Registry yang secret-nya belum ada dilewati; versi yang sudah terbit tidak diterbitkan lagi. `node release/build.mjs 0.1.0` membangun semuanya di `dist/` secara lokal.
 
 ## Test
 
