@@ -86,6 +86,7 @@ jobs:
       # npmjs.com, package Settings > Trusted publishing). NPM_TOKEN is needed only for a package's
       # very first version, before it can have a trusted publisher.
       - name: npm
+        id: npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -100,8 +101,9 @@ jobs:
             fi
           done
 
+      # also when only npm failed (a package npm refuses), so one registry does not hold up the other
       - name: Maven Central
-        if: env.HAS_MAVEN == 'true'
+        if: (success() || steps.npm.outcome == 'failure') && env.HAS_MAVEN == 'true'
         env:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
