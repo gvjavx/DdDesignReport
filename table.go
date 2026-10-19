@@ -279,23 +279,61 @@ func (r *report) grid(e Element, sc scope, measure, once bool) ([]Element, float
 			}
 		}
 	}
+	// heavier lines: under the header (repeated with it on a new page), over the total row, around the table
+	for o, row := range rows {
+		rule := func(y, w float64) Element {
+			return Element{Type: "line", X: left, Y: y, W: right - left, Border: w, Color: e.Color}
+		}
+		if row.head && e.HeaderLine > 0 && (o+1 == len(rows) || !rows[o+1].head) {
+			add(o, rule(rowY[o+1], e.HeaderLine))
+		}
+		if row.band == 2 && e.FooterLine > 0 {
+			add(o, rule(rowY[o], e.FooterLine))
+		}
+	}
+	if e.Frame > 0 { // a frame cut between two pages is closed on both
+		out = append(out, Element{Type: "rect", X: left, Y: top, W: right - left, H: bottom - top, Border: e.Frame, Color: e.Color, ShowIf: e.ShowIf, tbl: id})
+	}
 	return out, total
 }
 
-// flat is a band with its tables laid out as texts, for the spreadsheets.
+// flat is a band with its tables and sub-reports laid out as texts, for the
+// spreadsheets. As on the page, what is under a table or sub-report that came
+// out taller than designed moves down, so it is read after it.
 func (r *report) flat(b Band, sc scope, once bool) Band {
-	var els []Element
+	type growth struct{ bottom, extra float64 }
+	var els, fixed []Element
+	var grown []growth
 	for _, e := range b.Elements {
-		if e.Type != "table" {
-			els = append(els, e)
+		var parts []Element
+		var h float64
+		switch e.Type {
+		case "subreport":
+			parts, h = r.subFlat(e, sc, once)
+		case "table":
+			cells, th := r.grid(e, sc, false, once)
+			for _, c := range cells {
+				if c.Type == "text" {
+					parts = append(parts, c)
+				}
+			}
+			h = th
+		default:
+			fixed = append(fixed, e)
 			continue
 		}
-		cells, _ := r.grid(e, sc, false, once)
-		for _, c := range cells {
-			if c.Type == "text" {
-				els = append(els, c)
+		els = append(els, parts...)
+		if h > e.H {
+			grown = append(grown, growth{e.Y + e.H, h - e.H})
+		}
+	}
+	for _, e := range fixed {
+		for _, g := range grown {
+			if e.Y >= g.bottom {
+				e.Y += g.extra
 			}
 		}
+		els = append(els, e)
 	}
 	b.Elements = els
 	return b

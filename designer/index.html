@@ -120,7 +120,12 @@ $('data').value = stored(DATA) ?? JSON.stringify({
     { category: 'Food', name: 'Fried rice', qty: 3, price: 25000 },
   ],
 }, null, 2)
-$('data').oninput = () => { store(DATA, $('data').value); designer.setFields(fieldNames()) }
+$('data').oninput = () => { store(DATA, $('data').value); designer.setFields(fieldNames()); designer.setData(sample()) }
+
+// the sample data, for the charts drawn on the page; nothing while it is not valid JSON
+function sample() {
+  try { return JSON.parse($('data').value) } catch { return undefined }
+}
 
 // the field names in the sample data, for the designer's Field menu: the
 // report's own fields (customer.name) and those of its rows
@@ -165,6 +170,7 @@ const designer = createDesigner($('designer'), {
   theme: 'auto',
   fontBase: 'fonts/', // served by ddreport -serve
   fields: fieldNames(),
+  data: sample(),
   template: saved ?? undefined,
   onChange: persist,
   preview: async template => (await render(template, 'html')).text(),
@@ -191,6 +197,7 @@ $('templates').onchange = async () => {
     $('data').value = JSON.stringify(data, null, 2)
     store(DATA, $('data').value)
     designer.setFields(fieldNames())
+    designer.setData(sample())
   } catch (err) { say(L('Could not load the template: ') + err.message) }
 }
 $('open').onclick = () => $('file').click()

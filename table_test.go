@@ -194,3 +194,39 @@ func TestTableColoursInSpreadsheets(t *testing.T) {
 		}
 	}
 }
+
+func TestHeavierTableLines(t *testing.T) {
+	var items []any
+	for i := range 40 {
+		items = append(items, map[string]any{"n": float64(i)})
+	}
+	tpl := `{"page":{"width":300,"height":300,"margin":20},"bands":{"summary":{"height":60,"elements":[
+	  {"type":"table","w":200,"h":60,"border":0.5,"headerLine":2,"footerLine":1.5,"frame":1,"header":true,"footer":true,"data":"items",
+	   "cells":[["N"],["{{n}}"],["{{sum(n)}}"]]}]}}}`
+	r := load(t, tpl, map[string]any{"items": items})
+	r.initPDF()
+	pages := r.paginate(0)
+	for i, page := range pages {
+		heavy, frames := 0, 0
+		for _, e := range page {
+			if e.Type == "line" && e.Border == 2 {
+				heavy++
+			}
+			if e.Type == "rect" && e.Border == 1 {
+				frames++
+			}
+		}
+		if heavy != 1 || frames != 1 { // the line under the header comes with it, the frame is closed on every page
+			t.Errorf("page %d: %d heavy header lines, %d frames", i+1, heavy, frames)
+		}
+	}
+	last, total := pages[len(pages)-1], 0
+	for _, e := range last {
+		if e.Type == "line" && e.Border == 1.5 {
+			total++
+		}
+	}
+	if total != 1 {
+		t.Errorf("%d lines over the total row", total)
+	}
+}

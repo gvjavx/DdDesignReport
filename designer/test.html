@@ -583,6 +583,57 @@ const tests = {
     document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: d, bubbles: true, cancelable: true }))
     check('paste from a spreadsheet', table().cells[1].join() === ',a,b,c,d' && table().cells[0].length === 5 && table().cells[2][4] === 'w', JSON.stringify(table().cells))
   },
+  'group levels, sheets per group, table lines'() {
+    const t = open()
+    const shown = () => t.qa('.ddr-band').map(b => b.dataset.name)
+    check('one level: no second group bands', !shown().includes('groupHeader2'))
+    t.set('[data-tpl=groupBy]', 'region, city')
+    check('two levels: their bands in print order', shown().join() === 'header,columnHeader,groupHeader,groupHeader2,detail,groupFooter2,groupFooter,summary,footer', shown().join())
+    t.set('[data-tpl=groupBy]', 'a,b,c')
+    check('three levels', shown().includes('groupHeader3') && shown().includes('groupFooter3'))
+    t.set('[data-tpl=sheetPerGroup]', true)
+    check('a sheet per group', t.tpl.sheetPerGroup === true)
+    t.click('add:table')
+    check('the header line shows with a header row', !t.qa('.ddr-props label').some(l => l.firstChild.textContent === 'header line'))
+    const header = t.qa('.ddr-props label').find(l => l.firstChild.textContent === 'header row').querySelector('input')
+    header.checked = true; header.dispatchEvent(new Event('input', { bubbles: true }))
+    t.prop('header line', 2); t.prop('frame', 1.5)
+    check('table lines', t.els('header')[0].headerLine === 2 && t.els('header')[0].frame === 1.5)
+  },
+  'charts and barcodes drawn on the page'() {
+    const data = { rows: [{ cat: 'Kopi', qty: 2, price: 18000 }, { cat: 'Teh', qty: 1, price: 12000 }, { cat: 'Kopi', qty: 1, price: 18000 }] }
+    const t = open(undefined, { data })
+    t.click('add:chart')
+    t.prop('label', 'cat'); t.prop('value', 'qty * price')
+    const bars = () => t.qa('.ddr-el[data-type=chart] svg rect').length, labels = () => t.qa('.ddr-el[data-type=chart] svg text').map(x => x.textContent)
+    check('a bar per label, from the sample data', bars() === 2 && labels().includes('Kopi') && labels().includes('54.0k'), labels().join())
+    t.d.setData({ rows: [{ cat: 'A', qty: 1, price: 1 }, { cat: 'B', qty: 1, price: 1 }, { cat: 'C', qty: 1, price: 1 }] })
+    check('setData redraws', bars() === 3)
+    t.set('[data-prop=fontSize]', 10) // (no font on a chart: nothing changes)
+    t.prop('chart', 'pie')
+    check('a pie: slices and a legend', t.qa('.ddr-el[data-type=chart] svg path').length === 3 && labels().some(l => l.startsWith('A:')))
+    t.click('add:barcode')
+    check('a QR code is drawn', t.qa('.ddr-el[data-type=barcode] svg rect').length > 50)
+  },
+  async 'sub-reports'() {
+    const t = open(undefined, { data: { rows: [{ number: 'SO-1', items: [{ name: 'Kopi' }] }] } })
+    t.click('add:subreport')
+    const e = () => t.els('header')[0]
+    check('inserted with a list and bands of its own', e().type === 'subreport' && e().data === 'items' && !!e().report.bands.detail)
+    t.q('.ddr-subedit').click()
+    const dialog = t.q('.ddr-subdialog')
+    check('the editor opens as wide as the box', dialog.open && dialog.querySelector('.ddr-page').style.width === `${e().w}px`)
+    dialog.querySelector('[data-cmd="add:text"]').click()
+    dialog.querySelector('button[value=done]').click()
+    await new Promise(r => setTimeout(r, 50)) // a dialog says it closed a moment later
+    check('Done keeps what was made in it, without a page', e().report.bands.header.elements.length === 1 && !e().report.page && !t.q('.ddr-subdialog'), JSON.stringify(e().report.bands.header))
+    check('the box says what is in it', t.q('.ddr-el[data-type=subreport]').textContent.includes('header (1)'))
+    t.q('.ddr-subedit').click()
+    t.q('.ddr-subdialog [data-cmd="add:text"]').click()
+    t.q('.ddr-subdialog button[value=cancel]').click()
+    await new Promise(r => setTimeout(r, 50))
+    check('Close leaves it as it was', e().report.bands.header.elements.length === 1)
+  },
   'the system clipboard'() {
     const a = open()
     a.click('add:rect')

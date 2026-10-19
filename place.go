@@ -33,8 +33,14 @@ func (r *report) place(b Band, sc scope) ([]Element, float64) {
 			continue
 		}
 		switch {
-		case e.Type == "table":
-			cells, h := r.grid(e, sc, true, false)
+		case e.Type == "table" || e.Type == "subreport":
+			var cells []Element
+			var h float64
+			if e.Type == "table" {
+				cells, h = r.grid(e, sc, true, false)
+			} else {
+				cells, h = r.subreport(e, sc)
+			}
 			for _, c := range cells {
 				els, anchor = append(els, c), append(anchor, e.Y)
 			}
@@ -52,6 +58,9 @@ func (r *report) place(b Band, sc scope) ([]Element, float64) {
 	height := make([]float64, len(els)) // new height of the texts that grew
 	for i := range els {
 		e := &els[i]
+		if e.done { // laid out inside a sub-report already
+			continue
+		}
 		if e.Type == "barcode" {
 			e.Text = sc.resolve(e.Text)
 		}

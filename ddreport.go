@@ -33,16 +33,21 @@ type Template struct {
 	Page           Page
 	DataKey        string // key of the row array in the data, default "rows"
 	SortBy         string // row fields to sort by, "-" for descending: "category, -total"
-	GroupBy        string // row field; rows with the same value form a group
+	GroupBy        string // row field; rows with the same value form a group. Up to three, "region, city, store", group inside each other
 	GroupPageBreak bool   // every group starts on a new page
 	Thousands      string // separators used by {{field:2}}, default "," and "."; "none" for no thousands separator
 	Decimal        string
 	Locale         string // "id" for Indonesian month and day names in dates, English otherwise
 	CSVSeparator   string // , (default), ; or a tab
-	Bands          struct{ Header, ColumnHeader, GroupHeader, Detail, GroupFooter, Summary, Footer Band }
+	SheetPerGroup  bool   // xlsx, xls: a worksheet for each group of the first GroupBy field
+	Bands          struct {
+		Header, ColumnHeader, GroupHeader, Detail, GroupFooter, Summary, Footer Band
+		GroupHeader2, GroupFooter2, GroupHeader3, GroupFooter3                  Band // the second and third levels of GroupBy
+	}
 
 	nodes map[string]node // expressions, parsed once
 	now   time.Time       // {{now}}, the same on every page
+	ready bool            // a sub-report's template has taken the settings of its report
 }
 
 type Page struct {
@@ -76,7 +81,7 @@ type Band struct {
 }
 
 type Element struct {
-	Type       string // text | rect | line | image | chart | table | barcode
+	Type       string // text | rect | line | image | chart | table | barcode | subreport
 	X, Y, W, H float64
 	// Text may contain {{field}}, {{a.b}}, {{page}}, {{pages}}, {{now}}, the
 	// aggregates {{sum(f)}}, {{avg(f)}}, {{min(f)}}, {{max(f)}}, {{count()}},
@@ -120,6 +125,9 @@ type Element struct {
 	Heights                 []float64            // table: relative row heights, default equal
 	Padding                 *float64             // table: room around a cell's text, default 3pt across and 2pt down
 	CellStyle               map[string]CellStyle // table: the look and merging of single cells, keyed "row,column" from 0
+	HeaderLine, FooterLine  float64              // table: a heavier line under the header row and over the total row, in pt
+	Report                  *Template            // subreport: the report printed for each item of Data, in the element's box
+	Frame                   float64              // table: a heavier line around the whole table, in pt
 
 	Points []float64 // internal: x,y pairs of a "poly" (charts), x,y,w,h of the dark runs of a "code" (barcodes); relative to X,Y
 	runs   []run     // text split into styled runs, placeholders resolved
@@ -128,6 +136,8 @@ type Element struct {
 	head   bool      // a table header row, repeated on the next page when its table goes on there
 	tbl    int       // the table a line, background or cell belongs to
 	bg     string    // a table cell's background, for the spreadsheets
+	mw, mh float64   // a barcode: the size of one module, in pt
+	done   bool      // laid out and filled in already, inside a sub-report
 }
 
 // run is a stretch of text in one style.
@@ -192,9 +202,9 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 		cells, _ := r.table()
 		return toCSV(cells, t.CSVSeparator)
 	case "xlsx":
-		return toXLSX(r.table())
+		return toXLSX(r.sheets())
 	case "xls":
-		return toXLS(r.table())
+		return toXLS(r.sheets())
 	case "html", "pdf":
 		if err := t.fits(); err != nil {
 			return nil, err
@@ -212,11 +222,53 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 	return nil, fmt.Errorf("ddreport: unknown format %q", format)
 }
 
+// pictures are the image sources of the template's bands, those of its sub-reports included.
+func (t *Template) pictures() []string {
+	b := t.Bands
+	var out []string
+	for _, band := range []Band{b.Header, b.ColumnHeader, b.GroupHeader, b.GroupHeader2, b.GroupHeader3, b.Detail, b.GroupFooter3, b.GroupFooter2, b.GroupFooter, b.Summary, b.Footer} {
+		for _, e := range band.Elements {
+			switch {
+			case e.Type == "image":
+				out = append(out, e.Src)
+			case e.Type == "subreport" && e.Report != nil:
+				out = append(out, e.Report.pictures()...)
+			}
+		}
+	}
+	return out
+}
+
 // grouped says whether the group bands print: with GroupBy, or when they have
 // something in them (then all the rows are one group).
 func (t *Template) grouped() bool {
 	b := t.Bands
 	return t.GroupBy != "" || len(b.GroupHeader.Elements) > 0 || len(b.GroupFooter.Elements) > 0
+}
+
+// level is one level of grouping: the field and the bands around each of its groups.
+type level struct {
+	by             string
+	header, footer Band
+}
+
+// levels are the grouping levels, outer first. The first field of GroupBy uses
+// GroupHeader and GroupFooter, the second GroupHeader2 and GroupFooter2, the
+// third GroupHeader3 and GroupFooter3. Without GroupBy, group bands with
+// something in them make one level around all the rows.
+func (t *Template) levels() []level {
+	b := t.Bands
+	bands := [][2]Band{{b.GroupHeader, b.GroupFooter}, {b.GroupHeader2, b.GroupFooter2}, {b.GroupHeader3, b.GroupFooter3}}
+	var out []level
+	for _, by := range strings.Split(t.GroupBy, ",") {
+		if by = strings.TrimSpace(by); by != "" && len(out) < len(bands) {
+			out = append(out, level{by, bands[len(out)][0], bands[len(out)][1]})
+		}
+	}
+	if len(out) == 0 && t.grouped() {
+		out = []level{{"", b.GroupHeader, b.GroupFooter}}
+	}
+	return out
 }
 
 // fits checks that the fixed bands leave room for the tallest flowing band,
@@ -225,13 +277,16 @@ func (t *Template) fits() error {
 	b := t.Bands
 	top, _, bottom, _ := t.Page.margins()
 	tallest, name := b.Detail.Height, "detail"
-	for _, f := range []struct {
-		band Band
-		name string
-		on   bool
-	}{{b.Summary, "summary", true}, {b.GroupHeader, "groupHeader", t.grouped()}, {b.GroupFooter, "groupFooter", t.grouped()}} {
-		if f.on && f.band.Height > tallest {
-			tallest, name = f.band.Height, f.name
+	if b.Summary.Height > tallest {
+		tallest, name = b.Summary.Height, "summary"
+	}
+	for i, l := range t.levels() {
+		suffix := []string{"", "2", "3"}[i]
+		if l.header.Height > tallest {
+			tallest, name = l.header.Height, "groupHeader"+suffix
+		}
+		if l.footer.Height > tallest {
+			tallest, name = l.footer.Height, "groupFooter"+suffix
 		}
 	}
 	need := top + bottom + b.Header.Height + b.ColumnHeader.Height + tallest + b.Footer.Height
@@ -266,13 +321,7 @@ func newReport(template []byte, data any) (*report, error) {
 	t.now = time.Now()
 	bands := &t.Bands
 	images := []string{t.Page.BackgroundImage}
-	for _, b := range []*Band{&bands.Header, &bands.ColumnHeader, &bands.GroupHeader, &bands.Detail, &bands.GroupFooter, &bands.Summary, &bands.Footer} {
-		for _, e := range b.Elements {
-			if e.Type == "image" {
-				images = append(images, e.Src)
-			}
-		}
-	}
+	images = append(images, t.pictures()...)
 	for _, src := range images {
 		// a placeholder ({{photo}}) is checked once it is filled in, and drawn only if it is a picture
 		if src != "" && !strings.Contains(src, "{{") && !dataImage.MatchString(src) {
@@ -696,51 +745,73 @@ func (r *report) paginate(total int) [][]Element {
 		put(els, y)
 		y += h
 	}
+	// the headers of the groups under way, outer to inner, repeated at the top of a new page
+	var heads []func()
+	group = func() {
+		for _, h := range heads {
+			h()
+		}
+	}
 	newPage()
-	for i, g := range t.groups(r.rows) {
-		var first map[string]any
-		if t.grouped() {
-			// a group header never stays behind alone at the bottom of a page
-			if t.GroupPageBreak && i > 0 || y > top && y+b.GroupHeader.Height+b.Detail.Height > bottom {
-				newPage()
+	levels := t.levels()
+	var walk func(rows []any, lv int)
+	walk = func(rows []any, lv int) {
+		if lv == len(levels) {
+			for _, row := range rows {
+				m, _ := row.(map[string]any)
+				flow(b.Detail, rows, m, r.root)
 			}
+			return
+		}
+		l := levels[lv]
+		for i, g := range groupRows(rows, l.by) {
+			var first map[string]any
 			if len(g) > 0 {
 				first, _ = g[0].(map[string]any)
 			}
-			flow(b.GroupHeader, g, first, r.root)
-			if len(b.GroupHeader.Elements) > 0 {
-				group = func() {
-					els, h := r.place(b.GroupHeader, scope{t, g, []map[string]any{first, r.root}})
+			// a group header never stays behind alone at the bottom of a page
+			if lv == 0 && t.GroupPageBreak && i > 0 || y > top && y+l.header.Height+b.Detail.Height > bottom {
+				newPage()
+			}
+			flow(l.header, g, first, r.root)
+			n := len(heads)
+			if len(l.header.Elements) > 0 {
+				heads = append(heads, func() {
+					els, h := r.place(l.header, scope{t, g, []map[string]any{first, r.root}})
 					put(els, y)
 					y += h
-				}
+				})
 			}
+			walk(g, lv+1)
+			flow(l.footer, g, first, r.root)
+			heads = heads[:n]
 		}
-		for _, row := range g {
-			m, _ := row.(map[string]any)
-			flow(b.Detail, g, m, r.root)
-		}
-		if t.grouped() {
-			flow(b.GroupFooter, g, first, r.root)
-		}
-		group = nil
 	}
+	walk(r.rows, 0)
 	if len(b.Summary.Elements) > 0 {
 		flow(b.Summary, r.rows, r.root)
 	}
 	return pages
 }
 
-// groups splits the rows by the GroupBy field, groups in order of first appearance.
+// groups splits the rows by the first GroupBy field, groups in order of first appearance.
 func (t *Template) groups(rows []any) [][]any {
-	if t.GroupBy == "" {
+	if l := t.levels(); len(l) > 0 {
+		return groupRows(rows, l[0].by)
+	}
+	return [][]any{rows}
+}
+
+// groupRows splits rows by a field, groups in order of first appearance; no field is one group.
+func groupRows(rows []any, by string) [][]any {
+	if by == "" {
 		return [][]any{rows}
 	}
 	var out [][]any
 	index := map[string]int{}
 	for _, r := range rows {
 		row, _ := r.(map[string]any)
-		key := str(lookup(t.GroupBy, row))
+		key := str(lookup(by, row))
 		i, ok := index[key]
 		if !ok {
 			i = len(out)
@@ -1176,11 +1247,16 @@ func (r *report) toHTML(pages [][]Element) []byte {
 					fmt.Fprintf(&b, `<img style="%s" src="%s">`, style, html.EscapeString(e.Src))
 				}
 			case "code":
+				// the path counts in modules (small whole numbers) and the viewBox scales them to the box
+				mw, mh := e.mw, e.mh
+				if mw <= 0 || mh <= 0 {
+					mw, mh = 1, 1
+				}
 				var d strings.Builder
 				for i := 0; i+3 < len(e.Points); i += 4 {
-					fmt.Fprintf(&d, "M%.5g %.5gh%.5gv%.5gh%.5gz", e.Points[i], e.Points[i+1], e.Points[i+2], e.Points[i+3], -e.Points[i+2])
+					fmt.Fprintf(&d, "M%.5g %.5gh%.5gv%.5gh%.5gz", e.Points[i]/mw, e.Points[i+1]/mh, e.Points[i+2]/mw, e.Points[i+3]/mh, -e.Points[i+2]/mw)
 				}
-				fmt.Fprintf(&b, "<svg style=\"%s\" viewBox=\"0 0 %g %g\"><path fill=\"%s\" d=\"%s\"/></svg>", style, e.W, e.H, stroke, d.String())
+				fmt.Fprintf(&b, "<svg style=\"%s\" viewBox=\"0 0 %.5g %.5g\" preserveAspectRatio=\"none\" shape-rendering=\"crispEdges\"><path fill=\"%s\" d=\"%s\"/></svg>", style, e.W/mw, e.H/mh, stroke, d.String())
 			case "poly":
 				shape, paint := "polygon", fmt.Sprintf(`fill="%s"`, color(e.Fill, "none"))
 				if !hexColor.MatchString(e.Fill) {
@@ -1407,30 +1483,79 @@ func numberCode(d int) string {
 	return code
 }
 
+// worksheet is one sheet of a spreadsheet.
+type worksheet struct {
+	name   string
+	rows   [][]cell
+	widths []float64
+}
+
+var badSheetName = regexp.MustCompile(`[\[\]:*?/\\]`)
+
+// sheets are the worksheets of a spreadsheet: one called Report, or with
+// SheetPerGroup one per group of the first GroupBy field, named after it.
+// Every sheet is the report for its group: headings, rows and totals.
+func (r *report) sheets() []worksheet {
+	levels := r.t.levels()
+	if !r.t.SheetPerGroup || len(levels) == 0 || levels[0].by == "" || len(r.rows) == 0 {
+		rows, widths := r.table()
+		return []worksheet{{"Report", rows, widths}}
+	}
+	all := r.rows
+	defer func() { r.rows = all }()
+	var out []worksheet
+	used := map[string]bool{}
+	for _, g := range groupRows(all, levels[0].by) {
+		r.rows = g
+		rows, widths := r.table()
+		first, _ := g[0].(map[string]any)
+		// Excel allows 31 characters and none of []:*?/\ in a name, and no two alike
+		name := strings.TrimSpace(badSheetName.ReplaceAllString(str(lookup(levels[0].by, first)), " "))
+		if name == "" {
+			name = "-"
+		}
+		base := string([]rune(name)[:min(len([]rune(name)), 31)])
+		name = base
+		for n := 2; used[strings.ToLower(name)]; n++ {
+			suffix := fmt.Sprintf(" (%d)", n)
+			name = string([]rune(base)[:min(len([]rune(base)), 31-len(suffix))]) + suffix
+		}
+		used[strings.ToLower(name)] = true
+		out = append(out, worksheet{name, rows, widths})
+	}
+	return out
+}
+
 // toXLS writes XML Spreadsheet 2003, which Excel opens as .xls (after one
 // "format and extension don't match" prompt). Styles are numbered like toXLSX.
-func toXLS(rows [][]cell, widths []float64) ([]byte, error) {
+func toXLS(sheets []worksheet) ([]byte, error) {
 	var st sheetStyles
-	var table bytes.Buffer
-	for _, w := range widths {
-		fmt.Fprintf(&table, `<Column ss:Width="%g"/>`, max(w, 20))
-	}
-	for _, r := range rows {
-		table.WriteString(`<Row>`)
-		for _, c := range r {
-			if c.v == nil {
-				table.WriteString(`<Cell/>`)
-				continue
-			}
-			kind := "String"
-			if _, ok := c.v.(float64); ok {
-				kind = "Number"
-			}
-			fmt.Fprintf(&table, `<Cell ss:StyleID="s%d"><Data ss:Type="%s">`, st.of(c), kind)
-			xml.EscapeText(&table, []byte(str(c.v)))
-			table.WriteString(`</Data></Cell>`)
+	var body bytes.Buffer
+	for _, sh := range sheets {
+		body.WriteString(`<Worksheet ss:Name="`)
+		xml.EscapeText(&body, []byte(sh.name))
+		body.WriteString(`"><Table>`)
+		for _, w := range sh.widths {
+			fmt.Fprintf(&body, `<Column ss:Width="%g"/>`, max(w, 20))
 		}
-		table.WriteString(`</Row>`)
+		for _, r := range sh.rows {
+			body.WriteString(`<Row>`)
+			for _, c := range r {
+				if c.v == nil {
+					body.WriteString(`<Cell/>`)
+					continue
+				}
+				kind := "String"
+				if _, ok := c.v.(float64); ok {
+					kind = "Number"
+				}
+				fmt.Fprintf(&body, `<Cell ss:StyleID="s%d"><Data ss:Type="%s">`, st.of(c), kind)
+				xml.EscapeText(&body, []byte(str(c.v)))
+				body.WriteString(`</Data></Cell>`)
+			}
+			body.WriteString(`</Row>`)
+		}
+		body.WriteString(`</Table></Worksheet>`)
 	}
 	var b bytes.Buffer
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>` +
@@ -1455,14 +1580,14 @@ func toXLS(rows [][]cell, widths []float64) ([]byte, error) {
 		}
 		fmt.Fprintf(&b, `<Style ss:ID="s%d">%s</Style>`, i, inner)
 	}
-	b.WriteString(`</Styles><Worksheet ss:Name="Report"><Table>`)
-	b.Write(table.Bytes())
-	b.WriteString(`</Table></Worksheet></Workbook>`)
+	b.WriteString(`</Styles>`)
+	b.Write(body.Bytes())
+	b.WriteString(`</Workbook>`)
 	return b.Bytes(), nil
 }
 
-// toXLSX writes a one-sheet workbook, with the styles of sheetStyles.
-func toXLSX(rows [][]cell, widths []float64) ([]byte, error) {
+// toXLSX writes a workbook with the styles of sheetStyles, one worksheet per sheet.
+func toXLSX(sheets []worksheet) ([]byte, error) {
 	const (
 		head  = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
 		main  = `xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"`
@@ -1471,34 +1596,45 @@ func toXLSX(rows [][]cell, widths []float64) ([]byte, error) {
 		ctype = `application/vnd.openxmlformats-officedocument.spreadsheetml.`
 	)
 	var st sheetStyles
-	var sheet bytes.Buffer
-	sheet.WriteString(head + `<worksheet ` + main + `>`)
-	if len(widths) > 0 {
-		sheet.WriteString(`<cols>`)
-		for i, w := range widths { // points to Excel's character units, roughly
-			fmt.Fprintf(&sheet, `<col min="%[1]d" max="%[1]d" width="%.1f" customWidth="1"/>`, i+1, max(w/5, 4))
-		}
-		sheet.WriteString(`</cols>`)
-	}
-	sheet.WriteString(`<sheetData>`)
-	for _, r := range rows {
-		sheet.WriteString(`<row>`)
-		for _, c := range r {
-			if c.v == nil {
-				sheet.WriteString(`<c/>`)
-				continue
+	var files [][2]string
+	var overrides, entries, links strings.Builder
+	for i, sh := range sheets {
+		var x bytes.Buffer
+		x.WriteString(head + `<worksheet ` + main + `>`)
+		if len(sh.widths) > 0 {
+			x.WriteString(`<cols>`)
+			for i, w := range sh.widths { // points to Excel's character units, roughly
+				fmt.Fprintf(&x, `<col min="%[1]d" max="%[1]d" width="%.1f" customWidth="1"/>`, i+1, max(w/5, 4))
 			}
-			if f, ok := c.v.(float64); ok {
-				fmt.Fprintf(&sheet, `<c s="%d"><v>%s</v></c>`, st.of(c), str(f))
-				continue
-			}
-			fmt.Fprintf(&sheet, `<c s="%d" t="inlineStr"><is><t xml:space="preserve">`, st.of(c))
-			xml.EscapeText(&sheet, []byte(str(c.v)))
-			sheet.WriteString(`</t></is></c>`)
+			x.WriteString(`</cols>`)
 		}
-		sheet.WriteString(`</row>`)
+		x.WriteString(`<sheetData>`)
+		for _, r := range sh.rows {
+			x.WriteString(`<row>`)
+			for _, c := range r {
+				if c.v == nil {
+					x.WriteString(`<c/>`)
+					continue
+				}
+				if f, ok := c.v.(float64); ok {
+					fmt.Fprintf(&x, `<c s="%d"><v>%s</v></c>`, st.of(c), str(f))
+					continue
+				}
+				fmt.Fprintf(&x, `<c s="%d" t="inlineStr"><is><t xml:space="preserve">`, st.of(c))
+				xml.EscapeText(&x, []byte(str(c.v)))
+				x.WriteString(`</t></is></c>`)
+			}
+			x.WriteString(`</row>`)
+		}
+		x.WriteString(`</sheetData></worksheet>`)
+		path := fmt.Sprintf("worksheets/sheet%d.xml", i+1)
+		files = append(files, [2]string{"xl/" + path, x.String()})
+		fmt.Fprintf(&overrides, `<Override PartName="/xl/%s" ContentType="%sworksheet+xml"/>`, path, ctype)
+		entries.WriteString(`<sheet name="`)
+		xml.EscapeText(&entries, []byte(sh.name))
+		fmt.Fprintf(&entries, `" sheetId="%d" r:id="rId%d"/>`, i+1, i+1)
+		fmt.Fprintf(&links, rel, i+1, "worksheet", path)
 	}
-	sheet.WriteString(`</sheetData></worksheet>`)
 
 	// fonts and fills are numbered as they are needed: font 0 plain, 1 bold; fill 0 none, 1 the required gray125
 	fonts := []string{`<font><sz val="11"/><name val="Calibri"/></font>`, `<font><b/><sz val="11"/><name val="Calibri"/></font>`}
@@ -1542,21 +1678,18 @@ func toXLSX(rows [][]cell, widths []float64) ([]byte, error) {
 		`<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
 		`<cellXfs count="` + strconv.Itoa(len(looks)) + `">` + xfs.String() + `</cellXfs></styleSheet>`
 
-	files := [][2]string{
+	files = append([][2]string{
 		{"[Content_Types].xml", head + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
 			`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
 			`<Default Extension="xml" ContentType="application/xml"/>` +
-			`<Override PartName="/xl/workbook.xml" ContentType="` + ctype + `sheet.main+xml"/>` +
-			`<Override PartName="/xl/worksheets/sheet1.xml" ContentType="` + ctype + `worksheet+xml"/>` +
+			`<Override PartName="/xl/workbook.xml" ContentType="` + ctype + `sheet.main+xml"/>` + overrides.String() +
 			`<Override PartName="/xl/styles.xml" ContentType="` + ctype + `styles+xml"/></Types>`},
 		{"_rels/.rels", head + rels + fmt.Sprintf(rel, 1, "officeDocument", "xl/workbook.xml") + `</Relationships>`},
 		{"xl/workbook.xml", head + `<workbook ` + main + ` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
-			`<sheets><sheet name="Report" sheetId="1" r:id="rId1"/></sheets></workbook>`},
-		{"xl/_rels/workbook.xml.rels", head + rels + fmt.Sprintf(rel, 1, "worksheet", "worksheets/sheet1.xml") +
-			fmt.Sprintf(rel, 2, "styles", "styles.xml") + `</Relationships>`},
+			`<sheets>` + entries.String() + `</sheets></workbook>`},
+		{"xl/_rels/workbook.xml.rels", head + rels + links.String() + fmt.Sprintf(rel, len(sheets)+1, "styles", "styles.xml") + `</Relationships>`},
 		{"xl/styles.xml", styles},
-		{"xl/worksheets/sheet1.xml", sheet.String()},
-	}
+	}, files...)
 	var buf bytes.Buffer
 	z := zip.NewWriter(&buf)
 	for _, f := range files {

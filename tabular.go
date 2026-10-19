@@ -66,7 +66,7 @@ func (r *report) table() ([][]cell, []float64) {
 	}
 	// a data table in the detail band has a line per item, so each row is written line by
 	// line, and its header, item and total rows share columns: one column per place
-	nested := slices.ContainsFunc(b.Detail.Elements, func(e Element) bool { return e.Type == "table" && e.Data != "" })
+	nested := slices.ContainsFunc(b.Detail.Elements, func(e Element) bool { return e.Type == "table" && e.Data != "" || e.Type == "subreport" })
 	if nested {
 		cols = slices.CompactFunc(slices.SortedStableFunc(slices.Values(cols), func(a, b Element) int { return cmp.Compare(a.X, b.X) }),
 			func(a, b Element) bool { return a.X == b.X && a.W == b.W })
@@ -132,26 +132,31 @@ func (r *report) table() ([][]cell, []float64) {
 		lines(b.Header, r.rows, r.root)
 	}
 	lines(b.ColumnHeader, r.rows, r.root)
-	for _, g := range t.groups(r.rows) {
-		var first map[string]any
-		if t.grouped() {
+	levels := t.levels()
+	var walk func(rows []any, lv int)
+	walk = func(rows []any, lv int) {
+		if lv == len(levels) {
+			for _, row := range rows {
+				m, _ := row.(map[string]any)
+				if nested {
+					lines(b.Detail, rows, m, r.root)
+				} else {
+					detail(rows, m, r.root)
+				}
+			}
+			return
+		}
+		for _, g := range groupRows(rows, levels[lv].by) {
+			var first map[string]any
 			if len(g) > 0 {
 				first, _ = g[0].(map[string]any)
 			}
-			lines(b.GroupHeader, g, first, r.root)
-		}
-		for _, row := range g {
-			m, _ := row.(map[string]any)
-			if nested {
-				lines(b.Detail, g, m, r.root)
-			} else {
-				detail(g, m, r.root)
-			}
-		}
-		if t.grouped() {
-			lines(b.GroupFooter, g, first, r.root)
+			lines(levels[lv].header, g, first, r.root)
+			walk(g, lv+1)
+			lines(levels[lv].footer, g, first, r.root)
 		}
 	}
+	walk(r.rows, 0)
 	lines(b.Summary, r.rows, r.root)
 	widths := make([]float64, len(cols))
 	for i, c := range cols {

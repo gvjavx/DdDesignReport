@@ -33,6 +33,7 @@ const designer = createDesigner(document.getElementById('designer'), {
   fontBase: '/fonts/',                // opsional: URL font bawaan (`ddreport -serve` menyajikannya di /fonts/)
   fonts: ['Inter'],                   // opsional: font tambahan yang didaftarkan di backend
   fields: ['name', 'qty', 'price'],   // opsional: nama field data untuk menu Field; ubah dengan designer.setFields()
+  data: sampleData,                   // opsional: data contoh; chart di kanvas digambar darinya; ubah dengan designer.setData()
   preview: async t => {               // opsional, memunculkan tombol Preview
     const res = await fetch('/api/report/preview', { method: 'POST', body: JSON.stringify(t) })
     return res.text()                 // HTML hasil render backend (format "html")
@@ -50,7 +51,7 @@ Designer punya ribbon seperti pengolah kata:
 | **Layout** | Ukuran kertas (A4, A5, Letter, Legal, F4), orientasi, margin per sisi, warna dan gambar latar halaman, urutan data, grouping, pemisah angka, bahasa tanggal, pemisah CSV |
 | **View** | Zoom, penggaris, snap, preview |
 
-Tampilannya menyesuaikan lebar tempat designer dipasang: di layar sempit panel properti pindah ke bawah dan halaman dipaskan ke lebar. Zoom ada di bilah status bawah, dan bisa langsung di kanvas: `Ctrl` + scroll (atau pinch di trackpad) memperbesar di titik kursor, cubit dua jari di layar sentuh, serta `Ctrl` + `=` / `-` / `0`.
+Chart di kanvas digambar dari data contoh (opsi `data`), dan barcode tampil sebagai kodenya; hasil cetak tetap dari renderer. Tampilannya menyesuaikan lebar tempat designer dipasang: di layar sempit panel properti pindah ke bawah dan halaman dipaskan ke lebar. Zoom ada di bilah status bawah, dan bisa langsung di kanvas: `Ctrl` + scroll (atau pinch di trackpad) memperbesar di titik kursor, cubit dua jari di layar sentuh, serta `Ctrl` + `=` / `-` / `0`.
 
 Klik tombol di tab Insert atau seret ke band. Klik ganda teks atau sel tabel untuk mengetik langsung di halaman; pilih sebagian teks lalu tekan **B**/**I**/**U** untuk memformat bagian itu saja. Shift-klik, atau seret kotak di area kosong, untuk memilih banyak elemen. Geser elemen untuk memindah (termasuk ke band lain), tarik pegangan biru di sudut kanan bawah untuk mengubah ukuran (juga dengan sentuhan), tarik tepi bawah band untuk mengubah tingginya. Untuk menghapus: klik tombol merah × di sudut elemen terpilih, seret elemen ke tempat sampah yang muncul saat menggeser, atau tekan `Delete`.
 
@@ -94,7 +95,9 @@ Angka yang dikirim sebagai teks (`"18000"`, seperti dari BigDecimal atau kolom n
 
 **Urutan**: `sortBy` mengurutkan baris, misalnya `"kategori, -total"` (`-` untuk menurun). Angka diurutkan sebagai angka.
 
-**Grouping**: isi `groupBy` dengan nama field. Baris dengan nilai yang sama dikumpulkan menjadi satu grup, urut sesuai kemunculan pertama (atau sesuai `sortBy`). `groupPageBreak` memulai setiap grup di halaman baru.
+**Grouping**: isi `groupBy` dengan nama field. Baris dengan nilai yang sama dikumpulkan menjadi satu grup, urut sesuai kemunculan pertama (atau sesuai `sortBy`). Sampai tiga tingkat: `"region, city, store"`; tingkat kedua memakai band `groupHeader2` / `groupFooter2`, tingkat ketiga `groupHeader3` / `groupFooter3`, dan agregat di tiap band menghitung grup tingkatnya. Judul semua grup yang sedang berjalan diulang di atas halaman baru. Di designer, band tingkat 2 dan 3 muncul begitu Group by berisi dua atau tiga field.
+
+**Sheet per grup**: `"sheetPerGroup": true` membuat XLSX dan XLS berisi satu sheet untuk setiap grup tingkat pertama, dinamai sesuai grupnya (dengan aturan nama sheet Excel: maksimal 31 huruf, tanpa `[]:*?/\`, tidak kembar). Tiap sheet berisi judul kolom, baris, dan totalnya sendiri. `groupPageBreak` memulai setiap grup di halaman baru.
 
 **Format teks**: `font` (lihat [Font](#font)), `fontSize`, `lineHeight`, `bold`, `italic`, `underline`, `color`, `fill` (highlight), `align` (`left`, `center`, `right`, `justify`), `valign` (`top`, `middle`, `bottom`). Sebagian teks bisa diformat dengan tag `<b>`, `<i>`, `<u>`: `Total <b>{{sum(price):2}}</b>`.
 
@@ -113,6 +116,7 @@ Gaya tabel, semuanya bisa diatur di panel properti:
 | `padding` | jarak teks dari tepi sel dalam pt (default 3 mendatar, 2 tegak) |
 | `cellStyle` | gaya per sel, dengan kunci `"baris,kolom"` dari 0: `fill`, `color`, `align`, `bold`, `italic`, serta `colSpan` / `rowSpan` untuk menggabung sel |
 | `data` | nama daftar di data, misalnya `items`: baris di antara judul dan baris total diulang untuk setiap item (lihat di bawah) |
+| `headerLine`, `footerLine`, `frame` | garis lebih tebal (pt) di bawah baris judul, di atas baris total, dan di sekeliling tabel; garis judul ikut diulang di halaman berikutnya, bingkai tertutup di setiap halaman |
 
 **Tabel data** (`data`): satu tabel untuk daftar di dalam data, misalnya item sebuah pesanan. Baris pertama (`header`) dan terakhir (`footer`) dicetak sekali; baris di antaranya diulang per item. Di baris yang diulang, `{{field}}` adalah field item itu dan `{{index}}` nomor urutnya; di judul dan baris total, agregat menghitung semua item (`{{sum(qty * price):0}}`). Taruh di band `detail` untuk daftar per baris data (pesanan dengan itemnya), atau di `summary`/`header` untuk daftar di data utama.
 
@@ -140,7 +144,9 @@ Di designer: klik sebuah sel, lalu bagian **Sel** di panel kanan mengatur warna,
 
 **Chart**: `bar`, `hbar` (batang mendatar), `line`, `pie`, atau `donut`. `label` adalah nama field baris dan `value` nama field atau perhitungan (`qty * price`); nilai dijumlahkan per label. `bar`, `hbar`, dan `line` punya skala nilai yang selalu memuat nol, jadi nilai negatif tampil di bawah garis nol; label kategori ditampilkan selang-seling bila terlalu rapat. `pie` dan `donut` menggambar nilai negatif sebagai nol; legendanya selalu punya tempat di samping pie, dan irisan terkecil yang tidak muat digabung menjadi "Other" ("Lainnya" dengan `locale` `id`). Chart garis memberi titik di setiap nilai.
 
-**Barcode**: elemen `barcode` dengan `format` `qr` (default) atau `code128`. Isinya ada di `text` dan boleh memuat placeholder, misalnya `https://example.com/verify/{{id}}`. `"showText": true` mencetak teksnya di bawah kode.
+**Barcode**: elemen `barcode` dengan `format` `qr` (default) atau `code128`. Isinya ada di `text` dan boleh memuat placeholder, misalnya `https://example.com/verify/{{id}}`. `"showText": true` mencetak teksnya di bawah kode. QR code diberi ruang kosong dua modul di sekelilingnya (di dalam kotaknya) agar mudah dipindai di samping elemen lain.
+
+**Sub-laporan**: elemen `subreport` dengan `data` (nama daftar, misalnya `lines`) dan `report` (template dengan band sendiri: `header`, `columnHeader`, `groupHeader`... sampai tiga tingkat, `detail`, `summary`; `footer` tidak dipakai, dan `sortBy` / `groupBy` boleh diisi). Laporan itu dicetak untuk setiap item di dalam kotak elemen, dan band induknya ikut memanjang. Di band `detail` setiap baris mendapat sub-laporannya sendiri, misalnya setiap pesanan dengan rincian per jenisnya. Field induk tetap bisa dipakai di dalamnya (`{{number}}`), `{{index}}` adalah nomor item. Sub-laporan yang lebih panjang dari satu halaman berlanjut tanpa memotong band, dengan header dan judul kolomnya diulang. Di designer: tab Insert > **Sub-report**, lalu **Edit sub-report…** (atau klik ganda) membuka designer untuk band-bandnya, selebar kotaknya.
 
 **CSV, XLSX, dan XLS**: elemen teks dan sel tabel di band `detail` menjadi kolom. Teks di band lain (judul kolom, subtotal, total) masuk ke kolom yang sejajar dengannya. Di XLSX dan XLS, teks bold tetap bold, `{{f:2}}` menjadi format angka, dan lebar kolom mengikuti desain. `xls` ditulis sebagai XML Spreadsheet 2003; Excel menampilkan satu peringatan format saat membukanya. CSV diawali BOM UTF-8 agar Excel membaca huruf seperti `é` dengan benar; `"csvSeparator": ";"` untuk Excel berbahasa Indonesia atau Eropa yang memakai `;`. Di CSV, teks yang berawalan seperti formula (`=`, `@`, `+`, `-`) diberi tanda kutip tunggal di depan agar tidak dijalankan spreadsheet.
 
@@ -215,10 +221,12 @@ go test ./...                         # core, binary, template, dan test regresi
 go build -o ddreport ./cmd/ddreport
 export DDREPORT_BIN="$PWD/ddreport"   # PowerShell: $env:DDREPORT_BIN = "$PWD\ddreport.exe"
 node --test node/test.js              # wrapper Node.js
+npm install --no-save playwright && npx playwright install chromium firefox webkit
+node designer/run-tests.mjs           # designer di Chromium, Firefox, dan WebKit (mesin Safari)
 javac -d out java/io/ddreport/DdReport.java java/DdReportTest.java
 java -cp out DdReportTest             # wrapper Java
 ```
 
 Designer: sajikan folder `designer/` dengan web server (`npx serve designer`) lalu buka `/test.html`; halaman itu menjalankan pemeriksaan otomatis pada designer.
 
-`.github/workflows/test.yml` menjalankan semua test Go, Node.js, dan Java di setiap push.
+`.github/workflows/test.yml` menjalankan semua test Go, Node.js, dan Java di Linux dan Windows, serta test designer di Chromium, Firefox, dan WebKit, di setiap push.

@@ -7,21 +7,21 @@ import (
 
 func TestBars(t *testing.T) {
 	out := bars(Element{X: 10, Y: 20, W: 58, H: 100, Text: "INV-001"})
-	if len(out) != 1 || out[0].Type != "code" || out[0].X != 10 || out[0].Y != 20 || out[0].W != 58 || out[0].H != 100 || out[0].Color != "#000000" {
+	// version 1 is 21 modules wide, with a quiet zone of 2 modules on each side, fitted into the smaller side
+	const module = 58.0 / 25
+	if len(out) != 1 || out[0].Type != "code" || out[0].X != 10+2*module || out[0].Y != 20+2*module || out[0].W != 58-4*module || out[0].Color != "#000000" {
 		t.Fatalf("QR code is %d elements, want one \"code\" element in the barcode's box", len(out))
 	}
 	runs := out[0].Points
 	if len(runs) == 0 || len(runs)%4 != 0 {
 		t.Fatalf("%d numbers, want x,y,w,h per dark run", len(runs))
 	}
-	// version 1 is 21 modules wide (no quiet zone is added), fitted into the smaller side
-	const module = 58.0 / 21
 	// the top edge of the top-left finder pattern: 7 dark modules
 	if runs[0] != 0 || runs[1] != 0 || runs[2] != 7*module || runs[3] != module {
 		t.Errorf("first run %v", runs[:4])
 	}
 	for i := 0; i < len(runs); i += 4 {
-		if runs[i] < 0 || runs[i]+runs[i+2] > 58+1e-9 || runs[i+1] < 0 || runs[i+1]+runs[i+3] > 58+1e-9 {
+		if runs[i] < 0 || runs[i]+runs[i+2] > 21*module+1e-9 || runs[i+1] < 0 || runs[i+1]+runs[i+3] > 21*module+1e-9 {
 			t.Fatalf("run outside the square: %v", runs[i:i+4])
 		}
 	}

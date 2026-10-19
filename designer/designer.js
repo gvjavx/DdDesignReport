@@ -8,8 +8,12 @@
 // fontBase is the URL the bundled fonts are served from (`ddreport -serve` has them at 'fonts/');
 // without it the page shows them only where they are installed. fonts adds names from ddreport.Families.
 // fields lists the data's field names for the Field menu; designer.setFields(list) changes it later.
+// data is sample data (fields plus rows, or just rows) that charts are drawn from; designer.setData(data) changes it.
 
-const BANDS = ['header', 'columnHeader', 'groupHeader', 'detail', 'groupFooter', 'summary', 'footer']
+// the bands in print order; the second and third group levels show when Group by names that many fields
+const BANDS = ['header', 'columnHeader', 'groupHeader', 'groupHeader2', 'groupHeader3', 'detail', 'groupFooter3', 'groupFooter2', 'groupFooter', 'summary', 'footer']
+const HEIGHT = { header: 60, summary: 30, footer: 30 } // a new band's height; the others 20
+const LEVEL = { groupHeader2: 2, groupFooter2: 2, groupHeader3: 3, groupFooter3: 3 }
 const SIDES = ['marginTop', 'marginRight', 'marginBottom', 'marginLeft']
 const PAPER = { A4: [595, 842], A5: [420, 595], Letter: [612, 792], Legal: [612, 1008], F4: [595, 935] }
 const FONTS = {
@@ -28,17 +32,19 @@ const NEW = {
   line: { w: 200, h: 1, border: 1 },
   chart: { w: 240, h: 140, chart: 'bar', label: '', value: '', color: '#4e79a7' },
   barcode: { w: 70, h: 70, text: '{{code}}', format: 'qr' },
+  subreport: { w: 400, h: 80, data: 'items' },
 }
 // what the properties panel edits per type; fonts, colours and alignment live in the ribbon
 const BASE = ['x', 'y', 'w', 'h']
 const FIELDS = {
   text: [...BASE, 'text', 'showIf'],
-  table: [...BASE, 'data', 'rows', 'columns', 'cols', 'heights', 'padding', 'border', 'grid', 'color', 'textColor', 'stripe', 'header', 'headerFill', 'headerColor', 'footer', 'footerFill', 'footerColor', 'showIf'],
+  table: [...BASE, 'data', 'rows', 'columns', 'cols', 'heights', 'padding', 'border', 'grid', 'headerLine', 'footerLine', 'frame', 'color', 'textColor', 'stripe', 'header', 'headerFill', 'headerColor', 'footer', 'footerFill', 'footerColor', 'showIf'],
   image: [...BASE, 'src', 'dataSrc', 'showIf'],
   rect: [...BASE, 'border', 'color', 'showIf'],
   line: [...BASE, 'slope', 'border', 'color', 'showIf'],
   chart: [...BASE, 'chart', 'label', 'value', 'color', 'showIf'],
   barcode: [...BASE, 'format', 'text', 'showText', 'color', 'showIf'],
+  subreport: [...BASE, 'data', 'showIf'],
 }
 // which ribbon properties apply to which type
 const STYLE = {
@@ -49,7 +55,7 @@ const STYLE = {
 // a table's text colour is textColor: its color is the colour of its lines
 const propOf = (e, k) => e.type === 'table' && k === 'color' ? 'textColor' : k
 const DEFAULT = { font: 'Helvetica', fontSize: 10, lineHeight: 1.2, valign: 'top', color: '#000000', fill: '#ffffff', grow: false }
-const NUMERIC = new Set(['x', 'y', 'w', 'h', 'border', 'rows', 'columns', 'height'])
+const NUMERIC = new Set(['x', 'y', 'w', 'h', 'border', 'rows', 'columns', 'height', 'headerLine', 'footerLine', 'frame'])
 const SELECT = { chart: ['bar', 'hbar', 'line', 'pie', 'donut'], format: ['qr', 'code128'], grid: ['all', 'outer', 'rows'], slope: ['straight', 'down', 'up'] }
 const BOOL = new Set(['header', 'footer', 'showText', 'newPage'])
 const CLEARABLE = new Set(['textColor', 'stripe', 'headerFill', 'headerColor', 'footerFill', 'footerColor']) // colours that may be left empty
@@ -57,7 +63,7 @@ const LABEL = {
   cols: 'column widths', color: 'line colour', grid: 'lines', textColor: 'text colour', stripe: 'banded rows',
   header: 'header row', headerFill: 'header fill', headerColor: 'header text', footer: 'total row', footerFill: 'total row fill', footerColor: 'total row text',
   showIf: 'show when', dataSrc: 'picture from data', slope: 'direction', showText: 'show text', newPage: 'new page',
-  data: 'rows from data', heights: 'row heights', padding: 'cell padding',
+  data: 'rows from data', heights: 'row heights', padding: 'cell padding', headerLine: 'header line', footerLine: 'total line', frame: 'frame',
 }
 const PLACEHOLDER = { label: 'row field', value: 'field or qty * price', cols: '2,1,1', heights: '1,1,1', padding: '3', data: 'items', showIf: "paid = 'yes'", dataSrc: '{{photo}}' }
 const TITLE = {
@@ -102,6 +108,13 @@ const ID = {
   lines: 'garis', 'text colour': 'warna teks', 'banded rows': 'baris selang-seling', 'header row': 'baris judul', 'header fill': 'isi judul', 'header text': 'teks judul',
   'total row': 'baris total', 'total row fill': 'isi baris total', 'total row text': 'teks baris total', Clear: 'Kosongkan',
   header: 'kepala', columnHeader: 'judul kolom', groupHeader: 'kepala grup', detail: 'detail', groupFooter: 'kaki grup', summary: 'ringkasan', footer: 'kaki halaman',
+  groupHeader2: 'kepala grup 2', groupFooter2: 'kaki grup 2', groupHeader3: 'kepala grup 3', groupFooter3: 'kaki grup 3',
+  'row field, or up to three: region, city': 'field baris, atau sampai tiga: region, city', 'A sheet per group': 'Sheet per grup',
+  'Excel (xlsx, xls): a worksheet for each group of the first Group by field': 'Excel (xlsx, xls): satu sheet untuk setiap grup dari field Group by pertama',
+  'header line': 'garis judul', 'total line': 'garis total', frame: 'bingkai',
+  'Sub-report': 'Sub-laporan', 'Edit sub-report…': 'Ubah sub-laporan…', 'list in the data': 'daftar di data', Done: 'Selesai',
+  'A report of its own for each item of a list in the data: header, column header, groups, detail and summary. Its footer is not used.':
+    'Laporan tersendiri untuk setiap item daftar di data: kepala, judul kolom, grup, detail, dan ringkasan. Kaki halamannya tidak dipakai.',
   'show when': 'tampil jika', 'picture from data': 'gambar dari data', direction: 'arah', straight: 'lurus', down: 'turun', up: 'naik', 'show text': 'tampilkan teks',
   'new page': 'halaman baru', pages: 'halaman', all: 'semua', first: 'pertama', last: 'terakhir', 'every page': 'setiap halaman', 'first page': 'halaman pertama', 'last page': 'halaman terakhir',
   'Justify': 'Rata kanan-kiri', 'Vertical alignment': 'Perataan vertikal', top: 'atas', middle: 'tengah', bottom: 'bawah',
@@ -148,6 +161,7 @@ const ICONS = {
   line: 'M4 19 20 5',
   chart: 'M4 20h16M7 20v-7M12 20V7M17 20v-10',
   barcode: 'M4 5v14M7 5v14M11 5v14M14 5v14M17 5v14M20 5v14',
+  subreport: 'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5',
   preview: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
   zoomOut: 'M5 12h14',
   zoomIn: 'M5 12h14M12 5v14',
@@ -217,7 +231,8 @@ const CSS = `
 .ddr-el[data-type=line]{overflow:visible}
 .ddr-el[data-type=line]::after{content:'';position:absolute;inset:-5px}
 .ddr-el[data-type=image]{background:#eef2f7 center/100% 100% no-repeat}
-.ddr-el:is([data-type=chart],[data-type=barcode],[data-unknown]){background:#eef4fb;color:#334155;font:10px/1.3 system-ui,sans-serif;padding:4px}
+.ddr-el:is([data-type=chart],[data-type=barcode]){background:#fff}
+.ddr-el:is([data-type=subreport],[data-unknown]){background:#eef4fb;color:#334155;font:10px/1.3 system-ui,sans-serif;padding:4px}
 .ddr-el[data-type=table]{display:grid}
 .ddr-cell{overflow:hidden;padding:2px 3px;min-width:0}
 .ddr-tgrip{position:absolute;z-index:2;display:none}
@@ -265,7 +280,14 @@ const CSS = `
 .ddr-status output{min-width:40px;text-align:right;font-variant-numeric:tabular-nums}
 
 .ddr-preview{padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text)}
-.ddr-preview::backdrop{background:#0f172a88}
+.ddr-preview::backdrop,.ddr-subdialog::backdrop{background:#0f172a88}
+.ddr-subdialog{width:min(96vw,1200px);height:90vh;padding:0;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);overflow:hidden}
+.ddr-subdialog[open]{display:flex;flex-direction:column}
+.ddr-subdialog form{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--surface)}
+.ddr-subdialog form span{flex:1}
+.ddr-subdialog form button,.ddr-subedit{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer}
+.ddr-subdialog .ddr-primary{background:var(--a);border-color:var(--a);color:var(--a-text);font-weight:600}
+.ddr-subdialog>div{flex:1;min-height:0;border:0;border-radius:0}
 .ddr-preview form{display:flex;align-items:center;gap:12px}
 .ddr-preview [role=status]{color:var(--muted)}
 .ddr-sheet{position:relative;display:grid;place-items:center;width:min(92vw,900px);height:80vh;margin-top:8px;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#e5e7eb}
@@ -292,7 +314,7 @@ export const emptyTemplate = () => ({
   dataKey: 'rows',
   groupBy: '',
   groupPageBreak: false,
-  bands: Object.fromEntries(BANDS.map((b, i) => [b, { height: [60, 20, 20, 20, 20, 30, 30][i], elements: [] }])),
+  bands: Object.fromEntries(BANDS.map(b => [b, { height: HEIGHT[b] ?? 20, elements: [] }])),
 })
 
 const num = (v, fallback = 0) => Number.isFinite(+v) && v !== null && v !== '' ? +v : fallback
@@ -315,6 +337,7 @@ function clean(t) {
         const def = NEW[e.type] ?? { w: 80, h: 20 }
         e = { ...e, type: String(e.type ?? 'text'), x: Math.max(0, num(e.x)), y: Math.max(0, num(e.y)), w: Math.max(0, num(e.w, def.w)), h: Math.max(0, num(e.h, def.h)) }
         if (e.type === 'text' || e.type === 'barcode') e.text = String(e.text ?? '')
+        if (e.type === 'subreport' && !isObject(e.report)) e.report = { bands: {} } // its bands are cleaned when it is opened
         if (e.type === 'table') {
           const rows = (Array.isArray(e.cells) ? e.cells : []).filter(Array.isArray), width = Math.max(1, ...rows.map(r => r.length))
           e.cells = (rows.length ? rows : [[]]).map(r => Array.from({ length: width }, (_, c) => String(r[c] ?? '')))
@@ -351,7 +374,135 @@ const markup = node => [...node.childNodes].map(c => {
   return tag ? `<${tag}>${markup(c)}</${tag}>` : markup(c)
 }).join('')
 
-export function createDesigner(root, { template, onChange, preview, lang = 'en', theme = 'light', fonts = [], fontBase, fields = [] } = {}) {
+// ---- drawings on the canvas: charts from the sample data, barcodes -------------
+// They show what will print; the renderer draws the real thing (an exact,
+// scannable code; the chart from the real data with its value scale).
+
+const PALETTE = ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc948', '#b07aa1', '#9c755f']
+const SVG = 'http://www.w3.org/2000/svg'
+const svgEl = (name, attrs = {}) => {
+  const el = document.createElementNS(SVG, name)
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v)
+  return el
+}
+
+// value works out a chart value for a row: a field, a number, or + - * / and brackets
+// over them, as the renderer does ("qty * price"); NaN when it is not a number
+function value(expr, row) {
+  let i = 0
+  const src = String(expr ?? ''), peek = () => { while (src[i] === ' ') i++; return src[i] }
+  const field = path => path.split('.').reduce((o, k) => o?.[k], row)
+  const factor = () => {
+    const c = peek()
+    if (c === '(') { i++; const v = sum(); peek(); i++; return v }
+    if (c === '-') { i++; return -factor() }
+    if (c === '[') { const end = src.indexOf(']', i); const k = src.slice(i + 1, end); i = end + 1; return +row?.[k] }
+    const word = /^[\p{L}\p{N}_.]+/u.exec(src.slice(i))?.[0] ?? ''
+    i += word.length
+    return /^[\d.]/.test(word) ? +word : +field(word)
+  }
+  const product = () => { let v = factor(); for (let c = peek(); c === '*' || c === '/'; c = peek()) { i++; v = c === '*' ? v * factor() : v / factor() } return v }
+  const sum = () => { let v = product(); for (let c = peek(); c === '+' || c === '-'; c = peek()) { i++; v = c === '+' ? v + product() : v - product() } return v }
+  const own = row?.[src]
+  return own !== undefined ? +own : sum()
+}
+
+// chartSketch draws a chart into an SVG of the element's size, from rows of
+// the sample data, or from example values when there are none to draw from
+function chartSketch(e, rows) {
+  const sums = new Map()
+  for (const row of rows) {
+    const label = String(e.label ? (e.label.split('.').reduce((o, k) => o?.[k], row) ?? '') : ''), v = value(e.value, row)
+    if (Number.isFinite(v)) sums.set(label, (sums.get(label) ?? 0) + v)
+  }
+  if (!e.label || !e.value || !sums.size) [['A', 3], ['B', 5], ['C', 2], ['D', 4]].forEach(([l, v]) => sums.set(l, v)) // an example, for the shape
+  const labels = [...sums.keys()], vals = labels.map(l => sums.get(l)), w = e.w, h = e.h, color = e.color || PALETTE[0]
+  const svg = svgEl('svg', { width: '100%', height: '100%', viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: 'none', style: 'display:block' })
+  const text = (x, y, s, anchor = 'middle') => { const t = svgEl('text', { x, y, 'font-size': 7, 'text-anchor': anchor, fill: '#334155' }); t.textContent = s; svg.append(t) }
+  const short = v => Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : Math.abs(v) >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : String(Math.round(v * 100) / 100)
+  if (e.chart === 'pie' || e.chart === 'donut') {
+    const total = vals.reduce((a, v) => a + Math.max(v, 0), 0) || 1, r = Math.min(h, w * 0.55) / 2
+    let a = -Math.PI / 2
+    labels.forEach((l, i) => {
+      const sweep = 2 * Math.PI * Math.max(vals[i], 0) / total, c = PALETTE[i % PALETTE.length]
+      const p = (rad, ang) => `${r + rad * Math.cos(ang)} ${r + rad * Math.sin(ang)}`
+      const big = sweep > Math.PI ? 1 : 0, inner = e.chart === 'donut' ? r * 0.55 : 0
+      const d = sweep >= 2 * Math.PI - 1e-9
+        ? `M${p(r, a)}A${r} ${r} 0 1 1 ${p(r, a + Math.PI)}A${r} ${r} 0 1 1 ${p(r, a)}Z`
+        : `M${p(inner, a)}L${p(r, a)}A${r} ${r} 0 ${big} 1 ${p(r, a + sweep)}L${p(inner, a + sweep)}` + (inner ? `A${inner} ${inner} 0 ${big} 0 ${p(inner, a)}` : '') + 'Z'
+      if (sweep > 0) svg.append(svgEl('path', { d, fill: c }))
+      if ((i + 1) * 11 <= h) {
+        svg.append(svgEl('rect', { x: 2 * r + 8, y: i * 11 + 1, width: 7, height: 7, fill: c }))
+        text(2 * r + 18, i * 11 + 7.5, `${l}: ${short(vals[i])}`, 'start')
+      }
+      a += sweep
+    })
+    return svg
+  }
+  const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals) || 1
+  if (e.chart === 'hbar') {
+    const lw = Math.min(w * 0.3, 90), pw = w - lw - 50, slot = h / labels.length, x = v => lw + pw * (v - lo) / (hi - lo || 1)
+    labels.forEach((l, i) => {
+      const v = vals[i]
+      svg.append(svgEl('rect', { x: x(Math.min(v, 0)), y: slot * i + slot * 0.15, width: Math.abs(x(v) - x(0)), height: slot * 0.7, fill: color }))
+      if (slot >= 8) { text(lw - 4, slot * i + slot / 2 + 2.5, l, 'end'); text(x(Math.max(v, 0)) + 3, slot * i + slot / 2 + 2.5, short(v), 'start') }
+    })
+    svg.append(svgEl('line', { x1: x(0), x2: x(0), y1: 0, y2: h, stroke: '#888', 'stroke-width': 0.5 }))
+    return svg
+  }
+  const plot = h - 20, slot = w / labels.length, y = v => 10 + plot * (hi - v) / (hi - lo || 1), every = Math.ceil(30 / slot)
+  const pts = []
+  labels.forEach((l, i) => {
+    const v = vals[i], x = slot * i
+    if (e.chart === 'line') pts.push([x + slot / 2, y(v)])
+    else svg.append(svgEl('rect', { x: x + slot * 0.15, y: y(Math.max(v, 0)), width: slot * 0.7, height: Math.abs(y(v) - y(0)), fill: color }))
+    if (i % every === 0) { text(x + slot / 2, h - 2, l); text(x + slot / 2, y(Math.max(v, 0)) - 2, short(v)) }
+  })
+  if (pts.length) {
+    svg.append(svgEl('polyline', { points: pts.map(p => p.join(',')).join(' '), fill: 'none', stroke: color, 'stroke-width': 1.5 }))
+    for (const [x, yy] of pts) svg.append(svgEl('rect', { x: x - 2, y: yy - 2, width: 4, height: 4, fill: color }))
+  }
+  svg.append(svgEl('line', { x1: 0, x2: w, y1: y(0), y2: y(0), stroke: '#888', 'stroke-width': 0.5 }))
+  return svg
+}
+
+// codeSketch draws a barcode the way it will look: a QR code's finder squares
+// and modules in its quiet zone, or the bars of a Code 128. The modules follow
+// the text, but only the printed code is meant for scanning.
+function codeSketch(e) {
+  const text = String(e.text ?? ''), color = e.color || '#000'
+  let seed = 2166136261
+  for (const ch of text) seed = Math.imul(seed ^ ch.codePointAt(0), 16777619) >>> 0
+  const next = () => (seed = Math.imul(seed ^ (seed >>> 15), 2246822507) >>> 0, seed / 4294967296)
+  const h = e.showText ? Math.max(e.h - 10, 1) : e.h
+  const svg = svgEl('svg', { width: '100%', height: '100%', viewBox: `0 0 ${e.w} ${e.h}`, preserveAspectRatio: 'none', style: 'display:block' })
+  if (e.format === 'code128') {
+    let x = e.w * 0.05
+    while (x < e.w * 0.95) {
+      const bar = (1 + Math.floor(next() * 3)) * e.w / 160
+      svg.append(svgEl('rect', { x, y: 0, width: bar, height: h, fill: color }))
+      x += bar + (1 + Math.floor(next() * 3)) * e.w / 160
+    }
+  } else {
+    const n = 25, m = Math.min(e.w, h) / (n + 4), q = 2 * m, dark = (x, y) => svg.append(svgEl('rect', { x: q + x * m, y: q + y * m, width: m, height: m, fill: color }))
+    const finder = (fx, fy) => {
+      for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) if (y % 6 === 0 || x % 6 === 0 || (x > 1 && x < 5 && y > 1 && y < 5)) dark(fx + x, fy + y)
+    }
+    finder(0, 0); finder(n - 7, 0); finder(0, n - 7)
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const inFinder = (x < 8 && y < 8) || (x >= n - 8 && y < 8) || (x < 8 && y >= n - 8)
+      if (!inFinder && next() < 0.5) dark(x, y)
+    }
+  }
+  if (e.showText) {
+    const t = svgEl('text', { x: e.w / 2, y: e.h - 2, 'font-size': 7, 'text-anchor': 'middle', fill: color })
+    t.textContent = text
+    svg.append(t)
+  }
+  return svg
+}
+
+export function createDesigner(root, { template, onChange, preview, lang = 'en', theme = 'light', fonts = [], fontBase, fields = [], data } = {}) {
   let tpl, sel = [], editing = null, cancelled = false, clip = [], zoom = 1, snap = true, activeCol = 0, activeRow = 0
   let history = [], at = -1
   const images = [] // data URIs, kept out of the undo snapshots
@@ -394,6 +545,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       group('Text', insert('text', 'text', 'Text box')) +
       group('Table', `<input data-id="rows" type="number" min="1" max="50" value="2" title="${L('Rows')}" aria-label="${L('Table rows')}">×<input data-id="cols" type="number" min="1" max="20" value="3" title="${L('Columns')}" aria-label="${L('Table columns')}">` + insert('table', 'table', 'Table')) +
       group('Illustrations', tile('picture', 'image', 'Picture', 'Insert a picture from this device') + insert('rect', 'rect', 'Rectangle') + insert('line', 'line', 'Line') + insert('chart', 'chart', 'Chart') + insert('barcode', 'barcode', 'Barcode')) +
+      group('Report', insert('subreport', 'subreport', 'Sub-report')) +
       group('Data', `<select data-id="field" title="${L('Insert a field into the selected text')}" aria-label="${L('Insert field')}"></select>`),
     Layout:
       group('Page',
@@ -405,7 +557,8 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
         swatch('', '▰', 'Page colour').replace('data-prop=""', 'data-page="background"') + ib('noBackground', 'noFill', 'No page colour') +
         tile('backgroundImage', 'image', 'Picture', 'Use a picture as the page background') + ib('noBackgroundImage', 'delete', 'Remove the background picture')) +
       group('Grouping', `<label>${L('Sort by')}<input data-tpl="sortBy" type="text" placeholder="${L('row field, -field for descending')}" title="${L('row field, -field for descending')}"></label>` +
-        `<label>${L('Group by')}<input data-tpl="groupBy" type="text" placeholder="${L('row field')}"></label><label><input data-tpl="groupPageBreak" type="checkbox">${L('New page per group')}</label>`) +
+        `<label>${L('Group by')}<input data-tpl="groupBy" type="text" placeholder="${L('row field, or up to three: region, city')}" title="${L('row field, or up to three: region, city')}"></label><label><input data-tpl="groupPageBreak" type="checkbox">${L('New page per group')}</label>` +
+        `<label title="${L('Excel (xlsx, xls): a worksheet for each group of the first Group by field')}"><input data-tpl="sheetPerGroup" type="checkbox">${L('A sheet per group')}</label>`) +
       group('Data', `<label>${L('Rows key')}<input data-tpl="dataKey" type="text"></label><label title="${L('Thousands separator')}">1<input data-tpl="thousands" type="text" style="width:34px" placeholder="," aria-label="${L('Thousands separator')}">000</label>` +
         `<label title="${L('No thousands separator')}"><input data-id="nothousands" type="checkbox">${L('No thousands separator')}</label>` +
         `<label title="${L('Decimal sign')}">0<input data-tpl="decimal" type="text" style="width:34px" placeholder="." aria-label="${L('Decimal sign')}">00</label>` +
@@ -432,6 +585,37 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   const $ = s => root.querySelector(s), $$ = s => [...root.querySelectorAll(s)]
   const page = $('.ddr-page'), props = $('.ddr-props'), ruler = $('.ddr-ruler'), zoomer = $('.ddr-zoom'), sizer = $('.ddr-sizer'), stage = $('.ddr-stage')
 
+  // the rows charts are drawn from: those of the sample data, under the rows key or as the list itself
+  const sampleRows = () => Array.isArray(data) ? data : Array.isArray(data?.[tpl.dataKey || 'rows']) ? data[tpl.dataKey || 'rows'] : []
+
+  // editSubreport opens a designer of its own for the bands of a sub-report, as
+  // wide as its box. Done keeps the changes; Close or Escape leaves them.
+  function editSubreport(e) {
+    const dialog = root.appendChild(document.createElement('dialog')), host = document.createElement('div')
+    dialog.className = 'ddr-subdialog'
+    // what happens in the designer inside stays there: no click, key or change reaches this one
+    for (const type of ['click', 'mousedown', 'pointerdown', 'keydown', 'change', 'input', 'dragstart', 'dragover', 'drop', 'wheel']) dialog.addEventListener(type, ev => ev.stopPropagation())
+    dialog.innerHTML = `<form method="dialog"><b></b><span></span><button value="cancel">${L('Close')}</button><button value="done" class="ddr-primary">${L('Done')}</button></form>`
+    dialog.querySelector('b').textContent = `${L('Sub-report')}: ${e.data || '?'}`
+    dialog.append(host)
+    // its sample rows: the list in the sample data, in the report's data or in its first row
+    const list = [Array.isArray(data) ? data[0] : data, sampleRows()[0]].map(o => o?.[e.data]).find(Array.isArray) ?? []
+    const page = { width: e.w, height: 1000, margin: 0, marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0 }
+    const inner = createDesigner(host, { template: { ...(e.report ?? {}), page }, lang, theme, fonts, fontBase, fields, data: list })
+    dialog.onclose = () => {
+      if (dialog.returnValue === 'done') {
+        const t = inner.getTemplate()
+        delete t.page // the box of the element is its page
+        e.report = t
+        redraw()
+      }
+      dialog.remove()
+      keepFocus()
+    }
+    dialog.showModal()
+    return inner
+  }
+
   // the Field menu: the data's own fields first, so a name is picked rather than typed (and mistyped)
   function fillFields() {
     const opt = v => `<option value="${v.replaceAll('&', '&amp;').replaceAll('"', '&quot;')}">${v.replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</option>`
@@ -443,6 +627,8 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
 
   const px = v => v + 'px'
   const bandOf = e => BANDS.find(b => tpl.bands[b].elements.includes(e))
+  const levels = () => String(tpl.groupBy ?? '').split(',').filter(f => f.trim()).length
+  const shown = () => BANDS.filter(b => !LEVEL[b] || levels() >= LEVEL[b] || tpl.bands[b].elements.length)
   const contentW = () => tpl.page.width - tpl.page.marginLeft - tpl.page.marginRight
   const target = () => (sel[0] && bandOf(sel[0])) || 'header'
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(+v) || lo))
@@ -552,6 +738,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   function add(type, band, x, y, extra) {
     const e = { type, x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)), ...structuredClone(NEW[type]), ...extra }
     if (type === 'table') tableSize(e, $('[data-id=rows]').value, $('[data-id=cols]').value)
+    if (type === 'subreport' && !e.report) e.report = { bands: { ...emptyTemplate().bands, header: { height: 0, elements: [] }, footer: { height: 0, elements: [] } } }
     // do not hide a new element exactly on top of another one
     for (let i = 0; i < 20 && tpl.bands[band].elements.some(o => o.x === e.x && o.y === e.y); i++) { e.x += 10; e.y += 10 }
     tpl.bands[band].elements.push(e)
@@ -838,7 +1025,8 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   // report); Ctrl+V takes them back, or turns plain text into a text box. The
   // ribbon's Copy and Cut fill it too; its Paste uses what was copied here.
   let copying = false
-  const ours = ev => copying || !editing && !ev.target.closest?.('input,select,textarea') && root.contains(document.activeElement)
+  // the focus is in this designer, and not in one opened inside it (a sub-report's)
+  const ours = ev => copying || !editing && !ev.target.closest?.('input,select,textarea') && document.activeElement?.closest('.ddr') === root
   function toSystem(how) {
     copying = true
     try { document.execCommand(how) } catch {} finally { copying = false }
@@ -1048,7 +1236,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       width: px(p.width), minHeight: px(p.height), padding: SIDES.map(s => px(p[s])).join(' '),
       backgroundColor: p.background || '#fff', backgroundImage: p.backgroundImage ? `url("${p.backgroundImage}")` : '',
     })
-    page.replaceChildren(...BANDS.map(name => {
+    page.replaceChildren(...shown().map(name => {
       const band = tpl.bands[name], el = document.createElement('div'), grip = document.createElement('div')
       el.className = 'ddr-band'
       el.dataset.name = name
@@ -1222,9 +1410,15 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       if (e.src?.startsWith('data:')) s.backgroundImage = `url("${e.src}")`
       else if (e.src) n.textContent = e.src // a picture from the data: its placeholder
     } else if (e.type === 'chart') {
-      n.textContent = `${e.chart} chart\n${e.value || 'value?'} per ${e.label || 'label?'}`
+      n.append(chartSketch(e, sampleRows()))
+      n.title = `${e.chart}: ${e.value || '?'} / ${e.label || '?'}`
     } else if (e.type === 'barcode') {
-      n.textContent = `${e.format === 'code128' ? 'Code 128' : 'QR code'}\n${e.text}`
+      n.append(codeSketch(e))
+      n.title = `${e.format === 'code128' ? 'Code 128' : 'QR code'}: ${e.text}`
+    } else if (e.type === 'subreport') { // what its bands hold; double-click to change them
+      const bands = Object.entries(e.report?.bands ?? {}).filter(([, b]) => b.elements?.length).map(([k, b]) => `${L(k)} (${b.elements.length})`)
+      n.textContent = `${L('Sub-report')}: ${e.data || '?'}\n${bands.join(' · ') || L('Edit sub-report…')}`
+      n.ondblclick = () => editSubreport(e)
     } else { // a type this designer does not know: keep it, show what it is
       n.dataset.unknown = 1
       n.textContent = e.type
@@ -1321,7 +1515,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     const e = sel[0]
     if (!e) {
       note(L('Band heights. Select an element to edit it; double-click a text or a table cell to type.'))
-      for (const b of BANDS) {
+      for (const b of shown()) {
         const band = tpl.bands[b]
         field(band, 'height', L(b))
         if (b === 'header' || b === 'columnHeader' || b === 'footer') { // every page, or the first (or last) only
@@ -1333,11 +1527,16 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       return
     }
     // keyboard way to move an element to another band
-    const band = choice(BANDS, bandOf(e))
+    const band = choice(shown(), bandOf(e))
     band.onchange = () => moveTo([e], band.value)
     row(L('band'), band)
     // the colours of the header and the total row only show while that row is on
     for (const k of FIELDS[e.type] ?? BASE) if (!/^(header|footer)./.test(k) || e[k.slice(0, 6)]) field(e, k, L(LABEL[k] ?? k))
+    if (e.type === 'subreport') {
+      note(L('A report of its own for each item of a list in the data: header, column header, groups, detail and summary. Its footer is not used.'))
+      const b = props.appendChild(Object.assign(document.createElement('button'), { type: 'button', textContent: L('Edit sub-report…'), className: 'ddr-subedit' }))
+      b.onclick = () => editSubreport(e)
+    }
     if (e.type === 'table') { // rows and columns next to the cell last clicked
       const bar = props.appendChild(document.createElement('div'))
       bar.className = 'ddr-tablebar'
@@ -1461,5 +1660,6 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     getTemplate: () => structuredClone(tpl),
     setTemplate: t => load(t),
     setFields: list => { fields = Array.isArray(list) ? list.map(String) : []; fillFields() },
+    setData: d => { data = d; draw() },
   }
 }
