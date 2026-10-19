@@ -38,6 +38,7 @@ public final class DdReport {
                 p.destroyForcibly();
             }
         }, CompletableFuture.delayedExecutor(timeout.toMillis(), TimeUnit.MILLISECONDS));
+        IOException tooLong = new IOException("ddreport took longer than " + timeout.toMillis() + " ms");
         try {
             // the binary reads all of stdin before writing, so sequential I/O cannot deadlock
             try (OutputStream in = p.getOutputStream()) {
@@ -45,11 +46,18 @@ public final class DdReport {
             } catch (IOException e) {
                 // the binary stopped reading early; its exit code and message below say why
             }
-            byte[] out = p.getInputStream().readAllBytes();
-            String err = new String(p.getErrorStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+            byte[] out, errBytes;
+            try {
+                out = p.getInputStream().readAllBytes();
+                errBytes = p.getErrorStream().readAllBytes();
+            } catch (IOException e) {
+                // stopping the process closes its streams (on Linux): that is the time limit, not a read error
+                throw timedOut.get() ? tooLong : e;
+            }
+            String err = new String(errBytes, StandardCharsets.UTF_8).trim();
             int status = p.waitFor();
             if (timedOut.get()) {
-                throw new IOException("ddreport took longer than " + timeout.toMillis() + " ms");
+                throw tooLong;
             }
             if (status != 0) {
                 throw new IOException(err.isEmpty() ? "ddreport exited with " + status : err);

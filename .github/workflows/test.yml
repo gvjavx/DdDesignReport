@@ -8,6 +8,7 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false # each system reports its own result
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
