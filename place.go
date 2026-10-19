@@ -1,9 +1,16 @@
 package ddreport
 
 import (
+	"bytes"
 	"cmp"
+	"encoding/base64"
+	"image"
+	_ "image/gif" // the picture formats the PDF draws
+	_ "image/jpeg"
+	_ "image/png"
 	"math"
 	"slices"
+	"strings"
 )
 
 // place resolves one instance of a band: placeholders, growing texts, charts
@@ -16,7 +23,18 @@ import (
 // past a grown text stretch, so frames stay closed.
 func (r *report) place(b Band, sc scope) ([]Element, float64) {
 	type grower struct{ top, bottom, grow, shift float64 }
-	els := slices.Clone(b.Elements)
+	var els []Element
+	for _, e := range b.Elements {
+		if !sc.shows(e) {
+			continue
+		}
+		if e.Type == "image" && strings.Contains(e.Src, "{{") { // a picture from the data
+			if e.Src = sc.resolve(e.Src); !picture(e.Src) {
+				continue // no picture, or not one the PDF can draw: the space stays empty
+			}
+		}
+		els = append(els, e)
+	}
 	height := make([]float64, len(els)) // new height of the texts that grew
 	var growers []grower
 	for i := range els {
@@ -65,7 +83,7 @@ func (r *report) place(b Band, sc scope) ([]Element, float64) {
 		switch {
 		case height[i] > 0:
 			e.H = height[i]
-		case e.Type == "rect" || e.Type == "line" && e.H > e.W:
+		case e.Type == "rect" || e.Type == "line" && e.H > e.W && e.Slope == "":
 			e.H = bottom + shift(bottom, all) - e.Y
 		}
 		switch e.Type {
@@ -78,4 +96,20 @@ func (r *report) place(b Band, sc scope) ([]Element, float64) {
 		}
 	}
 	return out, b.Height + shift(math.Inf(1), all)
+}
+
+// picture says whether a value from the data is a picture the PDF can draw: a
+// PNG, JPEG or GIF data URI whose image actually decodes. A broken picture in
+// one row then leaves its space empty instead of failing the whole report.
+func picture(src string) bool {
+	_, b64, ok := strings.Cut(src, ";base64,")
+	if !ok || !dataImage.MatchString(src) {
+		return false
+	}
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return false
+	}
+	_, _, err = image.DecodeConfig(bytes.NewReader(raw))
+	return err == nil
 }

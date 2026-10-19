@@ -14,8 +14,10 @@ import (
 	"html"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"codeberg.org/go-pdf/fpdf"
@@ -30,13 +32,17 @@ var Font, FontBold []byte
 type Template struct {
 	Page           Page
 	DataKey        string // key of the row array in the data, default "rows"
+	SortBy         string // row fields to sort by, "-" for descending: "category, -total"
 	GroupBy        string // row field; rows with the same value form a group
 	GroupPageBreak bool   // every group starts on a new page
-	Thousands      string // separators used by {{field:2}}, default "," and "."
+	Thousands      string // separators used by {{field:2}}, default "," and "."; "none" for no thousands separator
 	Decimal        string
+	Locale         string // "id" for Indonesian month and day names in dates, English otherwise
+	CSVSeparator   string // , (default), ; or a tab
 	Bands          struct{ Header, ColumnHeader, GroupHeader, Detail, GroupFooter, Summary, Footer Band }
 
 	nodes map[string]node // expressions, parsed once
+	now   time.Time       // {{now}}, the same on every page
 }
 
 type Page struct {
@@ -59,40 +65,57 @@ func (p Page) margins() (top, right, bottom, left float64) {
 
 // Band is a horizontal strip of the report. Header, ColumnHeader and Footer
 // repeat on every page, Detail repeats per data row, GroupHeader and
-// GroupFooter surround each group, Summary follows the last row.
+// GroupFooter surround each group (and, without GroupBy, all the rows as one
+// group), Summary follows the last row. A group header is repeated at the top
+// of a page its group continues on.
 type Band struct {
 	Height   float64
 	Elements []Element
+	Pages    string // header, column header, footer: "first" for the first page only, "last" (footer) for the last
+	NewPage  bool   // group header, detail, group footer, summary: start on a new page
 }
 
 type Element struct {
 	Type       string // text | rect | line | image | chart | table | barcode
 	X, Y, W, H float64
-	// Text may contain {{field}}, {{a.b}}, {{page}}, {{pages}} and the
+	// Text may contain {{field}}, {{a.b}}, {{page}}, {{pages}}, {{now}}, the
 	// aggregates {{sum(f)}}, {{avg(f)}}, {{min(f)}}, {{max(f)}}, {{count()}},
 	// which run over the group inside group and detail bands and over all rows
-	// elsewhere. A ":N" suffix formats a number with N decimals: {{sum(price):2}}.
-	// Parts of it can be styled with <b>, <i> and <u>.
+	// elsewhere, and the expressions described in expr.go. ":N" formats a
+	// number with N decimals ({{sum(price):2}}), a pattern formats a date
+	// ({{date:dd MMMM yyyy}}). Parts of it can be styled with <b>, <i> and <u>.
 	Text                    string
-	Font                    string // Helvetica (default) | Times | Courier
+	ShowIf                  string // condition such as paid = 'yes'; when false the element is not printed
+	Font                    string // Helvetica (default) | Times | Courier | a name in Families
 	FontSize                float64
 	LineHeight              float64 // multiple of the font size, default 1.2
 	Bold, Italic, Underline bool
 	Grow                    bool   // text: the band grows with the wrapped text instead of clipping it
-	Align                   string // left | center | right
+	Align                   string // left | center | right | justify
+	VAlign                  string // text: top (default) | middle | bottom
 	Color                   string // #rrggbb, text or stroke colour
 	Fill                    string // #rrggbb, background
 	Border                  float64
-	Src                     string // image as data URI
+	Src                     string // image: PNG, JPEG or GIF data URI, or a placeholder such as {{photo}} whose value is one
+	Slope                   string // line: "down" from top left to bottom right, "up" from bottom left to top right; otherwise flat or upright
+	ShowText                bool   // barcode: print its text under it
 
 	Chart        string // bar | hbar | line | pie | donut
 	Label, Value string // chart: row fields; values are summed per label
 
 	Format string // barcode: qr (default) | code128; its content is Text
 
-	Cells  [][]string // table: cell texts, row by row
-	Cols   []float64  // table: relative column widths, default equal
-	Aligns []string   // table: alignment per column
+	Cells     [][]string // table: cell texts, row by row
+	Cols      []float64  // table: relative column widths, default equal
+	Aligns    []string   // table: alignment per column
+	TextColor string     // table: colour of the body text; Color is the colour of its lines
+	// table: the first row is a header and the last a total row, both bold,
+	// each with its own background and text colour
+	Header, Footer          bool
+	HeaderFill, HeaderColor string
+	FooterFill, FooterColor string
+	Stripe                  string // table: background of every second body row
+	Grid                    string // table: which lines a border draws: all (default) | outer | rows
 
 	Points []float64 // internal: x,y pairs of a "poly" (charts), x,y,w,h of the dark runs of a "code" (barcodes); relative to X,Y
 	runs   []run     // text split into styled runs, placeholders resolved
@@ -158,6 +181,7 @@ func (b *Band) expand() {
 		if len(e.Cells) == 0 || len(e.Cells[0]) == 0 {
 			continue
 		}
+		from := len(out)
 		rows, cols := len(e.Cells), len(e.Cells[0])
 		widths, sum := make([]float64, cols), 0.0
 		for c := range widths {
@@ -170,7 +194,25 @@ func (b *Band) expand() {
 		if hexColor.MatchString(e.Fill) {
 			out = append(out, Element{Type: "rect", X: e.X, Y: e.Y, W: e.W, H: e.H, Fill: e.Fill})
 		}
-		rh, x := e.H/float64(rows), e.X
+		rh := e.H / float64(rows)
+		// look gives a row its background, text colour and weight
+		look := func(r int) (fill, ink string, bold bool) {
+			switch {
+			case e.Header && r == 0:
+				return e.HeaderFill, e.HeaderColor, true
+			case e.Footer && r == rows-1 && (r > 0 || !e.Header):
+				return e.FooterFill, e.FooterColor, true
+			case e.Header && r%2 == 0 || !e.Header && r%2 == 1: // every second body row
+				return e.Stripe, e.TextColor, e.Bold
+			}
+			return "", e.TextColor, e.Bold
+		}
+		for r := range rows {
+			if fill, _, _ := look(r); hexColor.MatchString(fill) {
+				out = append(out, Element{Type: "rect", X: e.X, Y: e.Y + float64(r)*rh, W: e.W, H: rh, Fill: fill})
+			}
+		}
+		x := e.X
 		for c := 0; c < cols; c++ {
 			cw := widths[c] / sum * e.W
 			for r, row := range e.Cells {
@@ -178,23 +220,31 @@ func (b *Band) expand() {
 					continue
 				}
 				cell := e
-				cell.Type, cell.Text, cell.Fill, cell.Color, cell.Align = "text", row[c], "", "", ""
+				cell.Type, cell.Text, cell.Fill, cell.Align = "text", row[c], "", ""
+				_, cell.Color, cell.Bold = look(r)
 				cell.X, cell.Y, cell.W, cell.H = x+3, e.Y+float64(r)*rh+2, cw-6, rh-4
 				if c < len(e.Aligns) {
 					cell.Align = e.Aligns[c]
 				}
 				out = append(out, cell)
 			}
-			if e.Border > 0 {
+			if e.Border > 0 && (e.Grid == "" || e.Grid == "all" || e.Grid == "outer" && c == 0) {
 				out = append(out, Element{Type: "line", X: x, Y: e.Y, H: e.H, Border: e.Border, Color: e.Color})
 			}
 			x += cw
 		}
 		if e.Border > 0 {
-			out = append(out, Element{Type: "line", X: e.X + e.W, Y: e.Y, H: e.H, Border: e.Border, Color: e.Color})
-			for r := 0; r <= rows; r++ {
-				out = append(out, Element{Type: "line", X: e.X, Y: e.Y + float64(r)*rh, W: e.W, Border: e.Border, Color: e.Color})
+			if e.Grid != "rows" {
+				out = append(out, Element{Type: "line", X: e.X + e.W, Y: e.Y, H: e.H, Border: e.Border, Color: e.Color})
 			}
+			for r := 0; r <= rows; r++ {
+				if e.Grid != "outer" || r == 0 || r == rows {
+					out = append(out, Element{Type: "line", X: e.X, Y: e.Y + float64(r)*rh, W: e.W, Border: e.Border, Color: e.Color})
+				}
+			}
+		}
+		for i := from; i < len(out); i++ { // the lines and backgrounds hide with the table
+			out[i].ShowIf = e.ShowIf
 		}
 	}
 	b.Elements = out
@@ -212,19 +262,14 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 	switch format {
 	case "csv":
 		cells, _ := r.table()
-		return toCSV(cells)
+		return toCSV(cells, t.CSVSeparator)
 	case "xlsx":
 		return toXLSX(r.table())
 	case "xls":
 		return toXLS(r.table())
 	case "html", "pdf":
-		b := t.Bands
-		flow := max(b.Detail.Height, b.Summary.Height)
-		if t.GroupBy != "" {
-			flow = max(flow, b.GroupHeader.Height, b.GroupFooter.Height)
-		}
-		if top, _, bottom, _ := t.Page.margins(); top+bottom+b.Header.Height+b.ColumnHeader.Height+flow+b.Footer.Height > t.Page.Height {
-			return nil, errors.New("ddreport: bands do not fit on the page")
+		if err := t.fits(); err != nil {
+			return nil, err
 		}
 		if err := r.initPDF(); err != nil {
 			return nil, fmt.Errorf("ddreport: font: %w", err)
@@ -237,6 +282,36 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 		return r.toPDF(pages)
 	}
 	return nil, fmt.Errorf("ddreport: unknown format %q", format)
+}
+
+// grouped says whether the group bands print: with GroupBy, or when they have
+// something in them (then all the rows are one group).
+func (t *Template) grouped() bool {
+	b := t.Bands
+	return t.GroupBy != "" || len(b.GroupHeader.Elements) > 0 || len(b.GroupFooter.Elements) > 0
+}
+
+// fits checks that the fixed bands leave room for the tallest flowing band,
+// and says by how much they do not.
+func (t *Template) fits() error {
+	b := t.Bands
+	top, _, bottom, _ := t.Page.margins()
+	tallest, name := b.Detail.Height, "detail"
+	for _, f := range []struct {
+		band Band
+		name string
+		on   bool
+	}{{b.Summary, "summary", true}, {b.GroupHeader, "groupHeader", t.grouped()}, {b.GroupFooter, "groupFooter", t.grouped()}} {
+		if f.on && f.band.Height > tallest {
+			tallest, name = f.band.Height, f.name
+		}
+	}
+	need := top + bottom + b.Header.Height + b.ColumnHeader.Height + tallest + b.Footer.Height
+	if need <= t.Page.Height {
+		return nil
+	}
+	return fmt.Errorf("ddreport: bands do not fit on the page: margins %g + header %g + columnHeader %g + %s %g + footer %g = %gpt, the page is %gpt tall; make a band lower or the page taller",
+		top+bottom, b.Header.Height, b.ColumnHeader.Height, name, tallest, b.Footer.Height, need, t.Page.Height)
 }
 
 // newReport parses the template, applies its defaults and normalises the data.
@@ -257,6 +332,10 @@ func newReport(template []byte, data any) (*report, error) {
 			t.Thousands = ","
 		}
 	}
+	if t.Thousands == "none" {
+		t.Thousands = ""
+	}
+	t.now = time.Now()
 	bands := &t.Bands
 	images := []string{t.Page.BackgroundImage}
 	for _, b := range []*Band{&bands.Header, &bands.ColumnHeader, &bands.GroupHeader, &bands.Detail, &bands.GroupFooter, &bands.Summary, &bands.Footer} {
@@ -268,8 +347,9 @@ func newReport(template []byte, data any) (*report, error) {
 		}
 	}
 	for _, src := range images {
-		if src != "" && !dataImage.MatchString(src) {
-			return nil, errors.New("ddreport: image: src must be a data:image/...;base64 URI")
+		// a placeholder ({{photo}}) is checked once it is filled in, and drawn only if it is a picture
+		if src != "" && !strings.Contains(src, "{{") && !dataImage.MatchString(src) {
+			return nil, errors.New("ddreport: image: src must be a PNG, JPEG or GIF data URI (data:image/png;base64,...)")
 		}
 	}
 	raw, err := json.Marshal(data)
@@ -285,17 +365,72 @@ func newReport(template []byte, data any) (*report, error) {
 	var ok bool
 	if r.rows, ok = v.([]any); !ok {
 		r.rows, _ = r.root[t.DataKey].([]any)
+		if _, has := r.root[t.DataKey]; !has && len(bands.Detail.Elements) > 0 {
+			// the detail band waits for rows that are under another name: say so instead of printing none
+			for k, x := range r.root {
+				if _, list := x.([]any); list {
+					return nil, fmt.Errorf("ddreport: data: no %q list for the detail band, but there is %q; set the rows key (dataKey) to %q", t.DataKey, k, k)
+				}
+			}
+		}
 	}
+	t.sort(r.rows)
 	return r, nil
 }
 
+// sort orders the rows by SortBy: numbers as numbers, the rest as text, rows
+// without the field last. Rows that compare equal keep their order.
+func (t *Template) sort(rows []any) {
+	var keys []string
+	for _, k := range strings.Split(t.SortBy, ",") {
+		if k = strings.TrimSpace(k); k != "" && k != "-" {
+			keys = append(keys, k)
+		}
+	}
+	if len(keys) == 0 {
+		return
+	}
+	slices.SortStableFunc(rows, func(a, b any) int {
+		ra, _ := a.(map[string]any)
+		rb, _ := b.(map[string]any)
+		for _, k := range keys {
+			desc := strings.HasPrefix(k, "-")
+			k = strings.TrimPrefix(k, "-")
+			x, y := lookup(k, ra), lookup(k, rb)
+			var c int
+			switch {
+			case x == nil && y == nil:
+			case x == nil:
+				c = 1
+			case y == nil:
+				c = -1
+			default:
+				f, okx := num(x)
+				g, oky := num(y)
+				if c = strings.Compare(str(x), str(y)); okx && oky {
+					c = compareFloat(f, g)
+				}
+				if desc {
+					c = -c
+				}
+			}
+			if c != 0 {
+				return c
+			}
+		}
+		return 0
+	})
+}
+
 type report struct {
-	t      *Template
-	root   map[string]any
-	rows   []any
-	pdf    *fpdf.Fpdf // the PDF being written; also measures text for both PDF and HTML
-	family string
-	tr     func(string) string // UTF-8 to the PDF font's encoding
+	t        *Template
+	root     map[string]any
+	rows     []any
+	pdf      *fpdf.Fpdf // the PDF being written; also measures text for both PDF and HTML
+	family   string     // Helvetica, or "custom" when Font is set
+	familyTr func(string) string
+	tr       func(string) string // UTF-8 to the current PDF font's encoding
+	added    map[string]bool     // faces from Families already in the PDF
 }
 
 func (r *report) initPDF() error {
@@ -304,8 +439,9 @@ func (r *report) initPDF() error {
 	r.pdf.SetMargins(0, 0, 0)
 	r.pdf.SetAutoPageBreak(false, 0)
 	r.pdf.SetCellMargin(0)
+	r.added = map[string]bool{}
 	latin := r.pdf.UnicodeTranslatorFromDescriptor("")
-	r.family, r.tr = "Helvetica", func(s string) string {
+	r.family, r.familyTr = "Helvetica", func(s string) string {
 		var b strings.Builder
 		for _, c := range s {
 			if out := latin(string(c)); c < 128 || out != "." {
@@ -323,13 +459,36 @@ func (r *report) initPDF() error {
 		}
 		r.pdf.AddUTF8FontFromBytes("custom", "", Font)
 		r.pdf.AddUTF8FontFromBytes("custom", "B", bold)
-		r.family, r.tr = "custom", func(s string) string { return s }
+		r.family, r.familyTr = "custom", func(s string) string { return s }
 	}
+	r.tr = r.familyTr
 	return r.pdf.Error()
 }
 
 func (r *report) font(e Element, p run) {
+	// a family from Families, its faces added to the PDF the first time they are used
+	if f := Families[e.Font]; f != nil && f.Regular != nil {
+		style := ""
+		if p.bold {
+			style += "B"
+		}
+		if p.italic {
+			style += "I"
+		}
+		name := "f" + strings.ReplaceAll(e.Font, " ", "")
+		if !r.added[name+style] {
+			r.added[name+style] = true
+			r.pdf.AddUTF8FontFromBytes(name, style, f.face(p.bold, p.italic))
+		}
+		if p.underline {
+			style += "U"
+		}
+		r.pdf.SetFont(name, style, e.size())
+		r.tr = func(s string) string { return s }
+		return
+	}
 	family, style := r.family, ""
+	r.tr = r.familyTr
 	if Font == nil && (e.Font == "Times" || e.Font == "Courier") {
 		family = e.Font
 	}
@@ -354,9 +513,14 @@ type span struct {
 type textLine struct {
 	spans []span
 	w     float64
+	end   bool // the last line of a paragraph, which justified text leaves as it is
 }
 
-var token = regexp.MustCompile(`\n|[^\S\n]+|\S+`)
+// softBreak breaks a line without ending its paragraph; split uses it to carry
+// the lines of a text over to the next page exactly as they were.
+const softBreak = " "
+
+var token = regexp.MustCompile(`\n|\x{2028}|[^\S\n]+|[^\s\x{2028}]+`)
 
 // chop cuts a word that is wider than the box (a URL, a long id) into pieces that fit.
 func (r *report) chop(word string, w float64) []string {
@@ -384,7 +548,8 @@ func (r *report) layout(e Element) []textLine {
 			return span{run{s, p.bold, p.italic, p.underline}, r.pdf.GetStringWidth(r.tr(s))}
 		}
 		for _, tok := range token.FindAllString(p.text, -1) {
-			if tok == "\n" {
+			if tok == "\n" || tok == softBreak {
+				lines[len(lines)-1].end = tok == "\n"
 				lines, space = append(lines, textLine{}), nil
 				continue
 			}
@@ -409,7 +574,65 @@ func (r *report) layout(e Element) []textLine {
 			}
 		}
 	}
+	lines[len(lines)-1].end = true
 	return lines
+}
+
+// carry turns lines back into runs that lay out as the same lines.
+func carry(lines []textLine) []run {
+	out := []run{}
+	for i, l := range lines {
+		if i > 0 {
+			brk := softBreak
+			if lines[i-1].end {
+				brk = "\n"
+			}
+			out = append(out, run{text: brk})
+		}
+		for _, s := range l.spans {
+			out = append(out, s.run)
+		}
+	}
+	return out
+}
+
+// split cuts a placed band at height cut: what is above stays, what is below
+// moves up to start the next page, and a text or a frame that crosses the cut
+// is divided, line by line for a text. It returns the part that continues and
+// its height.
+func (r *report) split(els []Element, h, cut float64) (now, rest []Element, restH float64) {
+	restH = h - cut
+	for _, e := range els {
+		switch {
+		case e.Y+e.H <= cut:
+			now = append(now, e)
+			continue
+		case e.Y >= cut:
+			e.Y -= cut
+		case e.Type == "text":
+			lines, lh := r.layout(e), e.size()*e.leading()
+			n := min(max(int((cut-e.Y)/lh), 0), len(lines))
+			if n > 0 {
+				top := e
+				top.runs, top.H = carry(lines[:n]), float64(n)*lh
+				now = append(now, top)
+			}
+			if n == len(lines) {
+				continue
+			}
+			e.runs, e.Y, e.H = carry(lines[n:]), 0, float64(len(lines)-n)*lh
+		case e.Type == "rect" || e.Type == "line" && e.H > e.W && e.Slope == "":
+			top := e
+			top.H = cut - e.Y
+			now = append(now, top)
+			e.Y, e.H = 0, e.Y+e.H-cut
+		default: // a picture, a chart, a barcode: whole, on the next page
+			e.Y = 0
+		}
+		rest = append(rest, e)
+		restH = max(restH, e.Y+e.H)
+	}
+	return now, rest, restH
 }
 
 // paginate lays the bands out on pages.
@@ -417,15 +640,21 @@ func (r *report) paginate(total int) [][]Element {
 	t := r.t
 	p, b := t.Page, t.Bands
 	mTop, _, mBottom, mLeft := p.margins()
-	bottom := p.Height - mBottom - b.Footer.Height
 	var pages [][]Element
-	var y, top float64
+	var y, top, bottom float64
+	var group func() // repeats the header of the group under way at the top of a new page
 	put := func(els []Element, at float64) {
 		for i := range els {
 			els[i].X += mLeft
 			els[i].Y += at
 		}
 		pages[len(pages)-1] = append(pages[len(pages)-1], els...)
+	}
+	// on says whether a band prints on the current page: a band marked "first"
+	// prints on the first page only, one marked "last" (footer) on the last
+	on := func(band Band, last bool) bool {
+		n := len(pages)
+		return band.Pages != "first" && band.Pages != "last" || band.Pages == "first" && n == 1 || band.Pages == "last" && last && n == total
 	}
 	newPage := func() {
 		var back []Element
@@ -439,18 +668,43 @@ func (r *report) paginate(total int) [][]Element {
 		sc := scope{t, r.rows, []map[string]any{{"page": float64(len(pages)), "pages": float64(total)}, r.root}}
 		y = mTop
 		for _, band := range []Band{b.Header, b.ColumnHeader} {
-			els, h := r.place(band, sc)
-			put(els, y)
-			y += h
+			if on(band, false) {
+				els, h := r.place(band, sc)
+				put(els, y)
+				y += h
+			}
 		}
-		els, _ := r.place(b.Footer, sc)
-		put(els, bottom)
+		// the footer sits on the bottom margin, as high as its text grows; its room
+		// is kept on every page, also when it prints on the last one only
+		els, h := r.place(b.Footer, sc)
+		bottom = p.Height - mBottom - max(h, b.Footer.Height)
+		if on(b.Footer, true) {
+			put(els, bottom)
+		}
 		top = y
+		if group != nil {
+			group()
+		}
 	}
 	flow := func(band Band, rows []any, ctx ...map[string]any) {
 		els, h := r.place(band, scope{t, rows, ctx})
-		if y+h > bottom && y > top { // y > top: a band taller than the page still gets placed
+		// a band moves to a new page whole, unless it is taller than a page
+		if y > top && (band.NewPage || y+h > bottom && h <= bottom-top) {
 			newPage()
+		}
+		// one that is taller (a long letter) fills the page and goes on over the next ones
+		for y+h > bottom {
+			now, rest, restH := r.split(els, h, bottom-y)
+			if len(now) == 0 {
+				if y == top {
+					break // not even one line fits on an empty page: placed as it is
+				}
+				newPage()
+				continue
+			}
+			put(now, y)
+			newPage()
+			els, h = rest, restH
 		}
 		put(els, y)
 		y += h
@@ -458,21 +712,31 @@ func (r *report) paginate(total int) [][]Element {
 	newPage()
 	for i, g := range t.groups(r.rows) {
 		var first map[string]any
-		if t.GroupBy != "" {
+		if t.grouped() {
 			// a group header never stays behind alone at the bottom of a page
 			if t.GroupPageBreak && i > 0 || y > top && y+b.GroupHeader.Height+b.Detail.Height > bottom {
 				newPage()
 			}
-			first, _ = g[0].(map[string]any)
+			if len(g) > 0 {
+				first, _ = g[0].(map[string]any)
+			}
 			flow(b.GroupHeader, g, first, r.root)
+			if len(b.GroupHeader.Elements) > 0 {
+				group = func() {
+					els, h := r.place(b.GroupHeader, scope{t, g, []map[string]any{first, r.root}})
+					put(els, y)
+					y += h
+				}
+			}
 		}
 		for _, row := range g {
 			m, _ := row.(map[string]any)
 			flow(b.Detail, g, m, r.root)
 		}
-		if t.GroupBy != "" {
+		if t.grouped() {
 			flow(b.GroupFooter, g, first, r.root)
 		}
+		group = nil
 	}
 	if len(b.Summary.Elements) > 0 {
 		flow(b.Summary, r.rows, r.root)
@@ -551,7 +815,11 @@ func str(v any) string {
 		if math.IsInf(v, 0) || math.IsNaN(v) {
 			return ""
 		}
+		// 15 significant digits, so binary leftovers do not show: 0.1 + 0.2 is 0.3
+		v, _ = strconv.ParseFloat(strconv.FormatFloat(v, 'g', 15, 64), 64)
 		return strconv.FormatFloat(v, 'f', -1, 64)
+	case time.Time:
+		return v.Format("2006-01-02 15:04")
 	}
 	return fmt.Sprint(v)
 }
@@ -571,7 +839,7 @@ func chart(t *Template, e Element, rows []any) []Element {
 			labels = append(labels, l)
 		}
 		v, _ := (scope{t, nil, []map[string]any{row}}).eval(e.Value) // a field or an expression such as qty * price
-		f, _ := v.(float64)
+		f, _ := num(v)
 		sums[l] += f
 	}
 	if len(labels) == 0 {
@@ -589,11 +857,36 @@ func chart(t *Template, e Element, rows []any) []Element {
 	var out []Element
 
 	if e.Chart == "pie" || e.Chart == "donut" {
-		total := 0.0
-		for _, v := range sums {
-			total += max(v, 0)
+		// the legend gets as many lines as fit next to the pie; the smallest
+		// slices beyond that are summed into one, so it never runs off the chart
+		if fit := max(int(e.H/11), 1); len(labels) > fit {
+			byValue := slices.Clone(labels)
+			slices.SortStableFunc(byValue, func(a, b string) int { return compareFloat(sums[b], sums[a]) })
+			keep := map[string]bool{}
+			for _, l := range byValue[:fit-1] {
+				keep[l] = true
+			}
+			other := "Other"
+			if t.Locale == "id" {
+				other = "Lainnya"
+			}
+			var kept []string
+			rest := 0.0
+			for _, l := range labels {
+				if keep[l] {
+					kept = append(kept, l)
+				} else {
+					rest += sums[l]
+				}
+			}
+			labels, sums[other] = append(kept, other), sums[other]+rest
 		}
-		rad, angle := min(e.W, e.H)/2, -math.Pi/2
+		total := 0.0
+		for _, l := range labels {
+			total += max(sums[l], 0)
+		}
+		// the pie takes at most 55% of the width, so the legend always has room beside it
+		rad, angle := min(e.H, e.W*0.55)/2, -math.Pi/2
 		for i, l := range labels {
 			c := palette[i%len(palette)]
 			if total > 0 {
@@ -696,6 +989,9 @@ func chart(t *Template, e Element, rows []any) []Element {
 	}
 	if e.Chart == "line" {
 		out = append(out, Element{Type: "poly", X: e.X, Y: e.Y, W: e.W, H: e.H, Points: pts, Color: c, Border: 1.5})
+		for i := 0; i+1 < len(pts); i += 2 { // a dot on every value, so a single one shows too
+			out = append(out, Element{Type: "rect", X: e.X + pts[i] - 2, Y: e.Y + pts[i+1] - 2, W: 4, H: 4, Fill: c})
+		}
 	}
 	return append(out, grid(axisW, y(0), e.W-axisW, 0, "#888888"))
 }
@@ -715,7 +1011,7 @@ func tickStep(span float64) float64 {
 	return 10 * mag
 }
 
-var dataImage = regexp.MustCompile(`^data:image/[a-z0-9.+-]+;base64,`)
+var dataImage = regexp.MustCompile(`^data:image/(png|jpe?g|gif);base64,`) // what the PDF can draw
 
 var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
@@ -760,13 +1056,48 @@ func (e Element) stroke() float64 {
 	return 1
 }
 
+// drop is how far the lines of a text start below its top: middle and bottom
+// alignment, as far as the box is taller than the lines.
+func (e Element) drop(lines int) float64 {
+	room := e.H - float64(lines)*e.size()*e.leading()
+	switch {
+	case room <= 0:
+		return 0
+	case e.VAlign == "middle":
+		return room / 2
+	case e.VAlign == "bottom":
+		return room
+	}
+	return 0
+}
+
+// gap is the room justified text adds to each space of a line so it reaches
+// the right edge; the last line of a paragraph keeps its natural spacing.
+func (e Element) gap(l textLine) float64 {
+	if e.Align != "justify" || l.end {
+		return 0
+	}
+	spaces := 0
+	for _, s := range l.spans {
+		spaces += strings.Count(s.text, " ")
+	}
+	if spaces == 0 {
+		return 0
+	}
+	return max(e.W-l.w, 0) / float64(spaces)
+}
+
 func (r *report) toHTML(pages [][]Element) []byte {
-	var b strings.Builder
-	fmt.Fprintf(&b, `<!doctype html><html><head><meta charset="utf-8"><style>`+
+	var b, head strings.Builder
+	type face struct {
+		name         string
+		bold, italic bool
+	}
+	var faces []face // faces of Families the report uses, embedded in its style sheet
+	fmt.Fprintf(&head, `<!doctype html><html><head><meta charset="utf-8"><style>`+
 		`@page{size:%[1]gpt %[2]gpt;margin:0}body{margin:0;font:10pt/1.2 Helvetica,Arial,sans-serif}`+
 		`.p{position:relative;width:%[1]gpt;height:%[2]gpt;overflow:hidden;page-break-after:always}`+
-		`.p>*{position:absolute;box-sizing:border-box;overflow:hidden;white-space:pre}`+
-		`</style></head><body>`, r.t.Page.Width, r.t.Page.Height)
+		`.p>*{position:absolute;box-sizing:border-box;overflow:hidden;white-space:pre}`, r.t.Page.Width, r.t.Page.Height)
 	for _, page := range pages {
 		b.WriteString(`<div class="p">`)
 		for _, e := range page {
@@ -781,15 +1112,29 @@ func (r *report) toHTML(pages [][]Element) []byte {
 				case "Courier":
 					style += "font-family:'Courier New',Courier,monospace;"
 				}
+				f := Families[e.Font]
+				if f == nil || f.Regular == nil || !safeName.MatchString(e.Font) {
+					f = nil
+				} else {
+					style += "font-family:'" + e.Font + "',sans-serif;"
+				}
 				if hexColor.MatchString(e.Fill) {
 					style += "background:" + e.Fill + ";"
+				}
+				lines := r.layout(e)
+				if d := e.drop(len(lines)); d > 0 {
+					style += fmt.Sprintf("padding-top:%gpt;", d)
 				}
 				fmt.Fprintf(&b, `<div style="%s">`, style)
 				// the lines are broken where the PDF breaks them, so a browser font that
 				// runs wider cannot add a line and clip the last one of a grown text
-				for i, line := range r.layout(e) {
+				for i, line := range lines {
 					if i > 0 {
 						b.WriteString("\n")
+					}
+					gap := e.gap(line) // justified: the same spacing as in the PDF
+					if gap > 0 {
+						fmt.Fprintf(&b, `<span style="word-spacing:%.3gpt">`, gap)
 					}
 					var runs []run // the line's words, joined back into one run per style
 					for _, s := range line.spans {
@@ -800,6 +1145,9 @@ func (r *report) toHTML(pages [][]Element) []byte {
 						}
 					}
 					for _, p := range runs {
+						if fc := (face{e.Font, p.bold, p.italic}); f != nil && !slices.Contains(faces, fc) {
+							faces = append(faces, fc)
+						}
 						open, end := "", ""
 						for _, tag := range []struct {
 							on   bool
@@ -811,6 +1159,9 @@ func (r *report) toHTML(pages [][]Element) []byte {
 						}
 						b.WriteString(open + html.EscapeString(p.text) + end)
 					}
+					if gap > 0 {
+						b.WriteString(`</span>`)
+					}
 				}
 				b.WriteString(`</div>`)
 			case "rect":
@@ -819,6 +1170,15 @@ func (r *report) toHTML(pages [][]Element) []byte {
 				}
 				fmt.Fprintf(&b, `<div style="%sbackground:%s"></div>`, style, color(e.Fill, "none"))
 			case "line":
+				if e.Slope != "" {
+					y1, y2 := 0.0, e.H
+					if e.Slope == "up" {
+						y1, y2 = e.H, 0
+					}
+					fmt.Fprintf(&b, `<svg style="%soverflow:visible" viewBox="0 0 %g %g"><line x1="0" y1="%g" x2="%g" y2="%g" stroke="%s" stroke-width="%g"/></svg>`,
+						style, e.W, e.H, y1, e.W, y2, stroke, e.stroke())
+					continue
+				}
 				side := "top"
 				if e.H > e.W {
 					side = "left"
@@ -845,8 +1205,20 @@ func (r *report) toHTML(pages [][]Element) []byte {
 		}
 		b.WriteString(`</div>`)
 	}
+	for _, fc := range faces {
+		weight, slant := "normal", "normal"
+		if fc.bold {
+			weight = "bold"
+		}
+		if fc.italic {
+			slant = "italic"
+		}
+		fmt.Fprintf(&head, `@font-face{font-family:'%s';font-weight:%s;font-style:%s;font-display:swap;src:url(data:font/ttf;base64,%s)}`,
+			fc.name, weight, slant, base64.StdEncoding.EncodeToString(Families[fc.name].face(fc.bold, fc.italic)))
+	}
+	head.WriteString(`</style></head><body>`)
 	b.WriteString(`</body></html>`)
-	return []byte(b.String())
+	return []byte(head.String() + b.String())
 }
 
 func (r *report) toPDF(pages [][]Element) ([]byte, error) {
@@ -863,7 +1235,9 @@ func (r *report) toPDF(pages [][]Element) ([]byte, error) {
 				pdf.SetTextColor(rgb(e.Color))
 				pdf.ClipRect(e.X, e.Y, e.W, e.H, false)
 				lh := e.size() * e.leading()
-				for i, line := range r.layout(e) {
+				lines := r.layout(e)
+				drop := e.drop(len(lines))
+				for i, line := range lines {
 					x := e.X
 					switch e.align() {
 					case "center":
@@ -871,11 +1245,12 @@ func (r *report) toPDF(pages [][]Element) ([]byte, error) {
 					case "right":
 						x += e.W - line.w
 					}
-					base := e.Y + float64(i)*lh + lh/2 + 0.3*e.size()
+					base := e.Y + drop + float64(i)*lh + lh/2 + 0.3*e.size()
+					gap := e.gap(line)
 					for _, s := range line.spans {
 						r.font(e, s.run)
 						pdf.Text(x, base, r.tr(s.text))
-						x += s.w
+						x += s.w + gap*float64(strings.Count(s.text, " "))
 					}
 				}
 				pdf.ClipEnd()
@@ -896,9 +1271,14 @@ func (r *report) toPDF(pages [][]Element) ([]byte, error) {
 			case "line":
 				pdf.SetDrawColor(rgb(e.Color))
 				pdf.SetLineWidth(e.stroke())
-				if e.H > e.W {
+				switch {
+				case e.Slope == "down":
+					pdf.Line(e.X, e.Y, e.X+e.W, e.Y+e.H)
+				case e.Slope == "up":
+					pdf.Line(e.X, e.Y+e.H, e.X+e.W, e.Y)
+				case e.H > e.W:
 					pdf.Line(e.X, e.Y, e.X, e.Y+e.H)
-				} else {
+				default:
 					pdf.Line(e.X, e.Y, e.X+e.W, e.Y)
 				}
 			case "code":
@@ -964,9 +1344,16 @@ func csvSafe(s string) string {
 	return s
 }
 
-func toCSV(rows [][]cell) ([]byte, error) {
-	var buf bytes.Buffer
-	w := csv.NewWriter(&buf)
+// toCSV writes UTF-8 with a byte order mark, which is how Excel knows the file
+// is UTF-8 (without it "Téh" opens as "TÃ©h"). sep is the separator: "," by
+// default, ";" for an Excel whose list separator is ";" (an Indonesian or
+// European Windows), or "\t".
+func toCSV(rows [][]cell, sep string) ([]byte, error) {
+	buf := bytes.NewBufferString(string(rune(0xFEFF)))
+	w := csv.NewWriter(buf)
+	if c, n := utf8.DecodeRuneInString(sep); n == len(sep) && n > 0 && c != '"' && c != '\r' && c != '\n' {
+		w.Comma = c
+	}
 	for _, r := range rows {
 		rec := make([]string, len(r))
 		for i, c := range r {

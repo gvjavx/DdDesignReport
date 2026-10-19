@@ -18,7 +18,22 @@ func render(t *testing.T, tpl []byte, data any, format string) []byte {
 	if err != nil {
 		t.Fatalf("%s: %v", format, err)
 	}
+	if format == "csv" { // every CSV starts with the BOM Excel needs; TestCSVForExcel checks it
+		out = bytes.TrimPrefix(out, []byte("\xef\xbb\xbf"))
+	}
 	return out
+}
+
+func TestCSVForExcel(t *testing.T) {
+	tpl := []byte(`{"bands":{"detail":{"height":20,"elements":[{"type":"text","w":50,"h":14,"text":"{{a}}"},{"type":"text","x":60,"w":50,"h":14,"text":"{{b}}"}]}}}`)
+	rows := []any{map[string]any{"a": "Téh", "b": "1,5"}}
+	if out, _ := Render(tpl, rows, "csv"); string(out) != "\xef\xbb\xbfTéh,\"1,5\"\n" {
+		t.Errorf("csv = %q", out)
+	}
+	semi := []byte(strings.Replace(string(tpl), `{"bands"`, `{"csvSeparator":";","bands"`, 1))
+	if out, _ := Render(semi, rows, "csv"); string(out) != "\xef\xbb\xbfTéh;1,5\n" {
+		t.Errorf("csv with ; = %q", out)
+	}
 }
 
 func sheet(t *testing.T, xlsx []byte) string {

@@ -49,7 +49,7 @@ func TestExpressions(t *testing.T) {
 		"{{qty *}}":      "{{qty *}}",
 		"{{(qty}}":       "{{(qty}}",
 		"{{qty)}}":       "{{qty)}}",
-		"{{round(qty)}}": "{{round(qty)}}",
+		"{{round(qty)}}": "4",
 		"{{sum(qty}}":    "{{sum(qty}}",
 		"{{ }}":          "{{ }}",
 		"{{a:b}}":        "{{a:b}}",

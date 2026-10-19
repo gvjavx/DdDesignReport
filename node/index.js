@@ -9,13 +9,16 @@ const fail = (status, stderr) => new Error(stderr.toString().trim() || `ddreport
  * @param {object} template template exported by the designer
  * @param {object|Array} data fields plus the row array, or just the rows
  * @param {'pdf'|'html'|'xlsx'|'xls'|'csv'} format
+ * @param {{timeout?: number}} options timeout in milliseconds, default 60000; 0 for none
  * @returns {Buffer}
  */
-exports.render = (template, data, format = 'pdf') => {
+exports.render = (template, data, format = 'pdf', { timeout = 60000 } = {}) => {
   const r = spawnSync(bin(), ['-format', format], {
     input: JSON.stringify({ template, data }),
     maxBuffer: Infinity,
+    timeout: timeout || undefined,
   })
+  if (r.error?.code === 'ETIMEDOUT') throw new Error(`ddreport took longer than ${timeout} ms`)
   if (r.error) throw r.error
   if (r.status !== 0) throw fail(r.status, r.stderr)
   return r.stdout
@@ -25,15 +28,20 @@ exports.render = (template, data, format = 'pdf') => {
  * Like render, without blocking the event loop.
  * @returns {Promise<Buffer>}
  */
-exports.renderAsync = (template, data, format = 'pdf') =>
+exports.renderAsync = (template, data, format = 'pdf', { timeout = 60000 } = {}) =>
   new Promise((resolve, reject) => {
     const p = spawn(bin(), ['-format', format])
     const out = []
     const err = []
+    // a render that hangs is stopped, so it cannot hold a request open for good
+    const timer = timeout && setTimeout(() => { p.kill(); reject(new Error(`ddreport took longer than ${timeout} ms`)) }, timeout)
     p.stdout.on('data', c => out.push(c))
     p.stderr.on('data', c => err.push(c))
     p.stdin.on('error', () => {}) // a binary that exits early closes stdin; its exit code tells why
-    p.on('error', reject)
-    p.on('close', status => (status === 0 ? resolve(Buffer.concat(out)) : reject(fail(status, Buffer.concat(err)))))
+    p.on('error', e => { clearTimeout(timer); reject(e) })
+    p.on('close', status => {
+      clearTimeout(timer)
+      status === 0 ? resolve(Buffer.concat(out)) : reject(fail(status, Buffer.concat(err)))
+    })
     p.stdin.end(JSON.stringify({ template, data }))
   })

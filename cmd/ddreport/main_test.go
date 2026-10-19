@@ -13,7 +13,7 @@ const request = `{"template":{"bands":{"detail":{"height":20,"elements":[{"type"
 
 func TestRender(t *testing.T) {
 	out, err := render(strings.NewReader(request), "csv")
-	if err != nil || string(out) != "Kopi\nTeh\n" {
+	if err != nil || string(out) != "\xef\xbb\xbfKopi\nTeh\n" {
 		t.Errorf("render = %q, %v", out, err)
 	}
 	if _, err := render(strings.NewReader("not json"), "csv"); err == nil {

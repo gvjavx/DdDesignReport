@@ -20,10 +20,14 @@ func bars(e Element) []Element {
 	if err != nil || e.Text == "" {
 		return nil
 	}
+	h := e.H
+	if e.ShowText { // the text goes under the code, in the last 10pt
+		h = max(e.H-10, 1)
+	}
 	cols, rows := code.Bounds().Dx(), code.Bounds().Dy()
-	mw, mh := e.W/float64(cols), e.H // Code 128: one row of bars as tall as the element
-	if rows > 1 {                    // QR: square modules
-		mw = min(e.W, e.H) / float64(cols)
+	mw, mh := e.W/float64(cols), h // Code 128: one row of bars as tall as the element
+	if rows > 1 {                  // QR: square modules
+		mw = min(e.W, h) / float64(cols)
 		mh = mw
 	}
 	dark := func(x, y int) bool {
@@ -46,5 +50,13 @@ func bars(e Element) []Element {
 			runs = append(runs, float64(start)*mw, float64(y)*mh, float64(x-start+1)*mw, mh)
 		}
 	}
-	return []Element{{Type: "code", X: e.X, Y: e.Y, W: e.W, H: e.H, Color: color(e.Color, "#000000"), Points: runs}}
+	out := []Element{{Type: "code", X: e.X, Y: e.Y, W: e.W, H: h, Color: color(e.Color, "#000000"), Points: runs}}
+	if e.ShowText {
+		w := e.W
+		if rows > 1 {
+			w = mw * float64(cols)
+		}
+		out = append(out, Element{Type: "text", X: e.X, Y: e.Y + h + 1, W: w, H: 9, Text: e.Text, FontSize: 7, Align: "center", Color: e.Color})
+	}
+	return out
 }

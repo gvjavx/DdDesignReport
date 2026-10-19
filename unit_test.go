@@ -1,6 +1,7 @@
 package ddreport
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"reflect"
@@ -409,7 +410,7 @@ func TestChart(t *testing.T) {
 	line := base
 	line.Chart = "line"
 	els = chart(tpl, line, rows)
-	if n := types(els); n["poly"] != 1 || n["rect"] != 0 || n["text"] != 11 {
+	if n := types(els); n["poly"] != 1 || n["rect"] != 3 || n["text"] != 11 {
 		t.Fatalf("line chart = %v", n)
 	}
 	for _, e := range els {
@@ -508,11 +509,27 @@ func TestPaginate(t *testing.T) {
 		t.Errorf("empty report = %v", pages)
 	}
 
-	// a row taller than the page is placed once instead of looping forever
-	tall := load(t, `{"page":{"width":100,"height":100},"bands":{"detail":{"height":90,"elements":[{"type":"text","text":"{{s}}","w":10,"h":10,"grow":true}]}}}`,
+	// a row taller than the page goes on over the next pages, nothing lost, and the next row follows
+	tall := load(t, `{"page":{"width":100,"height":100},"bands":{"detail":{"height":90,"elements":[{"type":"text","text":"{{s}}","w":40,"h":10,"grow":true}]}}}`,
 		[]map[string]any{{"s": strings.Repeat("word ", 40)}, {"s": "x"}})
-	if n := len(tall.paginate(0)); n != 2 {
-		t.Errorf("oversized row: %d pages, want 2", n)
+	tall.initPDF()
+	pages, words := tall.paginate(0), 0
+	for _, page := range pages {
+		for _, e := range page {
+			for _, p := range e.pieces() {
+				words += strings.Count(p.text, "word")
+			}
+		}
+	}
+	last := pages[len(pages)-1]
+	if len(pages) < 3 || words != 40 || last[len(last)-1].pieces()[0].text != "x" {
+		t.Errorf("oversized row: %d pages, %d of 40 words, last %+v", len(pages), words, last[len(last)-1])
+	}
+	// one line taller than a whole page cannot be split: placed once, no endless loop
+	huge := load(t, `{"page":{"width":100,"height":100},"bands":{"detail":{"height":10,"elements":[{"type":"text","text":"x","w":40,"h":10,"fontSize":200,"grow":true}]}}}`, []any{1})
+	huge.initPDF()
+	if n := len(huge.paginate(0)); n != 1 {
+		t.Errorf("one huge line: %d pages", n)
 	}
 
 	back := load(t, `{"page":{"background":"#ffeecc","backgroundImage":"data:image/png;base64,AAAA"},"bands":{"header":{"height":10,"elements":[{"type":"rect"}]}}}`, nil).paginate(0)[0]
@@ -699,7 +716,7 @@ func TestRenderErrors(t *testing.T) {
 		"margins too big":   {`{"page":{"width":100,"height":100,"margin":40},"bands":{"detail":{"height":30}}}`, "html", "do not fit"},
 		"group too tall":    {`{"page":{"width":100,"height":100},"groupBy":"g","bands":{"groupFooter":{"height":101}}}`, "pdf", "do not fit"},
 		"bad image":         {`{"bands":{"header":{"height":20,"elements":[{"type":"image","w":10,"h":10,"src":"data:image/png;base64,@@@"}]}}}`, "pdf", "image"},
-		"unsupported image": {`{"bands":{"header":{"height":20,"elements":[{"type":"image","w":10,"h":10,"src":"data:image/webp;base64,AAAA"}]}}}`, "pdf", "pdf"},
+		"unsupported image": {`{"bands":{"header":{"height":20,"elements":[{"type":"image","w":10,"h":10,"src":"data:image/webp;base64,AAAA"}]}}}`, "pdf", "PNG, JPEG or GIF"},
 	} {
 		if _, err := Render([]byte(c.tpl), nil, c.format); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err = %v, want one mentioning %q", name, err, c.want)
@@ -763,5 +780,82 @@ func TestHbarNegative(t *testing.T) {
 	zero := els[len(els)-1]
 	if len(bars) != 2 || bars[0].X != zero.X || bars[1].X+bars[1].W != zero.X || bars[0].W != bars[1].W {
 		t.Errorf("bars %+v around zero at %v", bars, zero.X)
+	}
+}
+
+func TestTableStyles(t *testing.T) {
+	table := Element{Type: "table", W: 100, H: 80, Border: 1, Cells: [][]string{{"h", "h"}, {"a", "a"}, {"b", "b"}, {"t", "t"}},
+		Header: true, HeaderFill: "#111111", HeaderColor: "#ffffff", Footer: true, FooterFill: "#222222",
+		Stripe: "#eeeeee", TextColor: "#333333", Grid: "rows"}
+	b := Band{Elements: []Element{table}}
+	b.expand()
+	var fills []string
+	vertical, horizontal := 0, 0
+	look := map[string]Element{}
+	for _, e := range b.Elements {
+		switch {
+		case e.Type == "rect":
+			fills = append(fills, fmt.Sprint(e.Fill, "@", e.Y))
+		case e.Type == "line" && e.H > e.W:
+			vertical++
+		case e.Type == "line":
+			horizontal++
+		case e.Type == "text":
+			look[e.Text] = e
+		}
+	}
+	// header, the second body row (striped) and the total row; rows are 20pt
+	if fmt.Sprint(fills) != "[#111111@0 #eeeeee@40 #222222@60]" {
+		t.Errorf("row fills %v", fills)
+	}
+	if h, a, f := look["h"], look["a"], look["t"]; !h.Bold || h.Color != "#ffffff" || a.Bold || a.Color != "#333333" || !f.Bold || f.Color != "" {
+		t.Errorf("header %+v\nbody %+v\nfooter %+v", h, a, f)
+	}
+	if vertical != 0 || horizontal != 5 {
+		t.Errorf("rows grid: %d vertical, %d horizontal lines", vertical, horizontal)
+	}
+
+	table.Grid = "outer"
+	b = Band{Elements: []Element{table}}
+	b.expand()
+	vertical, horizontal = 0, 0
+	for _, e := range b.Elements {
+		if e.Type == "line" && e.H > e.W {
+			vertical++
+		} else if e.Type == "line" {
+			horizontal++
+		}
+	}
+	if vertical != 2 || horizontal != 2 {
+		t.Errorf("outer grid: %d vertical, %d horizontal lines", vertical, horizontal)
+	}
+}
+
+func TestBundledFonts(t *testing.T) {
+	for _, name := range []string{"Roboto", "Open Sans", "Lato", "Montserrat", "Lora", "Playfair Display", "Great Vibes"} {
+		if f := Families[name]; f == nil || f.Regular == nil {
+			t.Errorf("%s is not bundled", name)
+		}
+	}
+	if f := Families["Great Vibes"]; f.face(true, true) == nil { // only a regular face: everything falls back to it
+		t.Error("Great Vibes has no bold italic fallback")
+	}
+	tpl := []byte(`{"bands":{"detail":{"height":40,"elements":[
+	  {"type":"text","w":300,"h":14,"font":"Roboto","text":"Halo <b>tebal</b> Привет"},
+	  {"type":"text","y":20,"w":300,"h":14,"font":"Great Vibes","italic":true,"text":"Sertifikat"}]}}}`)
+	if pdf := render(t, tpl, []any{1}, "pdf"); !bytes.Contains(pdf, []byte("/utf8frobotoB")) || !bytes.Contains(pdf, []byte("/utf8fgreatvibesI")) {
+		t.Error("pdf does not embed the fonts")
+	}
+	html := string(render(t, tpl, []any{1}, "html"))
+	for _, want := range []string{"font-family:'Roboto',sans-serif", "@font-face{font-family:'Roboto';font-weight:normal;font-style:normal;", "@font-face{font-family:'Roboto';font-weight:bold;", "@font-face{font-family:'Great Vibes';font-weight:normal;font-style:italic;"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("html: missing %q", want)
+		}
+	}
+	if n := strings.Count(html, "@font-face"); n != 3 { // only the faces in use
+		t.Errorf("%d faces embedded, want 3", n)
+	}
+	if plain := string(render(t, []byte(`{"bands":{"detail":{"height":20,"elements":[{"type":"text","w":100,"h":14,"text":"x"}]}}}`), []any{1}, "html")); strings.Contains(plain, "@font-face") {
+		t.Error("a report without bundled fonts embeds one")
 	}
 }

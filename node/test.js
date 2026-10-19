@@ -12,8 +12,10 @@ const template = {
 }
 const data = { rows: [{ name: 'Kopi' }, { name: 'Téh "manis"' }] }
 
+const bom = String.fromCharCode(0xfeff) // CSV starts with the byte order mark Excel needs
+
 test('renders every format', () => {
-  assert.strictEqual(render(template, data, 'csv').toString(), 'Name\nKopi\n"Téh ""manis"""\n')
+  assert.strictEqual(render(template, data, 'csv').toString(), bom + 'Name\nKopi\n"Téh ""manis"""\n')
   assert.ok(render(template, data, 'pdf').subarray(0, 5).equals(Buffer.from('%PDF-')))
   assert.ok(render(template, data).subarray(0, 5).equals(Buffer.from('%PDF-')), 'pdf is the default')
   assert.match(render(template, data, 'html').toString(), /Téh &#34;manis&#34;/)
@@ -22,8 +24,8 @@ test('renders every format', () => {
 })
 
 test('accepts an array of rows and no data at all', () => {
-  assert.strictEqual(render(template, data.rows, 'csv').toString(), 'Name\nKopi\n"Téh ""manis"""\n')
-  assert.strictEqual(render(template, undefined, 'csv').toString(), 'Name\n')
+  assert.strictEqual(render(template, data.rows, 'csv').toString(), bom + 'Name\nKopi\n"Téh ""manis"""\n')
+  assert.strictEqual(render(template, undefined, 'csv').toString(), bom + 'Name\n')
 })
 
 test('throws the message from the binary', () => {
@@ -46,4 +48,10 @@ test('renderAsync gives the same output without blocking', async () => {
   const { renderAsync } = require('.')
   assert.strictEqual((await renderAsync(template, data, 'csv')).toString(), render(template, data, 'csv').toString())
   await assert.rejects(renderAsync(template, data, 'docx'), /unknown format "docx"/)
+})
+
+test('a render that takes too long is stopped', async () => {
+  const { renderAsync } = require('.')
+  assert.throws(() => render(template, data, 'pdf', { timeout: 1 }), /longer than 1 ms/)
+  await assert.rejects(renderAsync(template, data, 'pdf', { timeout: 1 }), /longer than 1 ms/)
 })

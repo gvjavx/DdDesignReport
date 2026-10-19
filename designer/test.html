@@ -62,7 +62,9 @@ function open(template, options = {}) {
     },
   }
 }
-const edit = (node, html) => { node.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); node.innerHTML = html; node.dispatchEvent(new FocusEvent('blur')) }
+// double-clicking makes the element, or the box of words inside it, editable: that is where typing goes
+const editable = node => (node.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })), node.querySelector('[contenteditable=true],[contenteditable=plaintext-only]') ?? node)
+const edit = (node, html) => { const box = editable(node); box.innerHTML = html; box.dispatchEvent(new FocusEvent('blur')) }
 
 const tests = {
   'starts with an empty A4 page and seven bands'() {
@@ -97,17 +99,17 @@ const tests = {
     edit(t.q('.ddr-el'), 'Hello <i>world</i><br>two <b>x</b>')
     check('rich text is saved as tags', t.els('header')[0].text === 'Hello <i>world</i>\ntwo <b>x</b>', t.els('header')[0].text)
     const node = t.q('.ddr-el')
-    node.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); node.textContent = 'type <b> literally'; node.dispatchEvent(new FocusEvent('blur'))
+    const box = editable(node); box.textContent = 'type <b> literally'; box.dispatchEvent(new FocusEvent('blur'))
     check('a typed "<b>" stays text', t.els('header')[0].text === 'type &lt;b> literally' && t.q('.ddr-el').textContent === 'type <b> literally' && !t.q('.ddr-el b'), t.els('header')[0].text)
   },
   'Escape throws the typing away'() {
     const t = open()
     t.click('add:text')
     const node = t.q('.ddr-el')
-    node.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
-    node.textContent = 'never mind'
-    node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-    node.dispatchEvent(new FocusEvent('blur'))
+    const box = editable(node)
+    box.textContent = 'never mind'
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    box.dispatchEvent(new FocusEvent('blur'))
     check('text unchanged', t.els('header')[0].text === 'Text' && t.q('.ddr-el').textContent === 'Text', t.els('header')[0].text)
   },
   'edits tables'() {
@@ -345,6 +347,208 @@ const tests = {
     check('commands still work', (t.click('add:text'), t.els('header').length === 1))
     check('English by default', open().q('[data-cmd=copy]').title === 'Copy (Ctrl+C)')
   },
+  'zooms on the canvas'() {
+    const t = open(), stage = t.q('.ddr-stage'), zoom = () => t.q('[data-id=zoom]').value
+    const wheel = (deltaY, o = {}) => stage.dispatchEvent(new WheelEvent('wheel', { deltaY, bubbles: true, cancelable: true, clientX: 100, clientY: 100, ...o }))
+    t.click('zoom:0')
+    check('a plain wheel scrolls and leaves the zoom alone', (wheel(-100), zoom() === '100%'))
+    check('Ctrl + wheel up zooms in', (wheel(-100, { ctrlKey: true }), parseInt(zoom()) > 100), zoom())
+    check('Ctrl + wheel down zooms out', (wheel(400, { ctrlKey: true }), parseInt(zoom()) < 100), zoom())
+    check('Ctrl+0 resets', (t.key('0', { ctrlKey: true }), zoom() === '100%'), zoom())
+    check('Ctrl+= zooms in', (t.key('=', { ctrlKey: true }), zoom() === '110%'), zoom())
+    check('Ctrl+- zooms out', (t.key('-', { ctrlKey: true }), zoom() === '100%'), zoom())
+    const touch = (type, id, x) => stage.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: id, pointerType: 'touch', clientX: x, clientY: 100 }))
+    touch('pointerdown', 11, 100); touch('pointerdown', 12, 200); touch('pointermove', 12, 300); touch('pointerup', 12, 300); touch('pointerup', 11, 100)
+    check('two fingers spread apart zoom in', zoom() === '200%', zoom())
+  },
+  'table header, total row and colours'() {
+    const t = open()
+    t.set('[data-id=rows]', 2); t.set('[data-id=cols]', 2)
+    t.click('add:table')
+    const box = label => t.qa('.ddr-props label').find(l => l.firstChild.textContent === label)
+    const tick = (label, on) => { const c = box(label).querySelector('input'); c.checked = on; c.dispatchEvent(new Event('input', { bubbles: true })) }
+    check('header colours hide while the header row is off', !box('header fill') && !box('total row fill'))
+    const h = t.els('header')[0].h
+    tick('total row', true)
+    let e = t.els('header')[0]
+    check('turning on the total row adds a row of the same height', e.footer && e.cells.length === 3 && e.h === Math.round(h / 2 * 3), JSON.stringify(e))
+    check('its colours appear', !!box('total row fill') && !!box('total row text'))
+    t.prop('total row fill', '#ff0000')
+    tick('header row', true)
+    t.prop('header fill', '#00ff00')
+    t.prop('banded rows', '#0000ff')
+    t.prop('text colour', '#123456')
+    t.prop('lines', 'rows')
+    e = t.els('header')[0]
+    check('colours and lines are saved', e.header && e.headerFill === '#00ff00' && e.footerFill === '#ff0000' && e.stripe === '#0000ff' && e.textColor === '#123456' && e.grid === 'rows', JSON.stringify(e))
+    const cells = t.qa('.ddr-cell')
+    check('header cell drawn bold on its fill', cells[0].style.fontWeight === 'bold' && cells[0].style.background.includes('rgb(0, 255, 0)'))
+    check('total row drawn on its fill', cells[4].style.fontWeight === 'bold' && cells[4].style.background.includes('rgb(255, 0, 0)'))
+    check('body text in its colour', cells[2].style.color === 'rgb(18, 52, 86)' && !cells[2].style.fontWeight)
+    check('rows grid has no vertical lines', !cells[0].style.borderRight && !!cells[0].style.borderBottom)
+    box('total row fill').querySelector('button').click()
+    check('× clears a colour', t.els('header')[0].footerFill === '')
+    tick('total row', false)
+    e = t.els('header')[0]
+    check('turning the total row off removes its row', !e.footer && e.cells.length === 2, JSON.stringify(e))
+    t.set('[data-id=rows]', 1)
+    t.click('add:table')
+    tick('total row', true)
+    e = t.els('header')[1]
+    check('a one-row table becomes the total row itself', e.footer && e.cells.length === 1, JSON.stringify(e))
+  },
+  'more fonts'() {
+    const t = open(undefined, { fonts: ['Inter'], fontBase: 'fonts/' })
+    const names = [...t.q('[data-prop=font]').options].map(o => o.value)
+    check('bundled and extra fonts listed', ['Helvetica', 'Roboto', 'Open Sans', 'Lora', 'Great Vibes', 'Inter'].every(f => names.includes(f)), names.join())
+    check('fontBase loads the bundled faces', t.q('style').textContent.includes(`url("fonts/OpenSans-BoldItalic.ttf")`) && !t.q('style').textContent.includes('GreatVibes-Bold'))
+    check('no fontBase, no font downloads', !open().q('style').textContent.includes('@font-face'))
+    t.click('add:text')
+    t.set('[data-prop=font]', 'Playfair Display')
+    check('a text takes the font', t.els('header')[0].font === 'Playfair Display' && t.q('.ddr-el').style.fontFamily.includes('Playfair Display'))
+  },
+  async 'preview'() {
+    let finish
+    const t = open(undefined, { preview: () => new Promise(r => { finish = r }) })
+    const dialog = t.q('.ddr-preview'), frame = t.q('.ddr-preview iframe'), status = t.q('.ddr-preview [role=status]'), alert = t.q('.ddr-preview [role=alert]')
+    check('a preview button in the status bar too', t.qa('[data-cmd=preview]').length === 2 && !!t.q('.ddr-status [data-cmd=preview]'))
+    t.q('.ddr-status [data-cmd=preview]').click()
+    const note = t.q('.ddr-sheet [role=alert]'), loaded = () => new Promise(r => frame.addEventListener('load', r, { once: true }))
+    check('opens at once and says it is rendering', dialog.open && note.textContent === 'Rendering…' && !frame.classList.contains('ready'))
+    finish('<!doctype html><html><head><style></style></head><body><div class="p"></div><div class="p"></div></body></html>')
+    await new Promise(r => setTimeout(r))
+    check('counts the pages', status.textContent === '2 pages', status.textContent)
+    check('fits the page into the frame', /body\{padding:12px 0;zoom:(1|0\.\d+)\}/.test(frame.srcdoc), frame.srcdoc.slice(0, 200))
+    if (!frame.classList.contains('ready')) await loaded()
+    check('the frame shows once its document has loaded', frame.classList.contains('ready'))
+    const same = '<!doctype html><html><head></head><body><div class="p"></div></body></html>'
+    t.click('preview')
+    check('hidden again while the next one renders', !frame.classList.contains('ready'))
+    finish(same); await loaded()
+    t.click('preview')
+    finish(same); await loaded()
+    check('an unchanged report still reloads and shows', frame.classList.contains('ready'))
+    t.click('preview')
+    const slow = finish
+    t.click('preview')
+    const fast = finish
+    fast('<html><head></head><body><div class="p"></div></body></html>'); slow('<html><head></head><body><div class="p"></div><div class="p"></div><div class="p"></div></body></html>')
+    await new Promise(r => setTimeout(r))
+    check('a slow earlier render does not overwrite a later one', status.textContent === '1 page', status.textContent)
+    dialog.close()
+    const bad = open(undefined, { preview: async () => { throw new Error('no server') } })
+    bad.click('preview')
+    await new Promise(r => setTimeout(r))
+    const err = bad.q('.ddr-sheet [role=alert]')
+    check('shows the error in the middle, in red, with no frame over it', err.textContent === 'no server' && err.classList.contains('err') && !bad.q('.ddr-sheet iframe').classList.contains('ready'))
+    bad.q('.ddr-preview').close()
+    check('no preview option, no preview button', !open().q('[data-cmd=preview]'))
+  },
+  'a position of 0 shows as 0'() {
+    const t = open()
+    t.click('add:rect')
+    const x = t.qa('.ddr-props label').find(l => l.firstChild.textContent === 'x').querySelector('input')
+    check('x', x.value === '0', JSON.stringify(x.value))
+  },
+  'typing in a field is one undo step'() {
+    const t = open()
+    t.click('add:text')
+    const ta = t.q('.ddr-props textarea')
+    for (const ch of 'Laporan bulanan') { ta.value += ch; ta.dispatchEvent(new Event('input', { bubbles: true })) }
+    check('typed', t.els('header')[0].text === 'TextLaporan bulanan', t.els('header')[0].text)
+    t.click('undo')
+    check('one undo takes all the typing back', t.els('header')[0]?.text === 'Text', t.els('header')[0]?.text)
+    t.click('undo')
+    check('the next undo takes the insert back', t.els('header').length === 0)
+  },
+  'the Field menu lists the data fields'() {
+    const t = open(undefined, { fields: ['customer.name', 'qty'] })
+    const values = () => [...t.q('[data-id=field]').options].map(o => o.value)
+    check('fields first, then expressions', values().includes('{{customer.name}}') && values().includes('{{qty}}') && values().includes('{{count()}}'))
+    t.d.setFields(['harga'])
+    check('setFields replaces them', values().includes('{{harga}}') && !values().includes('{{qty}}'))
+  },
+  'band names in the interface language'() {
+    const t = open(undefined, { lang: 'id' })
+    check('labels', t.q('.ddr-band[data-name=summary]').dataset.label === 'ringkasan' && t.q('.ddr-band[data-name=footer]').dataset.label === 'kaki halaman')
+  },
+  'paragraph: justify and vertical alignment'() {
+    const t = open()
+    t.click('add:text')
+    t.click('align:justify')
+    t.set('[data-prop=valign]', 'middle')
+    const e = t.els('header')[0], n = t.q('.ddr-el')
+    check('saved', e.align === 'justify' && e.valign === 'middle', JSON.stringify(e))
+    check('drawn', n.style.textAlign === 'justify' && n.style.justifyContent === 'center')
+    t.click('add:table')
+    t.set('[data-prop=color]', '#ff0000')
+    const table = t.els('header')[1]
+    check('the text colour of a table is its textColor, not its line colour', table.textColor === '#ff0000' && table.color !== '#ff0000', JSON.stringify(table))
+  },
+  'show when, diagonal lines, pictures from data, barcode text'() {
+    const t = open()
+    t.click('add:line')
+    t.prop('direction', 'down')
+    let e = t.els('header')[0]
+    check('a slanted line gets room and is drawn as one', e.slope === 'down' && e.h >= 10 && !!t.q('.ddr-el svg line'), JSON.stringify(e))
+    t.prop('show when', "paid = 'yes'")
+    check('a condition is saved and marked', t.els('header')[0].showIf === "paid = 'yes'" && t.q('.ddr-el').hasAttribute('data-cond'))
+    t.drop('image', 'header', 200, 5)
+    t.prop('picture from data', '{{photo}}')
+    check('a picture from the data shows its placeholder', t.els('header')[1].src === '{{photo}}' && t.qa('.ddr-el')[1].textContent === '{{photo}}' && !t.qa('.ddr-el')[1].style.backgroundImage)
+    t.click('add:barcode')
+    const box = t.qa('.ddr-props label').find(l => l.firstChild.textContent === 'show text').querySelector('input')
+    box.checked = true; box.dispatchEvent(new Event('input', { bubbles: true }))
+    check('barcode text', t.els('header')[2].showText === true)
+  },
+  'table rows and columns next to the clicked cell'() {
+    const t = open()
+    t.set('[data-id=rows]', 2); t.set('[data-id=cols]', 2)
+    t.click('add:table')
+    const cell = t.qa('.ddr-cell')[3] // row 1, column 1
+    cell.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }))
+    cell.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }))
+    const op = name => t.q(`[data-table=${name}]`).click()
+    const h = t.els('header')[0].h
+    op('rowAbove')
+    let e = t.els('header')[0]
+    check('row above', e.cells.length === 3 && e.h === Math.round(h / 2 * 3), JSON.stringify(e))
+    op('colRight')
+    e = t.els('header')[0]
+    check('column right', e.cells[0].length === 3 && e.cols.length === 3 && e.aligns.length === 3)
+    op('colDelete'); op('rowDelete')
+    e = t.els('header')[0]
+    check('delete row and column', e.cells.length === 2 && e.cells[0].length === 2 && e.h === h, JSON.stringify(e))
+  },
+  'band options: first page only, new page'() {
+    const t = open()
+    const pages = t.qa('.ddr-props label').find(l => l.firstChild.textContent === 'header · pages').querySelector('select')
+    pages.value = 'first'; pages.dispatchEvent(new Event('change', { bubbles: true }))
+    check('header on the first page only', t.tpl.bands.header.pages === 'first')
+    const np = t.qa('.ddr-props label').find(l => l.firstChild.textContent === 'summary · new page').querySelector('input')
+    np.checked = true; np.dispatchEvent(new Event('input', { bubbles: true }))
+    check('summary on a new page', t.tpl.bands.summary.newPage === true)
+    t.set('[data-id=nothousands]', true)
+    check('no thousands separator', t.tpl.thousands === 'none' && t.q('[data-tpl=thousands]').disabled)
+    t.set('[data-tpl=sortBy]', 'name, -total')
+    check('sort by', t.tpl.sortBy === 'name, -total')
+  },
+  'the system clipboard'() {
+    const a = open()
+    a.click('add:rect')
+    a.q('.ddr-el').focus()
+    const data = new DataTransfer()
+    document.dispatchEvent(new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true }))
+    const text = data.getData('text/plain')
+    check('copy puts the elements on the clipboard as JSON', JSON.parse(text).ddreport?.[0]?.[0] === 'header', text)
+    const b = open() // another designer, as in another tab
+    b.q('.ddr-page').focus()
+    const paste = text => { const d = new DataTransfer(); d.setData('text/plain', text); document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: d, bubbles: true, cancelable: true })) }
+    paste(text)
+    check('paste brings them into another designer', b.els('header').length === 1 && b.els('header')[0].type === 'rect')
+    paste('Halo <b>dunia</b>')
+    check('plain text becomes a text box, tags kept as text', b.els('header')[1]?.text === 'Halo &lt;b>dunia&lt;/b>', JSON.stringify(b.els('header')[1]))
+  },
   'tells the host about changes, with a copy on request'() {
     const t = open()
     t.click('add:text')
@@ -358,7 +562,7 @@ const tests = {
 
 for (const [name, test] of Object.entries(tests)) {
   log.appendChild(document.createElement('li')).outerHTML = `<li><b>${name}</b></li>`
-  try { test() } catch (err) { check(name + ' threw', false, err.stack) }
+  try { await test() } catch (err) { check(name + ' threw', false, err.stack) }
 }
 host.replaceChildren()
 document.getElementById('summary').textContent = failed ? `${failed} of ${total} checks FAILED` : `all ${total} checks passed`

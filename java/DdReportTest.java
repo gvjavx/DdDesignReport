@@ -23,12 +23,19 @@ public class DdReportTest {
     }
 
     public static void main(String[] args) throws Exception {
-        check("csv keeps UTF-8", text("csv").equals("Kopi\nTéh\n"));
+        String bom = String.valueOf((char) 0xFEFF); // CSV starts with the byte order mark Excel needs
+        check("csv keeps UTF-8", text("csv").equals(bom + "Kopi\nTéh\n"));
         check("pdf", text("pdf").startsWith("%PDF-"));
         check("html", text("html").contains(">Téh<"));
         check("xlsx is a zip", text("xlsx").startsWith("PK"));
         check("xls", text("xls").contains("<Data ss:Type=\"String\">Kopi</Data>"));
-        check("null data", new String(DdReport.render(TEMPLATE, null, "csv")).isEmpty());
+        check("null data", new String(DdReport.render(TEMPLATE, null, "csv"), StandardCharsets.UTF_8).equals(bom));
+        try {
+            DdReport.render(TEMPLATE, DATA, "pdf", java.time.Duration.ofMillis(1));
+            check("a render that takes too long is stopped", false);
+        } catch (java.io.IOException e) {
+            check("a render that takes too long is stopped", e.getMessage().contains("longer than 1 ms"));
+        }
 
         try {
             DdReport.render(TEMPLATE, DATA, "docx");

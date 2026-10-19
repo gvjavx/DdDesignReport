@@ -6,7 +6,8 @@
 // taking the same JSON body, which is what the designer's preview uses.
 //
 // DDREPORT_FONT and DDREPORT_FONT_BOLD name TrueType files that replace the
-// built-in Latin-only PDF font.
+// built-in Latin-only PDF font. DDREPORT_FONTS names a folder of Family-Face.ttf
+// files (Inter-Regular.ttf, Inter-Bold.ttf, ...) that templates can use by name.
 package main
 
 import (
@@ -17,6 +18,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 
 	ddreport "github.com/gvjavx/DdDesignReport"
@@ -43,7 +45,17 @@ func render(in io.Reader, format string) ([]byte, error) {
 func handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServerFS(designer.Files))
+	mux.Handle("/fonts/", http.FileServerFS(ddreport.BundledFonts)) // so the designer draws the bundled fonts
+	// as many renders at a time as there are processors; the others wait their
+	// turn, or give up when their client does, so a burst cannot exhaust the machine
+	busy := make(chan struct{}, runtime.NumCPU())
 	mux.HandleFunc("POST /render", func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case busy <- struct{}{}:
+			defer func() { <-busy }()
+		case <-r.Context().Done():
+			return
+		}
 		f := r.URL.Query().Get("format")
 		out, err := render(http.MaxBytesReader(w, r.Body, 32<<20), f)
 		if err != nil {
@@ -74,6 +86,9 @@ func main() {
 	var err error
 	if ddreport.Font, err = font("DDREPORT_FONT"); err == nil {
 		ddreport.FontBold, err = font("DDREPORT_FONT_BOLD")
+	}
+	if dir := os.Getenv("DDREPORT_FONTS"); dir != "" && err == nil {
+		err = ddreport.AddFonts(os.DirFS(dir))
 	}
 	if err != nil {
 		log.Fatal(err)

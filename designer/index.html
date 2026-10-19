@@ -81,7 +81,9 @@ import { createDesigner } from './designer.js'
 
 // ?lang=id switches the whole page to Indonesian
 const lang = new URLSearchParams(location.search).get('lang') === 'id' ? 'id' : 'en'
+const NO_SERVER = 'Preview and export need this page to be opened from `ddreport -serve`, which does the rendering.'
 const ID = {
+  [NO_SERVER]: 'Pratinjau dan ekspor butuh halaman ini dibuka dari `ddreport -serve`, yang melakukan pencetakan.',
   'New': 'Baru', 'Templates…': 'Template…', 'Open…': 'Buka…', 'Save template': 'Simpan template', 'Export': 'Ekspor',
   'Sample data for preview and export (JSON)': 'Data contoh untuk pratinjau dan ekspor (JSON)', 'Sample data': 'Data contoh',
   'The fields here are what the {{placeholders}} in the report are filled with.': 'Field di sini adalah isi untuk {{placeholder}} di laporan.',
@@ -118,13 +120,34 @@ $('data').value = stored(DATA) ?? JSON.stringify({
     { category: 'Food', name: 'Fried rice', qty: 3, price: 25000 },
   ],
 }, null, 2)
-$('data').oninput = () => store(DATA, $('data').value)
+$('data').oninput = () => { store(DATA, $('data').value); designer.setFields(fieldNames()) }
+
+// the field names in the sample data, for the designer's Field menu: the
+// report's own fields (customer.name) and those of its rows
+function fieldNames() {
+  let data
+  try { data = JSON.parse($('data').value) } catch { return [] }
+  const names = new Set()
+  const walk = (obj, prefix) => {
+    for (const [k, v] of Object.entries(obj ?? {})) {
+      if (Array.isArray(v)) for (const row of v.slice(0, 50)) { if (row && typeof row === 'object') Object.keys(row).forEach(n => names.add(n)) }
+      else if (v && typeof v === 'object') walk(v, prefix + k + '.')
+      else names.add(prefix + k)
+    }
+  }
+  walk(Array.isArray(data) ? { rows: data } : data, '')
+  return [...names]
+}
 
 // rendering works when this page is served by `ddreport -serve`
 async function render(template, format) {
   let data
   try { data = JSON.parse($('data').value || 'null') } catch (err) { throw new Error(L('Sample data is not valid JSON: ') + err.message) }
-  const res = await fetch('render?format=' + format, { method: 'POST', body: JSON.stringify({ template, data }) })
+  let res
+  try { res = await fetch('render?format=' + format, { method: 'POST', body: JSON.stringify({ template, data }) }) }
+  catch { throw new Error(L(NO_SERVER)) }
+  // a plain file server has no /render and answers with a page of its own
+  if (res.status === 404 || res.status === 405 || res.status === 501) throw new Error(L(NO_SERVER))
   if (!res.ok) throw new Error(await res.text())
   return res
 }
@@ -140,6 +163,8 @@ function download(blob, name) {
 const designer = createDesigner($('designer'), {
   lang,
   theme: 'auto',
+  fontBase: 'fonts/', // served by ddreport -serve
+  fields: fieldNames(),
   template: saved ?? undefined,
   onChange: persist,
   preview: async template => (await render(template, 'html')).text(),
@@ -165,6 +190,7 @@ $('templates').onchange = async () => {
     replace(template)
     $('data').value = JSON.stringify(data, null, 2)
     store(DATA, $('data').value)
+    designer.setFields(fieldNames())
   } catch (err) { say(L('Could not load the template: ') + err.message) }
 }
 $('open').onclick = () => $('file').click()

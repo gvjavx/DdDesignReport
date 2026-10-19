@@ -5,11 +5,21 @@
 // The template it edits is the JSON the ddreport backend renders. 1px on screen = 1pt on paper.
 // preview is optional: async template => HTML string (ask your backend to render it as "html").
 // lang is 'en' (default) or 'id'. theme is 'light' (default), 'dark' or 'auto' (follows the system).
+// fontBase is the URL the bundled fonts are served from (`ddreport -serve` has them at 'fonts/');
+// without it the page shows them only where they are installed. fonts adds names from ddreport.Families.
+// fields lists the data's field names for the Field menu; designer.setFields(list) changes it later.
 
 const BANDS = ['header', 'columnHeader', 'groupHeader', 'detail', 'groupFooter', 'summary', 'footer']
 const SIDES = ['marginTop', 'marginRight', 'marginBottom', 'marginLeft']
 const PAPER = { A4: [595, 842], A5: [420, 595], Letter: [612, 792], Legal: [612, 1008], F4: [595, 935] }
-const FONTS = { Helvetica: 'Helvetica,Arial,sans-serif', Times: "'Times New Roman',Times,serif", Courier: "'Courier New',Courier,monospace" }
+const FONTS = {
+  Helvetica: 'Helvetica,Arial,sans-serif', Times: "'Times New Roman',Times,serif", Courier: "'Courier New',Courier,monospace",
+  // bundled with the renderer
+  Roboto: 'Roboto,sans-serif', 'Open Sans': "'Open Sans',sans-serif", Lato: 'Lato,sans-serif', Montserrat: 'Montserrat,sans-serif',
+  Lora: 'Lora,serif', 'Playfair Display': "'Playfair Display',serif", 'Great Vibes': "'Great Vibes',cursive",
+}
+const BUNDLED = Object.keys(FONTS).slice(3)
+const FACES = [['Regular', 400, 'normal'], ['Bold', 700, 'normal'], ['Italic', 400, 'italic'], ['BoldItalic', 700, 'italic']]
 const NEW = {
   text: { w: 160, h: 16, text: 'Text', fontSize: 10 },
   table: { w: 360, h: 40, border: 1, fontSize: 10, cells: [['', '', ''], ['', '', '']], cols: [1, 1, 1], aligns: [] },
@@ -22,26 +32,34 @@ const NEW = {
 // what the properties panel edits per type; fonts, colours and alignment live in the ribbon
 const BASE = ['x', 'y', 'w', 'h']
 const FIELDS = {
-  text: [...BASE, 'text'],
-  table: [...BASE, 'rows', 'columns', 'cols', 'border', 'color'],
-  image: [...BASE, 'src'],
-  rect: [...BASE, 'border', 'color'],
-  line: [...BASE, 'border', 'color'],
-  chart: [...BASE, 'chart', 'label', 'value', 'color'],
-  barcode: [...BASE, 'format', 'text', 'color'],
+  text: [...BASE, 'text', 'showIf'],
+  table: [...BASE, 'rows', 'columns', 'cols', 'border', 'grid', 'color', 'textColor', 'stripe', 'header', 'headerFill', 'headerColor', 'footer', 'footerFill', 'footerColor', 'showIf'],
+  image: [...BASE, 'src', 'dataSrc', 'showIf'],
+  rect: [...BASE, 'border', 'color', 'showIf'],
+  line: [...BASE, 'slope', 'border', 'color', 'showIf'],
+  chart: [...BASE, 'chart', 'label', 'value', 'color', 'showIf'],
+  barcode: [...BASE, 'format', 'text', 'showText', 'color', 'showIf'],
 }
 // which ribbon properties apply to which type
 const STYLE = {
-  text: ['font', 'fontSize', 'lineHeight', 'bold', 'italic', 'underline', 'align', 'color', 'fill', 'grow'],
-  table: ['font', 'fontSize', 'lineHeight', 'bold', 'italic', 'underline', 'align', 'fill', 'grow'],
+  text: ['font', 'fontSize', 'lineHeight', 'bold', 'italic', 'underline', 'align', 'valign', 'color', 'fill', 'grow'],
+  table: ['font', 'fontSize', 'lineHeight', 'bold', 'italic', 'underline', 'align', 'valign', 'color', 'fill', 'grow'],
   rect: ['fill'],
 }
-const DEFAULT = { font: 'Helvetica', fontSize: 10, lineHeight: 1.2, color: '#000000', fill: '#ffffff', grow: false }
+// a table's text colour is textColor: its color is the colour of its lines
+const propOf = (e, k) => e.type === 'table' && k === 'color' ? 'textColor' : k
+const DEFAULT = { font: 'Helvetica', fontSize: 10, lineHeight: 1.2, valign: 'top', color: '#000000', fill: '#ffffff', grow: false }
 const NUMERIC = new Set(['x', 'y', 'w', 'h', 'border', 'rows', 'columns', 'height'])
-const SELECT = { chart: ['bar', 'hbar', 'line', 'pie', 'donut'], format: ['qr', 'code128'] }
-const LABEL = { cols: 'column widths', color: 'line colour' }
-const PLACEHOLDER = { label: 'row field', value: 'field or qty * price', cols: '2,1,1' }
-const FIELD_TOKENS = ['{{page}}', '{{pages}}', '{{field}}', '{{field:2}}', '{{qty * price:2}}', '{{sum(field):2}}', '{{sum(qty * price):2}}', '{{avg(field):2}}', '{{min(field)}}', '{{max(field)}}', '{{count()}}']
+const SELECT = { chart: ['bar', 'hbar', 'line', 'pie', 'donut'], format: ['qr', 'code128'], grid: ['all', 'outer', 'rows'], slope: ['straight', 'down', 'up'] }
+const BOOL = new Set(['header', 'footer', 'showText', 'newPage'])
+const CLEARABLE = new Set(['textColor', 'stripe', 'headerFill', 'headerColor', 'footerFill', 'footerColor']) // colours that may be left empty
+const LABEL = {
+  cols: 'column widths', color: 'line colour', grid: 'lines', textColor: 'text colour', stripe: 'banded rows',
+  header: 'header row', headerFill: 'header fill', headerColor: 'header text', footer: 'total row', footerFill: 'total row fill', footerColor: 'total row text',
+  showIf: 'show when', dataSrc: 'picture from data', slope: 'direction', showText: 'show text', newPage: 'new page',
+}
+const PLACEHOLDER = { label: 'row field', value: 'field or qty * price', cols: '2,1,1', showIf: "paid = 'yes'", dataSrc: '{{photo}}' }
+const FIELD_TOKENS = ['{{page}}', '{{pages}}', '{{now:dd/MM/yyyy}}', '{{field:2}}', '{{field:dd MMMM yyyy}}', '{{qty * price:2}}', '{{sum(field):2}}', '{{avg(field):2}}', '{{min(field)}}', '{{max(field)}}', '{{count()}}', "{{if(field > 0, 'yes', 'no')}}"]
 
 // Indonesian interface. Anything missing here stays English.
 const ID = {
@@ -70,13 +88,23 @@ const ID = {
   'Thousands separator': 'Pemisah ribuan', 'Decimal sign': 'Tanda desimal',
   'Zoom out': 'Perkecil', 'Zoom in': 'Perbesar', 'Reset zoom': 'Zoom 100%', Ruler: 'Penggaris', Snap: 'Tempel',
   'Snap to the edges of other elements while dragging (hold Alt to turn off)': 'Menempel ke tepi elemen lain saat digeser (tahan Alt untuk mematikan)',
-  Preview: 'Pratinjau', 'Render the report with sample data': 'Cetak laporan dengan data contoh', Close: 'Tutup', 'Report preview': 'Pratinjau laporan',
+  Preview: 'Pratinjau', 'Render the report with sample data': 'Cetak laporan dengan data contoh', Close: 'Tutup', 'Report preview': 'Pratinjau laporan', 'Rendering…': 'Mencetak…', page: 'halaman', pages: 'halaman',
   'Band heights. Select an element to edit it; double-click a text or a table cell to type.': 'Tinggi band. Pilih elemen untuk mengubahnya; klik ganda teks atau sel tabel untuk mengetik.',
   'elements selected. Use the ribbon to format, align or move them together.': 'elemen dipilih. Pakai ribbon untuk memformat, meratakan, atau memindahkannya bersama.',
   'Drag to resize this band': 'Tarik untuk mengubah tinggi band ini', band: 'band', text: 'teks', rows: 'baris', columns: 'kolom', 'column widths': 'lebar kolom',
   border: 'garis', 'line colour': 'warna garis', src: 'gambar', chart: 'jenis chart', label: 'label', value: 'nilai', format: 'format', color: 'warna',
   'field or qty * price': 'field atau qty * price', 'Use <b>, <i> and <u> to style parts of the text': 'Pakai <b>, <i>, dan <u> untuk memformat sebagian teks',
   'element': 'elemen', Properties: 'Properti', selected: 'dipilih', 'Drag to resize': 'Tarik untuk mengubah ukuran', 'Delete this element': 'Hapus elemen ini', 'Drop here to delete': 'Lepas di sini untuk menghapus', 'Fit the page to the width': 'Paskan halaman ke lebar',
+  lines: 'garis', 'text colour': 'warna teks', 'banded rows': 'baris selang-seling', 'header row': 'baris judul', 'header fill': 'isi judul', 'header text': 'teks judul',
+  'total row': 'baris total', 'total row fill': 'isi baris total', 'total row text': 'teks baris total', Clear: 'Kosongkan',
+  header: 'kepala', columnHeader: 'judul kolom', groupHeader: 'kepala grup', detail: 'detail', groupFooter: 'kaki grup', summary: 'ringkasan', footer: 'kaki halaman',
+  'show when': 'tampil jika', 'picture from data': 'gambar dari data', direction: 'arah', straight: 'lurus', down: 'turun', up: 'naik', 'show text': 'tampilkan teks',
+  'new page': 'halaman baru', pages: 'halaman', all: 'semua', first: 'pertama', last: 'terakhir', 'every page': 'setiap halaman', 'first page': 'halaman pertama', 'last page': 'halaman terakhir',
+  'Justify': 'Rata kanan-kiri', 'Vertical alignment': 'Perataan vertikal', top: 'atas', middle: 'tengah', bottom: 'bawah',
+  'Sort by': 'Urutkan', 'row field, -field for descending': 'field baris, -field untuk menurun', 'Dates in': 'Tanggal dalam', English: 'Inggris', Indonesian: 'Indonesia',
+  'CSV separator': 'Pemisah CSV', Tab: 'Tab', 'No thousands separator': 'Tanpa pemisah ribuan',
+  Expressions: 'Ekspresi', 'Row above': 'Baris di atas', 'Row below': 'Baris di bawah', 'Delete row': 'Hapus baris', 'Column left': 'Kolom di kiri', 'Column right': 'Kolom di kanan', 'Delete column': 'Hapus kolom',
+  'Click a cell first; rows and columns are added next to it': 'Klik sebuah sel dulu; baris dan kolom ditambahkan di sebelahnya',
   'Start here': 'Mulai di sini', 'Open the Insert tab, then click an element or drag it onto the page.': 'Buka tab Sisipkan, lalu klik sebuah elemen atau seret ke halaman.',
 }
 
@@ -93,6 +121,7 @@ const ICONS = {
   alignLeft: 'M4 6h16M4 10h10M4 14h16M4 18h10',
   alignCenter: 'M4 6h16M7 10h10M4 14h16M7 18h10',
   alignRight: 'M4 6h16M10 10h10M4 14h16M10 18h10',
+  alignJustify: 'M4 6h16M4 10h16M4 14h16M4 18h16',
   edgeLeft: 'M4 3v18M8 6h11v4H8zM8 14h6v4H8z',
   edgeCenter: 'M12 3v18M6 6h12v4H6zM8 14h8v4H8z',
   edgeRight: 'M20 3v18M5 6h11v4H5zM10 14h6v4h-6z',
@@ -158,7 +187,7 @@ const CSS = `
 .ddr-group input[type=checkbox],.ddr-props input[type=checkbox]{width:15px;height:15px;accent-color:var(--a)}
 
 .ddr-work{position:relative;display:flex;flex:1;min-height:0}
-.ddr-stage{flex:1;min-width:0;overflow:auto;padding:16px;background:var(--stage) radial-gradient(circle,color-mix(in srgb,var(--muted) 28%,transparent) 1px,transparent 1.2px) 0 0/16px 16px}
+.ddr-stage{flex:1;min-width:0;overflow:auto;padding:16px;touch-action:pan-x pan-y;background:var(--stage) radial-gradient(circle,color-mix(in srgb,var(--muted) 28%,transparent) 1px,transparent 1.2px) 0 0/16px 16px}
 .ddr-sizer{margin:0 auto}
 .ddr-zoom{transform-origin:0 0;width:max-content}
 .ddr-ruler{position:relative;height:18px;margin-bottom:6px;font-size:9px;color:#555;background-color:#fff;border-radius:3px;box-shadow:0 0 0 1px #0002}
@@ -168,7 +197,7 @@ const CSS = `
 .ddr-band:hover{background:#2563eb08}
 .ddr-band[data-name=footer]{margin-top:auto;border-top:1px dashed #b6c2d2}
 .ddr-band[data-thin]::before{display:none}
-.ddr-band::before{content:attr(data-name);position:absolute;right:0;top:0;padding:0 5px;font:600 8.5px/13px system-ui,sans-serif;color:#64748b;background:#f1f5f9;border-radius:0 0 0 4px;pointer-events:none;opacity:.85}
+.ddr-band::before{content:attr(data-label);position:absolute;right:0;top:0;padding:0 5px;font:600 8.5px/13px system-ui,sans-serif;color:#64748b;background:#f1f5f9;border-radius:0 0 0 4px;pointer-events:none;opacity:.85}
 .ddr-grip{position:absolute;left:0;right:0;bottom:-4px;height:8px;cursor:ns-resize;z-index:1}
 .ddr-grip:hover,.ddr-grip:active{background:#2563eb55}
 .ddr-hint{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);width:min(300px,70%);padding:14px 16px;border:1.5px dashed #94a3b8;border-radius:10px;text-align:center;font:13px/1.45 system-ui,sans-serif;color:#475569;background:#fffc;pointer-events:none}
@@ -181,6 +210,7 @@ const CSS = `
 .ddr-el:is([data-type=chart],[data-type=barcode],[data-unknown]){background:#eef4fb;color:#334155;font:10px/1.3 system-ui,sans-serif;padding:4px}
 .ddr-el[data-type=table]{display:grid}
 .ddr-cell{overflow:hidden;padding:2px 3px;min-width:0}
+.ddr-el[data-cond]{outline:1px dashed #f59e0b}
 .ddr-el.ddr-sel{outline:2px solid #2563eb}
 .ddr-handle{position:absolute;z-index:3;width:11px;height:11px;margin:-6px 0 0 -6px;background:#2563eb;border:2px solid #fff;border-radius:3px;box-shadow:0 0 0 1px #2563eb;cursor:nwse-resize;touch-action:none}
 @media (pointer:coarse){.ddr-handle{width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%}.ddr-b{min-width:38px;height:38px}}
@@ -202,6 +232,12 @@ const CSS = `
 .ddr-props input[type=color]{height:30px;padding:2px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
 .ddr-props input[type=file]{height:auto;padding:4px;font-size:11px}
 .ddr-props p{margin:0 0 4px;color:var(--muted)}
+.ddr-props span{display:flex;gap:4px;flex:none}
+.ddr-props span input{width:92px!important}
+.ddr-tablebar{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:4px}
+.ddr-tablebar button{min-height:28px;padding:2px 4px;font-size:11.5px;border:1px solid var(--line);border-radius:6px;background:var(--surface);cursor:pointer}
+.ddr-tablebar button:hover{background:var(--hover)}
+.ddr-props span button{width:26px;border:1px solid var(--line);border-radius:6px;background:var(--surface);cursor:pointer}
 
 .ddr-status{display:flex;align-items:center;gap:8px;padding:4px 8px 4px 12px;background:var(--surface);border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
 .ddr-status [data-id=status]{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -211,7 +247,13 @@ const CSS = `
 
 .ddr-preview{padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text)}
 .ddr-preview::backdrop{background:#0f172a88}
-.ddr-preview iframe{display:block;width:min(92vw,900px);height:80vh;border:1px solid var(--line);border-radius:6px;background:#fff;margin-top:8px}
+.ddr-preview form{display:flex;align-items:center;gap:12px}
+.ddr-preview [role=status]{color:var(--muted)}
+.ddr-sheet{position:relative;display:grid;place-items:center;width:min(92vw,900px);height:80vh;margin-top:8px;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#e5e7eb}
+.ddr-sheet p{margin:0;padding:16px;max-width:60ch;color:#475569;text-align:center;white-space:pre-wrap}
+.ddr-sheet p.err{color:#dc2626}
+.ddr-sheet iframe{position:absolute;inset:0;width:100%;height:100%;border:0;visibility:hidden}
+.ddr-sheet iframe.ready{visibility:visible}
 
 @container (max-width:760px){
   .ddr-work{flex-direction:column}
@@ -284,12 +326,16 @@ const markup = node => [...node.childNodes].map(c => {
   return tag ? `<${tag}>${markup(c)}</${tag}>` : markup(c)
 }).join('')
 
-export function createDesigner(root, { template, onChange, preview, lang = 'en', theme = 'light' } = {}) {
-  let tpl, sel = [], editing = null, cancelled = false, clip = [], zoom = 1, snap = true, activeCol = 0
+export function createDesigner(root, { template, onChange, preview, lang = 'en', theme = 'light', fonts = [], fontBase, fields = [] } = {}) {
+  let tpl, sel = [], editing = null, cancelled = false, clip = [], zoom = 1, snap = true, activeCol = 0, activeRow = 0
   let history = [], at = -1
   const images = [] // data URIs, kept out of the undo snapshots
   const nodes = new Map() // element -> its DOM node
   const L = s => (lang === 'id' && ID[s]) || s
+  const fontList = { ...FONTS, ...Object.fromEntries(fonts.map(f => [f, `'${f}',sans-serif`])) }
+  // Great Vibes comes with a regular face only
+  const faces = fontBase ? BUNDLED.flatMap(f => FACES.slice(0, f === 'Great Vibes' ? 1 : 4).map(([face, weight, style]) =>
+    `@font-face{font-family:'${f}';font-weight:${weight};font-style:${style};src:url("${fontBase}${f.replaceAll(' ', '')}-${face}.ttf")}`)).join('') : ''
 
   const icon = name => `<svg class="ddr-i" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`
   // three kinds of ribbon button: a picture, a letter (B, I, U), and a tile with a picture above its name
@@ -306,12 +352,13 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       group('Undo', ib('undo', 'undo', 'Undo (Ctrl+Z)') + ib('redo', 'redo', 'Redo (Ctrl+Y)')) +
       group('Clipboard', ib('cut', 'cut', 'Cut (Ctrl+X)') + ib('copy', 'copy', 'Copy (Ctrl+C)') + ib('paste', 'paste', 'Paste (Ctrl+V)') + ib('duplicate', 'duplicate', 'Duplicate (Ctrl+D)') + ib('delete', 'delete', 'Delete (Del)')) +
       group('Font',
-        `<select data-prop="font" title="${L('Font')}" aria-label="${L('Font')}">${options(Object.keys(FONTS))}</select>` +
+        `<select data-prop="font" title="${L('Font')}" aria-label="${L('Font')}">${Object.entries(fontList).map(([f, css]) => `<option value="${f}" style="font-family:${css.replaceAll('"', '&quot;')}">${f}</option>`).join('')}</select>` +
         `<input data-prop="fontSize" type="number" min="4" max="200" title="${L('Font size')}" aria-label="${L('Font size')}">` +
         lb('bold', '<b>B</b>', 'Bold (Ctrl+B)') + lb('italic', '<i>I</i>', 'Italic (Ctrl+I)') + lb('underline', '<u>U</u>', 'Underline (Ctrl+U)') +
         swatch('color', 'A', 'Text colour') + swatch('fill', '▰', 'Highlight / fill colour') + ib('noFill', 'noFill', 'No fill')) +
       group('Paragraph',
-        ib('align:left', 'alignLeft', 'Align text left') + ib('align:center', 'alignCenter', 'Centre text') + ib('align:right', 'alignRight', 'Align text right') +
+        ib('align:left', 'alignLeft', 'Align text left') + ib('align:center', 'alignCenter', 'Centre text') + ib('align:right', 'alignRight', 'Align text right') + ib('align:justify', 'alignJustify', 'Justify') +
+        `<select data-prop="valign" title="${L('Vertical alignment')}" aria-label="${L('Vertical alignment')}">${options(['top', 'middle', 'bottom'], true)}</select>` +
         `<select data-prop="lineHeight" title="${L('Line spacing')}" aria-label="${L('Line spacing')}">${options([1, 1.2, 1.5, 2])}</select>` +
         `<label title="${L('Wrap long text and let the band grow with it')}"><input data-prop="grow" type="checkbox">${L('Wrap')}</label>`) +
       group('Arrange',
@@ -322,7 +369,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       group('Text', insert('text', 'text', 'Text box')) +
       group('Table', `<input data-id="rows" type="number" min="1" max="50" value="2" title="${L('Rows')}" aria-label="${L('Table rows')}">×<input data-id="cols" type="number" min="1" max="20" value="3" title="${L('Columns')}" aria-label="${L('Table columns')}">` + insert('table', 'table', 'Table')) +
       group('Illustrations', tile('picture', 'image', 'Picture', 'Insert a picture from this device') + insert('rect', 'rect', 'Rectangle') + insert('line', 'line', 'Line') + insert('chart', 'chart', 'Chart') + insert('barcode', 'barcode', 'Barcode')) +
-      group('Data', `<select data-id="field" title="${L('Insert a field into the selected text')}" aria-label="${L('Insert field')}"><option value="">${L('Field…')}</option>${options(FIELD_TOKENS)}</select>`),
+      group('Data', `<select data-id="field" title="${L('Insert a field into the selected text')}" aria-label="${L('Insert field')}"></select>`),
     Layout:
       group('Page',
         `<select data-id="paper" title="${L('Paper size')}" aria-label="${L('Paper size')}">${options([...Object.keys(PAPER), 'Custom'], true)}</select>` +
@@ -332,8 +379,13 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       group('Background',
         swatch('', '▰', 'Page colour').replace('data-prop=""', 'data-page="background"') + ib('noBackground', 'noFill', 'No page colour') +
         tile('backgroundImage', 'image', 'Picture', 'Use a picture as the page background') + ib('noBackgroundImage', 'delete', 'Remove the background picture')) +
-      group('Grouping', `<label>${L('Group by')}<input data-tpl="groupBy" type="text" placeholder="${L('row field')}"></label><label><input data-tpl="groupPageBreak" type="checkbox">${L('New page per group')}</label>`) +
-      group('Data', `<label>${L('Rows key')}<input data-tpl="dataKey" type="text"></label><label title="${L('Thousands separator')}">1<input data-tpl="thousands" type="text" style="width:34px" placeholder="," aria-label="${L('Thousands separator')}">000</label><label title="${L('Decimal sign')}">0<input data-tpl="decimal" type="text" style="width:34px" placeholder="." aria-label="${L('Decimal sign')}">00</label>`),
+      group('Grouping', `<label>${L('Sort by')}<input data-tpl="sortBy" type="text" placeholder="${L('row field, -field for descending')}" title="${L('row field, -field for descending')}"></label>` +
+        `<label>${L('Group by')}<input data-tpl="groupBy" type="text" placeholder="${L('row field')}"></label><label><input data-tpl="groupPageBreak" type="checkbox">${L('New page per group')}</label>`) +
+      group('Data', `<label>${L('Rows key')}<input data-tpl="dataKey" type="text"></label><label title="${L('Thousands separator')}">1<input data-tpl="thousands" type="text" style="width:34px" placeholder="," aria-label="${L('Thousands separator')}">000</label>` +
+        `<label title="${L('No thousands separator')}"><input data-id="nothousands" type="checkbox">${L('No thousands separator')}</label>` +
+        `<label title="${L('Decimal sign')}">0<input data-tpl="decimal" type="text" style="width:34px" placeholder="." aria-label="${L('Decimal sign')}">00</label>` +
+        `<label>${L('Dates in')}<select data-tpl="locale"><option value="">${L('English')}</option><option value="id">${L('Indonesian')}</option></select></label>` +
+        `<label>${L('CSV separator')}<select data-tpl="csvSeparator"><option value="">,</option><option value=";">;</option><option value="&#9;">${L('Tab')}</option></select></label>`),
     View:
       group('Show', `<label><input data-id="ruler" type="checkbox" checked>${L('Ruler')}</label><label title="${L('Snap to the edges of other elements while dragging (hold Alt to turn off)')}"><input data-id="snap" type="checkbox" checked>${L('Snap')}</label>`),
   }
@@ -341,7 +393,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   root.classList.add('ddr')
   root.dataset.theme = theme
   const tabs = Object.keys(RIBBON)
-  root.innerHTML = `<style>${CSS}</style>
+  root.innerHTML = `<style>${CSS}${faces}</style>
     <div class="ddr-tabs" role="tablist">${tabs.map((t, i) => `<button type="button" role="tab" aria-selected="${i === 0}" tabindex="${i ? -1 : 0}" data-tab="${t}">${L(t)}</button>`).join('')}</div>
     ${tabs.map((t, i) => `<div class="ddr-panel" role="tabpanel" data-panel="${t}" ${i ? 'hidden' : ''}>${RIBBON[t]}</div>`).join('')}
     <div class="ddr-work">
@@ -355,6 +407,15 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   const $ = s => root.querySelector(s), $$ = s => [...root.querySelectorAll(s)]
   const page = $('.ddr-page'), props = $('.ddr-props'), ruler = $('.ddr-ruler'), zoomer = $('.ddr-zoom'), sizer = $('.ddr-sizer'), stage = $('.ddr-stage')
 
+  // the Field menu: the data's own fields first, so a name is picked rather than typed (and mistyped)
+  function fillFields() {
+    const opt = v => `<option value="${v.replaceAll('&', '&amp;').replaceAll('"', '&quot;')}">${v.replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</option>`
+    $('[data-id=field]').innerHTML = `<option value="">${L('Field…')}</option>` +
+      (fields.length ? `<optgroup label="${L('Data')}">${fields.map(f => opt(`{{${f}}}`)).join('')}</optgroup>` : '') +
+      `<optgroup label="${L('Expressions')}">${FIELD_TOKENS.map(opt).join('')}</optgroup>`
+  }
+  fillFields()
+
   const px = v => v + 'px'
   const bandOf = e => BANDS.find(b => tpl.bands[b].elements.includes(e))
   const contentW = () => tpl.page.width - tpl.page.marginLeft - tpl.page.marginRight
@@ -366,16 +427,23 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   // ---- history -----------------------------------------------------------
   const pack = () => JSON.stringify(tpl, (k, v) => typeof v === 'string' && v.startsWith('data:') ? '\u0000' + (images.includes(v) ? images.indexOf(v) : images.push(v) - 1) : v)
   const unpack = s => JSON.parse(s, (k, v) => typeof v === 'string' && v[0] === '\u0000' ? images[+v.slice(1)] : v)
-  function remember() {
-    history.splice(++at, Infinity, pack())
-    if (history.length > 100) { history.shift(); at-- }
+  // edit names a run of typing in one field: its keystrokes are one undo step, not one each
+  let lastEdit = null
+  function remember(edit) {
+    if (edit && edit === lastEdit && at === history.length - 1) history[at] = pack()
+    else {
+      history.splice(++at, Infinity, pack())
+      if (history.length > 100) { history.shift(); at-- }
+    }
+    lastEdit = edit ?? null
     sync()
   }
-  function changed() {
-    remember()
+  function changed(edit) {
+    remember(edit)
     onChange?.(tpl)
   }
   function travel(step) {
+    lastEdit = null
     if (!history[at + step]) return
     at += step
     tpl = unpack(history[at])
@@ -435,7 +503,8 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   }
   handle.onpointerdown = ev => {
     const e = sel[0], w0 = e.w, h0 = e.h, n = nodes.get(e)
-    const flat = e.type === 'line' && e.w >= e.h, tall = e.type === 'line' && !flat // a line only changes its length
+    const straight = e.type === 'line' && e.slope !== 'down' && e.slope !== 'up' // a straight line only changes its length
+    const flat = straight && e.w >= e.h, tall = straight && !flat
     ev.stopPropagation()
     handle.onpointermove = mv => {
       if (!tall) e.w = Math.max(4, Math.round(w0 + (mv.clientX - ev.clientX) / zoom))
@@ -496,8 +565,29 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     for (const e of sel) {
       if (!STYLE[e.type]?.includes(key)) continue
       if (key === 'align' && e.type === 'table') e.aligns = Object.assign(e.cells[0].map((_, c) => e.aligns?.[c] || 'left'), { [Math.min(activeCol, e.cells[0].length - 1)]: value })
-      else e[key] = value
+      else e[propOf(e, key)] = value
     }
+    redraw()
+  }
+
+  // tableEdit inserts or deletes a row or a column next to the cell last clicked;
+  // rows keep their height, so the table grows or shrinks with them
+  function tableEdit(e, op) {
+    const r = Math.min(activeRow, e.cells.length - 1), c = Math.min(activeCol, e.cells[0].length - 1), rh = e.h / e.cells.length
+    e.aligns = e.cells[0].map((_, i) => e.aligns?.[i] || 'left')
+    if (op === 'rowAbove' || op === 'rowBelow') e.cells.splice(r + (op === 'rowBelow'), 0, e.cells[0].map(() => ''))
+    else if (op === 'rowDelete' && e.cells.length > 1) e.cells.splice(r, 1)
+    else if (op === 'colLeft' || op === 'colRight') {
+      const at = c + (op === 'colRight')
+      for (const row of e.cells) row.splice(at, 0, '')
+      e.cols.splice(at, 0, 1)
+      e.aligns.splice(at, 0, 'left')
+    } else if (op === 'colDelete' && e.cells[0].length > 1) {
+      for (const row of e.cells) row.splice(c, 1)
+      e.cols.splice(c, 1)
+      e.aligns.splice(c, 1)
+    }
+    e.h = Math.round(rh * e.cells.length)
     redraw()
   }
 
@@ -583,13 +673,47 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     $('[data-id=zoomrange]').value = Math.round(zoom * 100)
   }
   const fitZoom = () => (stage.clientWidth - 34) / tpl.page.width || 1
+  // zoomAt keeps the point of the page under (cx, cy) where it is
+  function zoomAt(z, cx, cy) {
+    const before = zoomer.getBoundingClientRect(), x = (cx - before.left) / zoom, y = (cy - before.top) / zoom
+    setZoom(z)
+    const after = zoomer.getBoundingClientRect()
+    stage.scrollLeft += after.left + x * zoom - cx
+    stage.scrollTop += after.top + y * zoom - cy
+  }
+  // Ctrl + wheel zooms; so does a trackpad pinch, which browsers send as one
+  stage.addEventListener('wheel', ev => {
+    if (!ev.ctrlKey && !ev.metaKey) return
+    ev.preventDefault()
+    zoomAt(zoom * Math.exp(-ev.deltaY * (ev.deltaMode === 1 ? 16 : 1) * 0.002), ev.clientX, ev.clientY)
+  }, { passive: false })
+  // two fingers on a touch screen pinch-zoom; they neither drag an element nor draw a selection box
+  const touches = new Map()
+  let pinch = null
+  const spread = () => { const [a, b] = touches.values(); return [Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2] }
+  stage.addEventListener('pointerdown', ev => {
+    if (ev.pointerType !== 'touch') return
+    touches.set(ev.pointerId, ev)
+    if (touches.size === 2) { pinch = { d: spread()[0], z: zoom }; ev.stopPropagation() }
+  }, true)
+  stage.addEventListener('pointermove', ev => {
+    if (!touches.has(ev.pointerId)) return
+    touches.set(ev.pointerId, ev)
+    if (!pinch || touches.size < 2) return
+    ev.stopPropagation()
+    const [d, cx, cy] = spread()
+    if (pinch.d) zoomAt(pinch.z * d / pinch.d, cx, cy)
+  }, true)
+  const lift = ev => { touches.delete(ev.pointerId); if (touches.size < 2) pinch = null }
+  stage.addEventListener('pointerup', lift, true)
+  stage.addEventListener('pointercancel', lift, true)
 
   // ---- commands (ribbon buttons and shortcuts) ------------------------------
   const commands = {
     undo: () => travel(-1),
     redo: () => travel(1),
-    copy: () => { clip = copied(); sync() },
-    cut: () => { if (sel.length) { clip = copied(); moveTo(sel) } },
+    copy: () => { clip = copied(); sync(); toSystem('copy') },
+    cut: () => { if (sel.length) { clip = copied(); toSystem('copy'); moveTo(sel) } },
     paste: () => { if (clip.length) clip = paste(clip) },
     duplicate: () => { if (sel.length) paste(copied()) },
     delete: () => { if (sel.length) moveTo(sel) },
@@ -619,6 +743,37 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     zoom: step => setZoom(step === 'fit' ? fitZoom() : +step ? zoom + step * 0.1 : 1),
   }
   const run = cmd => { const [name, ...args] = cmd.split(':'); commands[name](...args) }
+
+  // The system clipboard: Ctrl+C / Ctrl+X put the selected elements on it as
+  // JSON, so they can be pasted into another designer (another tab, another
+  // report); Ctrl+V takes them back, or turns plain text into a text box. The
+  // ribbon's Copy and Cut fill it too; its Paste uses what was copied here.
+  let copying = false
+  const ours = ev => copying || !editing && !ev.target.closest?.('input,select,textarea') && root.contains(document.activeElement)
+  function toSystem(how) {
+    copying = true
+    try { document.execCommand(how) } catch {} finally { copying = false }
+  }
+  for (const how of ['copy', 'cut']) {
+    document.addEventListener(how, ev => {
+      if (!ours(ev) || !sel.length) return
+      ev.preventDefault()
+      clip = copied()
+      ev.clipboardData.setData('text/plain', JSON.stringify({ ddreport: clip }))
+      if (how === 'cut' && !copying) moveTo(sel)
+      else sync()
+    })
+  }
+  document.addEventListener('paste', ev => {
+    if (!ours(ev)) return
+    ev.preventDefault()
+    const text = ev.clipboardData.getData('text/plain')
+    let list
+    try { list = JSON.parse(text).ddreport } catch {}
+    if (Array.isArray(list) && list.length && list.every(i => BANDS.includes(i?.[0]) && typeof i[1] === 'string')) clip = paste(list)
+    else if (text.trim()) add('text', target(), 0, 0, { text: text.replace(/<(\/?[biu]>)/g, '&lt;$1') })
+    else if (clip.length) clip = paste(clip)
+  })
 
   // keep the text selection and keyboard focus where they are when a ribbon button is pressed
   root.addEventListener('mousedown', ev => { if (ev.target.closest('.ddr-panel button:not([draggable])')) ev.preventDefault() })
@@ -657,6 +812,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     }
     else if (d.id === 'ruler') return void (ruler.hidden = !value)
     else if (d.id === 'snap') return void (snap = value)
+    else if (d.id === 'nothousands') tpl.thousands = value ? 'none' : ''
     else return
     redraw()
   })
@@ -670,7 +826,8 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     if (ev.target.closest('input,select,textarea,button')) return
     const key = ev.key.toLowerCase(), big = ev.shiftKey ? 10 : 1
     const cmd = ev.ctrlKey || ev.metaKey
-      ? { z: ev.shiftKey ? 'redo' : 'undo', y: 'redo', c: 'copy', x: 'cut', v: 'paste', d: 'duplicate', a: 'all', b: 'bold', i: 'italic', u: 'underline' }[key]
+      // Ctrl+C, X and V are left to the browser, which fires the clipboard events above
+      ? { z: ev.shiftKey ? 'redo' : 'undo', y: 'redo', d: 'duplicate', a: 'all', b: 'bold', i: 'italic', u: 'underline', '=': 'zoom:1', '+': 'zoom:1', '-': 'zoom:-1', 0: 'zoom:0' }[key]
       : { delete: 'delete', backspace: 'delete', escape: 'none' }[key]
     const move = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] }[key]
     if (cmd) run(cmd)
@@ -711,15 +868,40 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   if (preview) {
     const dialog = document.createElement('dialog'), box = document.createElement('div')
     dialog.className = 'ddr-preview'
-    dialog.innerHTML = `<form method="dialog"><button>${L('Close')}</button> <span role="alert"></span></form><iframe sandbox title="${L('Report preview')}"></iframe>`
+    // the frame sits over a note that says what is going on, and only shows once its document has
+    // loaded: while rendering, or after an error, the preview never looks like an empty page
+    dialog.innerHTML = `<form method="dialog"><button>${L('Close')}</button><span role="status"></span></form>` +
+      `<div class="ddr-sheet"><p role="alert"></p><iframe sandbox title="${L('Report preview')}"></iframe></div>`
     box.innerHTML = group('Report', tile('preview', 'preview', 'Preview', 'Render the report with sample data'))
+    const frame = dialog.querySelector('iframe'), status = dialog.querySelector('[role=status]'), note = dialog.querySelector('[role=alert]')
+    let runs = 0
+    frame.onload = () => { if (frame.srcdoc) frame.classList.add('ready') }
     commands.preview = async () => {
-      const frame = dialog.querySelector('iframe'), alert = dialog.querySelector('[role=alert]')
-      frame.srcdoc = alert.textContent = ''
-      try { frame.srcdoc = await preview(structuredClone(tpl)) } catch (err) { alert.textContent = err.message }
-      if (!dialog.open) dialog.showModal()
+      const run = ++runs // a later click wins over a slow earlier render
+      frame.classList.remove('ready')
+      status.textContent = ''
+      note.textContent = L('Rendering…')
+      note.classList.remove('err')
+      if (!dialog.open) dialog.showModal() // open at once, so the click visibly did something
+      try {
+        const html = String(await preview(structuredClone(tpl)))
+        if (run !== runs) return
+        // pages as sheets on a grey desk, so the page breaks show, scaled to fit the frame. The frame is
+        // sandboxed and cannot be reached from here, so this goes into the document; printing it is unchanged.
+        // The run number keeps the document new even when nothing changed, so the frame always reloads and shows.
+        const fit = Math.min(1, (frame.clientWidth - 40) / (tpl.page.width * 4 / 3)), pages = html.split('<div class="p">').length - 1
+        frame.srcdoc = html.replace('</head>', `<style>@media screen{html{background:#e5e7eb}body{padding:12px 0;zoom:${fit}}.p{margin:0 auto 12px;background:#fff;box-shadow:0 1px 4px #0003}}</style><!--${run}--></head>`)
+        status.textContent = pages ? `${pages} ${L(pages === 1 ? 'page' : 'pages')}` : ''
+      } catch (err) {
+        if (run !== runs) return
+        note.textContent = err.message || String(err)
+        note.classList.add('err')
+      }
     }
     $('[data-panel=View]').append(box.firstChild)
+    // and next to the zoom, where it is always in reach
+    box.innerHTML = ib('preview', 'preview', 'Render the report with sample data')
+    $('[data-id=status]').after(box.firstChild)
     root.append(dialog)
   }
 
@@ -730,7 +912,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     for (const c of $$('[data-prop]')) {
       const key = c.dataset.prop, e = sel.find(s => STYLE[s.type]?.includes(key))
       c.disabled = !e
-      const v = e?.[key] || DEFAULT[key]
+      const v = (e && e[propOf(e, key)]) || DEFAULT[key]
       if (c.type === 'checkbox') c.checked = !!v
       else c.value = v
     }
@@ -740,6 +922,10 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     for (const b of $$('[data-cmd^="align:"]')) b.setAttribute('aria-pressed', !!first && b.dataset.cmd === 'align:' + align)
     for (const c of $$('[data-page]')) c.value = p[c.dataset.page] || (c.type === 'color' ? '#ffffff' : 0)
     for (const c of $$('[data-tpl]')) c.type === 'checkbox' ? c.checked = !!tpl[c.dataset.tpl] : c.value = tpl[c.dataset.tpl] ?? ''
+    // "none" is no thousands separator: the box is ticked and the separator field stays empty
+    const none = tpl.thousands === 'none'
+    $('[data-id=nothousands]').checked = none
+    Object.assign($('[data-tpl=thousands]'), { disabled: none, value: none ? '' : tpl.thousands ?? '' })
     const [short, long] = [p.width, p.height].sort((a, b) => a - b)
     $('[data-id=paper]').value = Object.keys(PAPER).find(k => PAPER[k][0] === short && PAPER[k][1] === long) ?? 'Custom'
     $('[data-id=orientation]').value = p.width > p.height ? 'Landscape' : 'Portrait'
@@ -765,6 +951,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       const band = tpl.bands[name], el = document.createElement('div'), grip = document.createElement('div')
       el.className = 'ddr-band'
       el.dataset.name = name
+      el.dataset.label = L(name)
       el.style.height = px(band.height)
       el.toggleAttribute('data-thin', band.height < 12) // no room for the name
       el.ondragover = ev => ev.preventDefault()
@@ -828,37 +1015,60 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     n.setAttribute('aria-label', `${L('element')}: ${e.type}`)
     s.left = px(e.x); s.top = px(e.y); s.width = px(e.w); s.height = px(e.h)
     if (e.type === 'text' || e.type === 'table') {
-      s.fontFamily = FONTS[e.font] || ''
+      s.fontFamily = fontList[e.font] || ''
       s.fontSize = px(e.fontSize || 10); s.lineHeight = e.lineHeight || ''
       s.fontWeight = e.bold ? 'bold' : ''; s.fontStyle = e.italic ? 'italic' : ''; s.textDecoration = e.underline ? 'underline' : ''
       s.background = e.fill || ''
     }
+    if (e.showIf) { // printed only when its condition holds: marked, and the condition in the tooltip
+      n.dataset.cond = ''
+      n.title = `${L('show when')}: ${e.showIf}`
+    }
     if (e.type === 'text') {
-      fill(n, e.text)
+      // the words sit in an inner box, so the element can align them up and down
+      const words = n.appendChild(document.createElement('div'))
+      fill(words, e.text)
       s.textAlign = e.align || 'left'; s.color = stroke
-      n.ondblclick = () => edit(n, true, () => { e.text = markup(n).replace(/\n$/, ''); redraw() })
+      if (e.valign === 'middle' || e.valign === 'bottom') Object.assign(s, { display: 'flex', flexDirection: 'column', justifyContent: e.valign === 'middle' ? 'center' : 'flex-end' })
+      n.ondblclick = () => edit(words, true, () => { e.text = markup(words).replace(/\n$/, ''); redraw() })
     } else if (e.type === 'table') {
       const line = e.border > 0 ? `${e.border}px solid ${stroke}` : '1px dotted #ccd'
+      const grid = e.border > 0 ? e.grid || 'all' : 'all', rows = e.cells.length // without a border, guides show every cell
+      // look is what the renderer does: header and total row bold with their own colours, body rows banded
+      const look = r => e.header && r === 0 ? [e.headerFill, e.headerColor, true]
+        : e.footer && r === rows - 1 && (r > 0 || !e.header) ? [e.footerFill, e.footerColor, true]
+        : [(e.header ? r % 2 === 0 : r % 2 === 1) ? e.stripe : '', e.textColor, e.bold]
       s.gridTemplateColumns = e.cols.map(c => `minmax(0,${c}fr)`).join(' ')
-      s.gridTemplateRows = `repeat(${e.cells.length},minmax(0,1fr))`
-      s.borderLeft = s.borderTop = line
+      s.gridTemplateRows = `repeat(${rows},minmax(0,1fr))`
+      if (grid === 'outer') s.border = line
+      else s.borderTop = line
+      if (grid === 'all') s.borderLeft = line
       e.cells.forEach((row, r) => row.forEach((text, c) => {
-        const cell = document.createElement('div')
+        const cell = document.createElement('div'), [bg, ink, bold] = look(r)
         cell.className = 'ddr-cell'
         cell.textContent = text
         cell.dataset.col = c
-        cell.style.borderRight = cell.style.borderBottom = line
-        cell.style.textAlign = e.aligns?.[c] || 'left'
+        cell.dataset.row = r
+        if (grid !== 'outer') cell.style.borderBottom = line
+        if (grid === 'all') cell.style.borderRight = line
+        Object.assign(cell.style, { textAlign: e.aligns?.[c] || 'left', background: bg || '', color: ink || '', fontWeight: bold ? 'bold' : '' })
+        if (e.valign === 'middle' || e.valign === 'bottom') Object.assign(cell.style, { display: 'flex', flexDirection: 'column', justifyContent: e.valign === 'middle' ? 'center' : 'flex-end' })
         cell.ondblclick = () => edit(cell, false, () => { e.cells[r][c] = cell.textContent; changed() })
         n.append(cell)
       }))
     } else if (e.type === 'rect') {
       s.background = e.fill || ''
       if (e.border > 0) s.border = `${e.border}px solid ${stroke}`
+    } else if (e.type === 'line' && (e.slope === 'down' || e.slope === 'up')) {
+      const svg = n.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'svg')), l = svg.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'line'))
+      Object.entries({ width: '100%', height: '100%', viewBox: `0 0 ${e.w || 1} ${e.h || 1}`, preserveAspectRatio: 'none', style: 'display:block;overflow:visible' }).forEach(([k, v]) => svg.setAttribute(k, v))
+      Object.entries({ x1: 0, x2: e.w, y1: e.slope === 'up' ? e.h : 0, y2: e.slope === 'up' ? 0 : e.h, 'stroke-width': e.border || 1, 'vector-effect': 'non-scaling-stroke' }).forEach(([k, v]) => l.setAttribute(k, v))
+      l.style.stroke = stroke
     } else if (e.type === 'line') {
       s[e.h > e.w ? 'borderLeft' : 'borderTop'] = `${e.border || 1}px solid ${stroke}`
     } else if (e.type === 'image') {
-      if (e.src) s.backgroundImage = `url("${e.src}")`
+      if (e.src?.startsWith('data:')) s.backgroundImage = `url("${e.src}")`
+      else if (e.src) n.textContent = e.src // a picture from the data: its placeholder
     } else if (e.type === 'chart') {
       n.textContent = `${e.chart} chart\n${e.value || 'value?'} per ${e.label || 'label?'}`
     } else if (e.type === 'barcode') {
@@ -872,7 +1082,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     n.onfocus = () => { if (!sel.includes(e)) select(e) }
     n.onpointerdown = ev => {
       if (editing && n.contains(editing)) return
-      if (ev.target.dataset.col) activeCol = +ev.target.dataset.col
+      if (ev.target.dataset.col) { activeCol = +ev.target.dataset.col; activeRow = +ev.target.dataset.row }
       if (ev.shiftKey) return select(e, true) // shift-click adds to / removes from the selection
       if (!sel.includes(e)) select(e)
       else sync()
@@ -917,6 +1127,28 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     rows: { get: e => e.cells.length, set: (e, v) => tableSize(e, v, e.cells[0].length) },
     columns: { get: e => e.cells[0].length, set: (e, v) => tableSize(e, e.cells.length, v) },
     cols: { get: e => e.cols.join(','), set: (e, v) => { e.cols = e.cells[0].map((_, i) => +v.split(',')[i] || 1) } },
+    // turning the total row on adds a row for it at the bottom, and turning it off takes that row away;
+    // a one-row table (say, the totals in the summary band under a data table) becomes the total row itself
+    footer: {
+      get: e => !!e.footer,
+      set: (e, v) => {
+        if (v === !!e.footer || e.cells.length < (v ? 2 : 3)) return void (e.footer = v)
+        const h = e.h / e.cells.length
+        tableSize(e, e.cells.length + (v ? 1 : -1), e.cells[0].length)
+        e.h = Math.round(h * e.cells.length) // the rows keep their height
+        e.footer = v
+      },
+    },
+    // a straight line is flat or upright by its shape; a slanted one gets room to slant in
+    slope: {
+      get: e => e.slope || 'straight',
+      set: (e, v) => {
+        e.slope = v === 'straight' ? '' : v
+        if (e.slope && Math.min(e.w, e.h) < 10) e.h = e.w = Math.max(e.w, e.h, 60)
+      },
+    },
+    // a picture from the data is a placeholder in src, such as {{photo}}
+    dataSrc: { get: e => e.src?.startsWith('data:') ? '' : e.src || '', set: (e, v) => { e.src = v } },
   }
 
   function renderProps() {
@@ -926,19 +1158,38 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     const e = sel[0]
     if (!e) {
       note(L('Band heights. Select an element to edit it; double-click a text or a table cell to type.'))
-      for (const b of BANDS) field(tpl.bands[b], 'height', b)
+      for (const b of BANDS) {
+        const band = tpl.bands[b]
+        field(band, 'height', L(b))
+        if (b === 'header' || b === 'columnHeader' || b === 'footer') { // every page, or the first (or last) only
+          const pages = choice(b === 'footer' ? ['all', 'first', 'last'] : ['all', 'first'], band.pages || 'all')
+          pages.onchange = () => { band.pages = pages.value === 'all' ? '' : pages.value; changed() }
+          row(`${L(b)} · ${L('pages')}`, pages)
+        } else if (b !== 'groupHeader') field(band, 'newPage', `${L(b)} · ${L('new page')}`)
+      }
       return
     }
     // keyboard way to move an element to another band
     const band = choice(BANDS, bandOf(e))
     band.onchange = () => moveTo([e], band.value)
     row(L('band'), band)
-    for (const k of FIELDS[e.type] ?? BASE) field(e, k, L(LABEL[k] ?? k))
+    // the colours of the header and the total row only show while that row is on
+    for (const k of FIELDS[e.type] ?? BASE) if (!/^(header|footer)./.test(k) || e[k.slice(0, 6)]) field(e, k, L(LABEL[k] ?? k))
+    if (e.type === 'table') { // rows and columns next to the cell last clicked
+      const bar = props.appendChild(document.createElement('div'))
+      bar.className = 'ddr-tablebar'
+      bar.title = L('Click a cell first; rows and columns are added next to it')
+      for (const [op, label] of [['rowAbove', 'Row above'], ['rowBelow', 'Row below'], ['rowDelete', 'Delete row'], ['colLeft', 'Column left'], ['colRight', 'Column right'], ['colDelete', 'Delete column']]) {
+        const b = bar.appendChild(Object.assign(document.createElement('button'), { type: 'button', textContent: L(label) }))
+        b.dataset.table = op
+        b.onclick = () => tableEdit(e, op)
+      }
+    }
   }
 
   function choice(values, value) {
     const input = document.createElement('select')
-    input.append(...values.map(v => new Option(v)))
+    input.append(...values.map(v => new Option(L(v), v)))
     input.value = value
     return input
   }
@@ -951,7 +1202,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
 
   function field(obj, key, label = key) {
     let input
-    const virtual = VIRTUAL[key]
+    const virtual = VIRTUAL[key], typing = {} // names this field's run of edits for the undo history
     if (SELECT[key]) {
       input = choice(SELECT[key], obj[key] || SELECT[key][0])
     } else if (key === 'text') {
@@ -960,10 +1211,14 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       if (obj.type === 'text') input.title = L('Use <b>, <i> and <u> to style parts of the text')
     } else {
       input = document.createElement('input')
-      input.type = key === 'src' ? 'file' : key === 'color' ? 'color' : NUMERIC.has(key) ? 'number' : 'text'
+      input.type = key === 'src' ? 'file' : key === 'color' || CLEARABLE.has(key) ? 'color' : BOOL.has(key) ? 'checkbox' : NUMERIC.has(key) ? 'number' : 'text'
       if (input.type === 'number') input.min = 0
       if (input.type === 'file') input.accept = 'image/png,image/jpeg,image/gif'
-      else input.value = virtual ? virtual.get(obj) : obj[key] ?? (key === 'color' ? '#000000' : '')
+      else if (input.type === 'checkbox') input.checked = !!(virtual ? virtual.get(obj) : obj[key])
+      else {
+        const v = virtual ? virtual.get(obj) : obj[key] // 0 is a value: x and y are often 0
+        input.value = input.type !== 'color' ? v ?? '' : v || (/Fill|stripe/.test(key) ? '#ffffff' : '#000000')
+      }
       input.placeholder = L(PLACEHOLDER[key] ?? '')
     }
     input.oninput = () => {
@@ -973,15 +1228,23 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
         if (input.files[0]) reader.readAsDataURL(input.files[0])
         return
       }
-      const value = input.type === 'number' ? Math.max(0, +input.value || 0) : input.value
+      input.style.opacity = ''
+      const value = input.type === 'number' ? Math.max(0, +input.value || 0) : input.type === 'checkbox' ? input.checked : input.value
       if (virtual) virtual.set(obj, value)
       else obj[key] = value
       draw()
-      changed()
+      changed(typing) // the keystrokes of one field are one undo step
+      if (input.type === 'checkbox' || key === 'slope') renderProps() // shows or hides the colours of that row; a new size
     }
     // typing a position outside the page is corrected when the field is left, not mid-keystroke
     input.onchange = () => { if (!virtual && input.type === 'number' && +input.value !== obj[key]) input.value = obj[key] }
-    row(label, input)
+    if (!CLEARABLE.has(key)) return row(label, input)
+    // an optional colour: until one is picked it shows faded, and × takes it away again
+    const box = document.createElement('span'), clear = Object.assign(document.createElement('button'), { type: 'button', textContent: '×', title: L('Clear') })
+    input.style.opacity = obj[key] ? '' : '.35'
+    clear.onclick = () => { obj[key] = ''; draw(); changed(); renderProps() }
+    box.append(input, clear)
+    row(label, box)
   }
 
   load(template, true)
@@ -993,5 +1256,6 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   return {
     getTemplate: () => structuredClone(tpl),
     setTemplate: t => load(t),
+    setFields: list => { fields = Array.isArray(list) ? list.map(String) : []; fillFields() },
   }
 }

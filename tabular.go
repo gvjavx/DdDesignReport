@@ -68,15 +68,20 @@ func (r *report) table() ([][]cell, []float64) {
 		sc := scope{t, rows, ctx}
 		for _, line := range textLines(band) {
 			if len(cols) == 0 { // free-form document: the texts as they read
-				cells := make([]cell, len(line))
-				for i, e := range line {
-					cells[i] = sc.cell(e)
+				var cells []cell
+				for _, e := range line {
+					if sc.shows(e) {
+						cells = append(cells, sc.cell(e))
+					}
 				}
 				out = append(out, cells)
 				continue
 			}
 			cells := make([]cell, len(cols))
 			for _, e := range line {
+				if !sc.shows(e) {
+					continue
+				}
 				// the column with the nearest edge on the side the text is aligned to;
 				// between columns that share that edge, the one most alike in extent
 				best, a := 0, e.align()
@@ -106,7 +111,9 @@ func (r *report) table() ([][]cell, []float64) {
 		sc := scope{t, rows, ctx}
 		cells := make([]cell, len(cols))
 		for i, e := range cols {
-			cells[i] = sc.cell(e)
+			if sc.shows(e) { // a hidden text leaves its column empty
+				cells[i] = sc.cell(e)
+			}
 		}
 		out = append(out, cells)
 	}
@@ -117,15 +124,17 @@ func (r *report) table() ([][]cell, []float64) {
 	lines(b.ColumnHeader, r.rows, r.root)
 	for _, g := range t.groups(r.rows) {
 		var first map[string]any
-		if t.GroupBy != "" {
-			first, _ = g[0].(map[string]any)
+		if t.grouped() {
+			if len(g) > 0 {
+				first, _ = g[0].(map[string]any)
+			}
 			lines(b.GroupHeader, g, first, r.root)
 		}
 		for _, row := range g {
 			m, _ := row.(map[string]any)
 			detail(g, m, r.root)
 		}
-		if t.GroupBy != "" {
+		if t.grouped() {
 			lines(b.GroupFooter, g, first, r.root)
 		}
 	}
