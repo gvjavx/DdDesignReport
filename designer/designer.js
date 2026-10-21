@@ -70,7 +70,7 @@ const PLACEHOLDER = { label: 'row field', value: 'field or qty * price', cols: '
 const TITLE = {
   data: 'A list in the data, such as items: the rows between the header and the total row repeat for each of its items. {{field}} is a field of the item, {{index}} its number.',
 }
-const FIELD_TOKENS = ['{{page}}', '{{pages}}', '{{now:dd/MM/yyyy}}', '{{field:2}}', '{{field:dd MMMM yyyy}}', '{{qty * price:2}}', '{{sum(field):2}}', '{{avg(field):2}}', '{{min(field)}}', '{{max(field)}}', '{{count()}}', "{{if(field > 0, 'yes', 'no')}}"]
+const FIELD_TOKENS = ['{{page}}', '{{pages}}', '{{index}}', '{{now:dd/MM/yyyy}}', '{{field:2}}', '{{field:dd MMMM yyyy}}', '{{qty * price:2}}', '{{sum(field):2}}', '{{avg(field):2}}', '{{min(field)}}', '{{max(field)}}', '{{count()}}', "{{if(field > 0, 'yes', 'no')}}", '{{terbilang(field)}}']
 
 // Indonesian interface. Anything missing here stays English.
 const ID = {
@@ -136,7 +136,7 @@ const ID = {
 }
 
 // simple: true hides what a first report does not need, and names every button
-const SIMPLE = ['Arrange', 'Report', 'Grouping', 'Margins', 'Layout.Data', 'Show', 'cut', 'valign', 'lineHeight',
+const SIMPLE = ['Arrange', 'Insert.Report', 'Grouping', 'Margins', 'Layout.Data', 'Show', 'cut', 'valign', 'lineHeight',
   'x', 'y', 'showIf', 'cols', 'heights', 'padding', 'grid', 'headerLine', 'footerLine', 'frame', 'dataSrc']
 // only a picture inside the template is drawn: a link elsewhere would be fetched by whoever opens the template
 const isPicture = v => /^data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=\s]*$/.test(v)
@@ -438,22 +438,33 @@ function value(expr, row) {
   return own !== undefined ? +own : sum()
 }
 
-// chartSketch draws a chart into an SVG of the element's size, from rows of
-// the sample data, or from example values when there are none to draw from
-function chartSketch(e, rows) {
+// chartSketch draws a chart into an SVG of the element's size, laid out as the
+// renderer lays it out (value scale, labels, legend), from rows of the sample
+// data, or from example values when there are none to draw from. number writes
+// a value as the report does; other names the slice of what does not fit.
+function chartSketch(e, rows, number, other) {
   const sums = new Map()
   for (const row of rows) {
     const label = String(e.label ? (e.label.split('.').reduce((o, k) => o?.[k], row) ?? '') : ''), v = value(e.value, row)
     if (Number.isFinite(v)) sums.set(label, (sums.get(label) ?? 0) + v)
   }
   if (!e.label || !e.value || !sums.size) [['A', 3], ['B', 5], ['C', 2], ['D', 4]].forEach(([l, v]) => sums.set(l, v)) // an example, for the shape
-  // as printed: a pie leaves slices of nothing out of its legend
-  if ((e.chart === 'pie' || e.chart === 'donut') && [...sums.values()].some(v => v)) for (const [l, v] of sums) if (!v) sums.delete(l)
-  const labels = [...sums.keys()], vals = labels.map(l => sums.get(l)), w = e.w, h = e.h, color = e.color || PALETTE[0]
+  const w = e.w, h = e.h, color = e.color || PALETTE[0]
   const svg = svgEl('svg', { width: '100%', height: '100%', viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: 'none', style: 'display:block' })
   const text = (x, y, s, anchor = 'middle') => { const t = svgEl('text', { x, y, 'font-size': 7, 'text-anchor': anchor, fill: '#334155' }); t.textContent = s; svg.append(t) }
-  const short = v => Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : Math.abs(v) >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : String(Math.round(v * 100) / 100)
+  const line = (x1, y1, x2, y2, stroke) => svg.append(svgEl('line', { x1, y1, x2, y2, stroke, 'stroke-width': 0.5 }))
+  const num = v => number(v, v === Math.trunc(v) ? 0 : 2)
   if (e.chart === 'pie' || e.chart === 'donut') {
+    // as printed: no slices of nothing in the legend, and the smallest that do not fit summed into one
+    if ([...sums.values()].some(v => v)) for (const [l, v] of sums) if (!v) sums.delete(l)
+    const fit = Math.max(Math.floor(h / 11), 1)
+    if (sums.size > fit) {
+      const keep = new Set([...sums.keys()].sort((a, b) => sums.get(b) - sums.get(a)).slice(0, fit - 1))
+      let rest = 0
+      for (const [l, v] of sums) if (!keep.has(l)) { rest += v; sums.delete(l) }
+      sums.set(other, (sums.get(other) ?? 0) + rest)
+    }
+    const labels = [...sums.keys()], vals = labels.map(l => sums.get(l))
     const total = vals.reduce((a, v) => a + Math.max(v, 0), 0) || 1, r = Math.min(h, w * 0.55) / 2
     let a = -Math.PI / 2
     labels.forEach((l, i) => {
@@ -464,71 +475,311 @@ function chartSketch(e, rows) {
         ? `M${p(r, a)}A${r} ${r} 0 1 1 ${p(r, a + Math.PI)}A${r} ${r} 0 1 1 ${p(r, a)}Z`
         : `M${p(inner, a)}L${p(r, a)}A${r} ${r} 0 ${big} 1 ${p(r, a + sweep)}L${p(inner, a + sweep)}` + (inner ? `A${inner} ${inner} 0 ${big} 0 ${p(inner, a)}` : '') + 'Z'
       if (sweep > 0) svg.append(svgEl('path', { d, fill: c }))
-      if ((i + 1) * 11 <= h) {
-        svg.append(svgEl('rect', { x: 2 * r + 8, y: i * 11 + 1, width: 7, height: 7, fill: c }))
-        text(2 * r + 18, i * 11 + 7.5, `${l}: ${short(vals[i])}`, 'start')
-      }
+      svg.append(svgEl('rect', { x: 2 * r + 8, y: i * 11 + 1, width: 7, height: 7, fill: c }))
+      text(2 * r + 18, i * 11 + 7.5, `${l}: ${num(vals[i])}`, 'start')
       a += sweep
     })
     return svg
   }
-  const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals) || 1
-  if (e.chart === 'hbar') {
-    const lw = Math.min(w * 0.3, 90), pw = w - lw - 50, slot = h / labels.length, x = v => lw + pw * (v - lo) / (hi - lo || 1)
+  const labels = [...sums.keys()], vals = labels.map(l => sums.get(l)), n = labels.length
+  // the value scale: round steps from below the lowest value (or zero) to above the highest
+  let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals)
+  const raw = (hi - lo) / 4, mag = raw > 0 ? 10 ** Math.floor(Math.log10(raw)) : 1
+  const step = raw > 0 ? ([1, 2, 5].map(m => m * mag).find(s => s >= raw) ?? 10 * mag) : 1
+  lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step
+  if (hi === lo) hi = lo + step
+  const ticks = Array.from({ length: Math.round((hi - lo) / step) + 1 }, (_, i) => lo + i * step)
+  const wide = s => [...s].length * 3.9
+  if (e.chart === 'hbar') { // label, bar, value on each line; the scale along the bottom
+    const labelW = Math.min(w * 0.3, 90), plotW = w - labelW - 50, slot = (h - 10) / n, x = v => labelW + plotW * (v - lo) / (hi - lo)
+    for (const v of ticks) { line(x(v), 0, x(v), h - 10, '#dddddd'); text(x(v), h - 2.5, num(v)) }
+    const every = Math.ceil(9 / slot)
     labels.forEach((l, i) => {
-      const v = vals[i]
-      svg.append(svgEl('rect', { x: x(Math.min(v, 0)), y: slot * i + slot * 0.15, width: Math.abs(x(v) - x(0)), height: slot * 0.7, fill: color }))
-      if (slot >= 8) { text(lw - 4, slot * i + slot / 2 + 2.5, l, 'end'); text(x(Math.max(v, 0)) + 3, slot * i + slot / 2 + 2.5, short(v), 'start') }
+      const v = vals[i], y = slot * i
+      svg.append(svgEl('rect', { x: x(Math.min(v, 0)), y: y + slot * 0.15, width: x(Math.max(v, 0)) - x(Math.min(v, 0)), height: slot * 0.7, fill: color }))
+      if (i % every === 0) { text(labelW - 4, y + slot / 2 + 2.5, l, 'end'); text(x(Math.max(v, 0)) + 3, y + slot / 2 + 2.5, num(v), 'start') }
     })
-    svg.append(svgEl('line', { x1: x(0), x2: x(0), y1: 0, y2: h, stroke: '#888', 'stroke-width': 0.5 }))
+    line(x(0), 0, x(0), h - 10, '#888888')
     return svg
   }
-  const plot = h - 20, slot = w / labels.length, y = v => 10 + plot * (hi - v) / (hi - lo || 1), every = Math.ceil(30 / slot)
+  const axisW = Math.max(...ticks.map(v => wide(num(v)) + 4)), plot = h - 20, slot = (w - axisW) / n
+  const y = v => 10 + plot * (hi - v) / (hi - lo)
+  for (const v of ticks) { line(axisW, y(v), w, y(v), '#dddddd'); text(axisW - 4, y(v) + 2.5, num(v), 'end') }
+  const every = Math.ceil((Math.max(...labels.map((l, i) => Math.max(wide(l), wide(num(vals[i]))))) + 2) / slot)
   const pts = []
   labels.forEach((l, i) => {
-    const v = vals[i], x = slot * i
+    const v = vals[i], x = axisW + slot * i
+    let at = y(v)
     if (e.chart === 'line') pts.push([x + slot / 2, y(v)])
-    else svg.append(svgEl('rect', { x: x + slot * 0.15, y: y(Math.max(v, 0)), width: slot * 0.7, height: Math.abs(y(v) - y(0)), fill: color }))
-    if (i % every === 0) { text(x + slot / 2, h - 2, l); text(x + slot / 2, y(Math.max(v, 0)) - 2, short(v)) }
+    else { at = y(Math.max(v, 0)); svg.append(svgEl('rect', { x: x + slot * 0.15, y: at, width: slot * 0.7, height: y(Math.min(v, 0)) - at, fill: color })) }
+    if (i % every === 0) { text(x + slot / 2, at - 2.5, num(v)); text(x + slot / 2, h - 2.5, l) }
   })
   if (pts.length) {
     svg.append(svgEl('polyline', { points: pts.map(p => p.join(',')).join(' '), fill: 'none', stroke: color, 'stroke-width': 1.5 }))
     for (const [x, yy] of pts) svg.append(svgEl('rect', { x: x - 2, y: yy - 2, width: 4, height: 4, fill: color }))
   }
-  svg.append(svgEl('line', { x1: 0, x2: w, y1: y(0), y2: y(0), stroke: '#888', 'stroke-width': 0.5 }))
+  line(axisW, y(0), w, y(0), '#888888')
   return svg
 }
 
-// codeSketch draws a barcode the way it will look: a QR code's finder squares
-// and modules in its quiet zone, or the bars of a Code 128. The modules follow
-// the text, but only the printed code is meant for scanning.
-function codeSketch(e) {
-  const text = String(e.text ?? ''), color = e.color || '#000'
-  let seed = 2166136261
-  for (const ch of text) seed = Math.imul(seed ^ ch.codePointAt(0), 16777619) >>> 0
-  const next = () => (seed = Math.imul(seed ^ (seed >>> 15), 2246822507) >>> 0, seed / 4294967296)
-  const h = e.showText ? Math.max(e.h - 10, 1) : e.h
-  const svg = svgEl('svg', { width: '100%', height: '100%', viewBox: `0 0 ${e.w} ${e.h}`, preserveAspectRatio: 'none', style: 'display:block' })
-  if (e.format === 'code128') {
-    let x = e.w * 0.05
-    while (x < e.w * 0.95) {
-      const bar = (1 + Math.floor(next() * 3)) * e.w / 160
-      svg.append(svgEl('rect', { x, y: 0, width: bar, height: h, fill: color }))
-      x += bar + (1 + Math.floor(next() * 3)) * e.w / 160
+// ---- barcodes, encoded the way the renderer encodes them -------------------
+// The renderer uses github.com/boombuler/barcode: a QR code at error correction
+// level M, in the first of numeric, alphanumeric and byte mode that takes the
+// text, or Code 128. These are its steps, so the code on the page is the
+// printed one, module for module, and scans.
+
+// QR versions 1 to 40 at level M: error correction codewords per block, then
+// the blocks and data codewords per block of its two groups
+const QR_M = [[10,1,16,0,0],[16,1,28,0,0],[26,1,44,0,0],[18,2,32,0,0],[24,2,43,0,0],[16,4,27,0,0],[18,4,31,0,0],[22,2,38,2,39],[22,3,36,2,37],[26,4,43,1,44],[30,1,50,4,51],[22,6,36,2,37],[22,8,37,1,38],[24,4,40,5,41],[24,5,41,5,42],[28,7,45,3,46],[28,10,46,1,47],[26,9,43,4,44],[26,3,44,11,45],[26,3,41,13,42],[26,17,42,0,0],[28,17,46,0,0],[28,4,47,14,48],[28,6,45,14,46],[28,8,47,13,48],[28,19,46,4,47],[28,22,45,3,46],[28,3,45,23,46],[28,21,45,7,46],[28,19,47,10,48],[28,2,46,29,47],[28,10,46,23,47],[28,14,46,21,47],[28,14,46,23,47],[28,12,47,26,48],[28,6,47,34,48],[28,29,46,14,47],[28,13,46,32,47],[28,40,47,7,48],[28,18,47,31,48]]
+const EXP = [], LOG = []
+for (let i = 0, x = 1; i < 255; i++) {
+  EXP[i] = x
+  LOG[x] = i
+  x <<= 1
+  if (x & 256) x ^= 285
+}
+const gmul = (a, b) => a && b ? EXP[(LOG[a] + LOG[b]) % 255] : 0
+// ecc is the Reed-Solomon error correction of a block's data codewords
+function ecc(data, n) {
+  let g = [1]
+  for (let i = 0; i < n; i++) {
+    const next = new Array(g.length + 1).fill(0)
+    g.forEach((c, j) => { next[j] ^= c; next[j + 1] ^= gmul(c, EXP[i]) })
+    g = next
+  }
+  const rest = [...data, ...new Array(n).fill(0)]
+  data.forEach((_, i) => { const f = rest[i]; if (f) g.forEach((c, j) => { rest[i + j] ^= gmul(c, f) }) })
+  return rest.slice(data.length)
+}
+// bch adds the check bits of format and version information
+function bch(value, poly, bits) {
+  const deg = p => 31 - Math.clz32(p)
+  let r = value << bits
+  while (r && deg(r) >= bits) r ^= poly << (deg(r) - bits)
+  return value << bits | r
+}
+// the eight masks, x the column and y the row
+const MASKS = [
+  (x, y) => (y + x) % 2 === 0, (x, y) => y % 2 === 0, (x, y) => x % 3 === 0, (x, y) => (y + x) % 3 === 0,
+  (x, y) => (Math.floor(y / 2) + Math.floor(x / 3)) % 2 === 0, (x, y) => y * x % 2 + y * x % 3 === 0,
+  (x, y) => (y * x % 2 + y * x % 3) % 2 === 0, (x, y) => ((y + x) % 2 + y * x % 3) % 2 === 0,
+]
+// where the alignment patterns go, worked out as the renderer does
+function aligns(v) {
+  if (v === 1) return []
+  const first = 6, last = 17 + 4 * v - 7, count = Math.ceil((last - first) / 28) + 1
+  let step = Math.ceil((last - first) / (count - 1))
+  if (count > 2 && step % 2 === 1) {
+    const frac = (last - first) / (count - 1), round = frac % 1 >= 0.5 ? Math.ceil(frac) : Math.floor(frac)
+    step += round % 2 === 0 ? -1 : 1
+  }
+  return [first, ...Array.from({ length: count - 2 }, (_, i) => last - step * (count - 2 - i)), last]
+}
+
+// qr encodes text as a QR code: its size in modules and which are dark; null when it cannot be encoded
+function qr(text) {
+  if (!text) return null
+  const bytes = new TextEncoder().encode(text), ALNUM = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:'
+  const dataBytes = v => { const [, b1, d1, b2, d2] = QR_M[v - 1]; return b1 * d1 + b2 * d2 }
+  const countBits = (mode, v) => ({ 1: [10, 12, 14], 2: [9, 11, 13], 4: [8, 16, 16] })[mode][v < 10 ? 0 : v < 27 ? 1 : 2]
+  const thirds = text.match(/[\s\S]{1,3}/g), pairs = text.match(/[\s\S]{1,2}/g)
+  // the renderer's modes in its order: mode, its character count, whether it takes the text, its bits, how to write them
+  const modes = [
+    [1, text.length, thirds.every(c => /^[+-]?\d+$/.test(c) && +c >= 0), Math.floor(text.length / 3) * 10 + [0, 4, 7][text.length % 3],
+      add => thirds.forEach(c => add(+c, [10, 4, 7][c.length % 3]))],
+    [2, text.length, [...text].every(c => ALNUM.includes(c)), Math.floor(text.length / 2) * 11 + text.length % 2 * 6,
+      add => pairs.forEach(p => p.length === 2 ? add(ALNUM.indexOf(p[0]) * 45 + ALNUM.indexOf(p[1]), 11) : add(ALNUM.indexOf(p), 6))],
+    [4, bytes.length, true, bytes.length * 8, add => bytes.forEach(b => add(b, 8))],
+  ]
+  for (const [mode, length, takes, count, write] of modes) {
+    if (!takes) continue
+    let v = 1
+    while (v <= 40 && dataBytes(v) * 8 < 4 + count + countBits(mode, v)) v++
+    if (v <= 40) return qrMatrix(v, mode, length, write, dataBytes(v))
+  }
+  return null
+}
+
+function qrMatrix(v, mode, length, write, total) {
+  // the bits: mode, character count, the text, then the end and padding
+  const bits = [], add = (value, n) => { for (let i = n - 1; i >= 0; i--) bits.push(value >> i & 1) }
+  add(mode, 4)
+  add(length, ({ 1: [10, 12, 14], 2: [9, 11, 13], 4: [8, 16, 16] })[mode][v < 10 ? 0 : v < 27 ? 1 : 2])
+  write(add)
+  for (let i = 0; i < 4 && bits.length < total * 8; i++) bits.push(0)
+  while (bits.length % 8) bits.push(0)
+  for (let i = 0; bits.length < total * 8; i++) add(i % 2 ? 17 : 236, 8)
+  // the codewords in blocks, each with its error correction, interleaved
+  const [ecn, b1, d1, b2, d2] = QR_M[v - 1], words = [], blocks = []
+  for (let i = 0; i < bits.length; i += 8) words.push(bits.slice(i, i + 8).reduce((a, b) => a << 1 | b, 0))
+  let at = 0
+  for (const [n, d] of [[b1, d1], [b2, d2]]) for (let b = 0; b < n; b++) { const data = words.slice(at, at += d); blocks.push([data, ecc(data, ecn)]) }
+  const stream = []
+  for (let i = 0; i < Math.max(d1, d2); i++) for (const [data] of blocks) if (i < data.length) stream.push(data[i])
+  for (let i = 0; i < ecn; i++) for (const [, e] of blocks) stream.push(e[i])
+
+  // the modules, one grid per mask; x * dim + y as in the renderer
+  const dim = 17 + 4 * v, occupied = new Uint8Array(dim * dim), grids = MASKS.map(() => new Uint8Array(dim * dim))
+  const setAll = (x, y, on) => { occupied[x * dim + y] = 1; for (const g of grids) g[x * dim + y] = on ? 1 : 0 }
+  for (const [ox, oy] of [[0, 0], [0, dim - 7], [dim - 7, 0]]) { // finder patterns, with their white border
+    for (let x = -1; x < 8; x++) for (let y = -1; y < 8; y++) {
+      const on = (x === 0 || x === 6 || y === 0 || y === 6 || (x > 1 && x < 5 && y > 1 && y < 5)) && x <= 6 && y <= 6 && x >= 0 && y >= 0
+      if (x + ox >= 0 && x + ox < dim && y + oy >= 0 && y + oy < dim) setAll(x + ox, y + oy, on)
     }
-  } else {
-    const n = 25, m = Math.min(e.w, h) / (n + 4), q = 2 * m, dark = (x, y) => svg.append(svgEl('rect', { x: q + x * m, y: q + y * m, width: m, height: m, fill: color }))
-    const finder = (fx, fy) => {
-      for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) if (y % 6 === 0 || x % 6 === 0 || (x > 1 && x < 5 && y > 1 && y < 5)) dark(fx + x, fy + y)
+  }
+  for (const x of aligns(v)) for (const y of aligns(v)) {
+    if (occupied[x * dim + y]) continue
+    for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) setAll(x + i, y + j, i === -2 || i === 2 || j === -2 || j === 2 || (i === 0 && j === 0))
+  }
+  for (let i = 0; i < dim; i++) { // timing patterns
+    if (!occupied[i * dim + 6]) setAll(i, 6, i % 2 === 0)
+    if (!occupied[6 * dim + i]) setAll(6, i, i % 2 === 0)
+  }
+  setAll(8, dim - 8, true) // the dark module
+  if (v >= 7) {
+    const info = bch(v, 0x1F25, 12)
+    for (let i = 0; i < 18; i++) { const x = dim - 11 + i % 3, y = Math.floor(i / 3); setAll(x, y, info >> i & 1); setAll(y, x, info >> i & 1) }
+  }
+  // format information: level M and the mask, in two copies
+  const FORMAT = [[0, 8], [1, 8], [2, 8], [3, 8], [4, 8], [5, 8], [7, 8], [8, 8], [8, 7], [8, 5], [8, 4], [8, 3], [8, 2], [8, 1], [8, 0],
+    [8, dim - 1], [8, dim - 2], [8, dim - 3], [8, dim - 4], [8, dim - 5], [8, dim - 6], [8, dim - 7], [dim - 8, 8], [dim - 7, 8], [dim - 6, 8], [dim - 5, 8], [dim - 4, 8], [dim - 3, 8], [dim - 2, 8], [dim - 1, 8]]
+  for (const [x, y] of FORMAT) occupied[x * dim + y] = 1
+  grids.forEach((g, m) => {
+    const info = bch(m, 0x537, 10) ^ 0x5412
+    FORMAT.forEach(([x, y], k) => { g[x * dim + y] = info >> (14 - k % 15) & 1 })
+  })
+  // the data, two columns at a time, up and down from the bottom right, round the timing column
+  let bit = 0, x = dim - 1, y = dim - 1, up = true
+  const put = (px, py) => {
+    if (occupied[px * dim + py]) return
+    const on = bit < stream.length * 8 ? stream[bit >> 3] >> (7 - bit % 8) & 1 : 0
+    bit++
+    grids.forEach((g, m) => { g[px * dim + py] = on ^ (MASKS[m](px, py) ? 1 : 0) })
+  }
+  for (;;) {
+    put(x, y)
+    put(x - 1, y)
+    y += up ? -1 : 1
+    if (y >= 0 && y < dim) continue
+    y = up ? 0 : dim - 1
+    x -= 2
+    if (x === 6) x--
+    if (x < 0) break
+    up = !up
+  }
+  // the mask the renderer picks: the lowest penalty, the first of equals
+  const penalty = g => {
+    const get = (x, y) => g[x * dim + y]
+    let p = 0
+    for (let x = 0; x < dim; x++) {
+      let cx = 0, cy = 0, sx = 0, sy = 0
+      for (let y = 0; y < dim; y++) {
+        if (get(x, y) === sx) cx++
+        else { sx ^= 1; if (cx >= 5) p += cx - 2; cx = 1 }
+        if (get(y, x) === sy) cy++
+        else { sy ^= 1; if (cy >= 5) p += cy - 2; cy = 1 }
+      }
+      if (cx >= 5) p += cx - 2
+      if (cy >= 5) p += cy - 2
     }
-    finder(0, 0); finder(n - 7, 0); finder(0, n - 7)
-    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      const inFinder = (x < 8 && y < 8) || (x >= n - 8 && y < 8) || (x < 8 && y >= n - 8)
-      if (!inFinder && next() < 0.5) dark(x, y)
+    for (let x = 0; x < dim - 1; x++) for (let y = 0; y < dim - 1; y++) {
+      const c = get(x, y)
+      if (get(x, y + 1) === c && get(x + 1, y) === c && get(x + 1, y + 1) === c) p += 3
+    }
+    const p1 = [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0], p2 = [0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1]
+    for (let x = 0; x <= dim - 11; x++) for (let y = 0; y < dim; y++) {
+      let a = true, b = true, c = true, d = true
+      for (let i = 0; i < 11; i++) {
+        const across = get(x + i, y), down = get(y, x + i)
+        a &&= across === p1[i]; b &&= across === p2[i]; c &&= down === p1[i]; d &&= down === p2[i]
+      }
+      if (a || b) p += 40
+      if (c || d) p += 40
+    }
+    const dark = g.reduce((s, m) => s + m, 0) * 100 / g.length
+    return p + Math.min(Math.abs(Math.floor(dark / 5) - 10), Math.abs(Math.ceil(dark / 5) - 10)) * 10
+  }
+  const scores = grids.map(penalty), best = grids[scores.indexOf(Math.min(...scores))]
+  return { size: dim, dark: (x, y) => best[x * dim + y] === 1 }
+}
+
+// Code 128: the bars of each symbol, and the symbols as the renderer picks them (sets A, B and C)
+const C128 = "11011001100 11001101100 11001100110 10010011000 10010001100 10001001100 10011001000 10011000100 10001100100 11001001000 11001000100 11000100100 10110011100 10011011100 10011001110 10111001100 10011101100 10011100110 11001110010 11001011100 11001001110 11011100100 11001110100 11101101110 11101001100 11100101100 11100100110 11101100100 11100110100 11100110010 11011011000 11011000110 11000110110 10100011000 10001011000 10001000110 10110001000 10001101000 10001100010 11010001000 11000101000 11000100010 10110111000 10110001110 10001101110 10111011000 10111000110 10001110110 11101110110 11010001110 11000101110 11011101000 11011100010 11011101110 11101011000 11101000110 11100010110 11101101000 11101100010 11100011010 11101111010 11001000010 11110001010 10100110000 10100001100 10010110000 10010000110 10000101100 10000100110 10110010000 10110000100 10011010000 10011000010 10000110100 10000110010 11000010010 11001010000 11110111010 11000010100 10001111010 10100111100 10010111100 10010011110 10111100100 10011110100 10011110010 11110100100 11110010100 11110010010 11011011110 11011110110 11110110110 10101111000 10100011110 10001011110 10111101000 10111100010 11110101000 11110100010 10111011110 10111101110 11101011110 11110101110 11010000100 11010010000 11010011100 1100011101011".split(' ')
+function code128(text) {
+  const runes = [...text]
+  if (!runes.length || runes.length > 80) return null
+  const FNC = ['ñ', 'ò', 'ó', 'ô'] // FNC1 to FNC4, as the renderer reads them
+  const AB = ' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_', B = AB + '`abcdefghijklmnopqrstuvwxyz{|}~\x7f'
+  const AONLY = Array.from({ length: 32 }, (_, i) => String.fromCharCode(i)).join(''), A = AB + AONLY
+  const has = (table, r) => table.includes(r) || FNC.includes(r)
+  const useC = (next, cur) => {
+    let need = cur === 105 ? 2 : 4
+    if (next.length < need) return false
+    for (let i = 0; i < need; i++) {
+      if (i % 2 === 0 && next[i] === FNC[0]) { need++; if (next.length < need) return false; continue }
+      if (!(next[i] >= '0' && next[i] <= '9')) return false
+    }
+    return true
+  }
+  const useA = (next, cur) => {
+    const r = next[0]
+    if (!has(B, r) || cur === 103) return has(A, r)
+    if (cur === 0) for (const x of next) { if (has(AB, x)) continue; if (AONLY.includes(x)) return true; break }
+    return false
+  }
+  const codes = []
+  let cur = 0
+  for (let i = 0; i < runes.length; i++) {
+    const r = runes[i]
+    if (useC(runes.slice(i), cur)) {
+      if (cur !== 105) { codes.push(cur ? 99 : 105); cur = 105 }
+      codes.push(r === FNC[0] ? 102 : (r.charCodeAt(0) - 48) * 10 + runes[++i].charCodeAt(0) - 48)
+      continue
+    }
+    const a = useA(runes.slice(i), cur), set = a ? 103 : 104
+    if (cur !== set) { codes.push(cur ? (a ? 101 : 100) : set); cur = set }
+    const idx = [102, 97, 96, a ? 101 : 100][FNC.indexOf(r)] ?? (a ? A : B).indexOf(r)
+    if (idx < 0) return null
+    codes.push(idx)
+  }
+  const sum = codes.reduce((s, c, i) => s + (i ? i * c : c), 0) % 103
+  return [...codes, sum, 106].map(c => C128[c]).join('')
+}
+
+// codeSketch draws a barcode in its box as it prints: a QR code in a quiet zone
+// two modules wide at the top left, or Code 128 bars over the whole width, and
+// the text under it when asked. Text that cannot be encoded draws no code.
+const codes = new Map() // text -> its code, so redrawing the page does not encode it again
+function codeSketch(e, text) {
+  const key = e.format + ':' + text
+  if (!codes.has(key)) {
+    if (codes.size > 500) codes.clear()
+    codes.set(key, e.format === 'code128' ? code128(text) : qr(text))
+  }
+  const code = codes.get(key), color = e.color || '#000', h = e.showText ? Math.max(e.h - 10, 1) : e.h
+  const svg = svgEl('svg', { width: '100%', height: '100%', viewBox: `0 0 ${e.w} ${e.h}`, preserveAspectRatio: 'none', style: 'display:block', 'shape-rendering': 'crispEdges' })
+  const run = (x, y, w, hh) => svg.append(svgEl('rect', { x, y, width: w, height: hh, fill: color }))
+  let textW = e.w
+  if (typeof code === 'string') { // Code 128: runs of dark modules
+    const mw = e.w / code.length
+    for (let i = 0; i < code.length; i++) {
+      if (code[i] !== '1') continue
+      const start = i
+      while (code[i + 1] === '1') i++
+      run(start * mw, 0, (i - start + 1) * mw, h)
+    }
+  } else if (code) {
+    const mw = Math.min(e.w, h) / (code.size + 4)
+    textW = mw * (code.size + 4)
+    for (let y = 0; y < code.size; y++) for (let x = 0; x < code.size; x++) {
+      if (!code.dark(x, y)) continue
+      const start = x
+      while (x + 1 < code.size && code.dark(x + 1, y)) x++
+      run(2 * mw + start * mw, 2 * mw + y * mw, (x - start + 1) * mw, mw)
     }
   }
   if (e.showText) {
-    const t = svgEl('text', { x: e.w / 2, y: e.h - 2, 'font-size': 7, 'text-anchor': 'middle', fill: color })
+    const t = svgEl('text', { x: textW / 2, y: h + 8, 'font-size': 7, 'text-anchor': 'middle', fill: color })
     t.textContent = text
     svg.append(t)
   }
@@ -628,6 +879,16 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
 
   // the rows charts are drawn from: those of the sample data, under the rows key or as the list itself
   const sampleRows = () => Array.isArray(data) ? data : Array.isArray(data?.[tpl.dataKey || 'rows']) ? data[tpl.dataKey || 'rows'] : []
+  // a number as the report writes it, with the template's separators
+  const number = (v, dec) => {
+    const sep = tpl.thousands === 'none' ? '' : tpl.thousands || (tpl.decimal ? '' : ','), [int, frac] = Math.abs(v).toFixed(dec).split('.')
+    return (v < 0 ? '-' : '') + int.replace(/\B(?=(\d{3})+(?!\d))/g, sep) + (frac ? (tpl.decimal || '.') + frac : '')
+  }
+  // a text with its plain {{fields}} filled in from the sample data, as it will print; the rest stays as written
+  const filled = text => String(text ?? '').replace(/\{\{\s*([\p{L}\p{N}_.]+)\s*\}\}/gu, (all, key) => {
+    const v = [sampleRows()[0], Array.isArray(data) ? null : data].map(o => key.split('.').reduce((x, k) => x?.[k], o)).find(x => x != null)
+    return v == null || typeof v === 'object' ? all : String(v)
+  })
 
   // editSubreport opens a designer of its own for the bands of a sub-report, as
   // wide as its box. Done keeps the changes; Close or Escape leaves them.
@@ -1022,12 +1283,13 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   }, { passive: false })
   // two fingers on a touch screen pinch-zoom; they neither drag an element nor draw a selection box
   const touches = new Map()
-  let pinch = null
+  let pinch = null, pinched = false // pinched: the touch under way became a pinch
   const spread = () => { const [a, b] = touches.values(); return [Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2] }
   stage.addEventListener('pointerdown', ev => {
     if (ev.pointerType !== 'touch') return
     touches.set(ev.pointerId, ev)
-    if (touches.size === 2) { pinch = { d: spread()[0], z: zoom }; ev.stopPropagation() }
+    if (touches.size === 1) pinched = false
+    if (touches.size === 2) { pinch = { d: spread()[0], z: zoom }; pinched = true; ev.stopPropagation() }
   }, true)
   stage.addEventListener('pointermove', ev => {
     if (!touches.has(ev.pointerId)) return
@@ -1201,6 +1463,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       page.onpointermove = page.onpointerup = null
       const b = box.getBoundingClientRect()
       box.remove()
+      if (pinched) return // a second finger made it a pinch: the zoom changed, the selection did not
       sel = [...nodes].filter(([, n]) => {
         const r = n.getBoundingClientRect()
         return r.left < b.right && r.right > b.left && r.top < b.bottom && r.bottom > b.top
@@ -1469,10 +1732,10 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       if (isPicture(e.src)) s.backgroundImage = `url("${e.src}")`
       else if (e.src) n.textContent = e.src // a picture from the data: its placeholder
     } else if (e.type === 'chart') {
-      n.append(chartSketch(e, sampleRows()))
+      n.append(chartSketch(e, sampleRows(), number, tpl.locale === 'id' ? 'Lainnya' : 'Other'))
       n.title = `${e.chart}: ${e.value || '?'} / ${e.label || '?'}`
     } else if (e.type === 'barcode') {
-      n.append(codeSketch(e))
+      n.append(codeSketch(e, filled(e.text)))
       n.title = `${e.format === 'code128' ? 'Code 128' : 'QR code'}: ${e.text}`
     } else if (e.type === 'subreport') { // what its bands hold; double-click to change them
       const bands = Object.entries(e.report?.bands ?? {}).filter(([, b]) => b?.elements?.length).map(([k, b]) => `${L(k)} (${b.elements.length})`)

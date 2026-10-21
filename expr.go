@@ -325,6 +325,13 @@ func function(name string, args []node) node {
 			}
 			return nil
 		}
+	case name == "terbilang" && len(args) == 1:
+		return func(s scope) any {
+			if f, ok := num(args[0](s)); ok {
+				return terbilang(f)
+			}
+			return nil
+		}
 	case name == "round" && (len(args) == 1 || len(args) == 2):
 		return func(s scope) any {
 			f, ok := num(args[0](s))
@@ -542,7 +549,7 @@ func (s scope) cell(e Element) cell {
 	if e.Align == "center" || e.Align == "right" {
 		align = e.Align
 	}
-	c := cell{dec: -1, bold: bold, fill: fill, color: ink, align: align, boxed: e.boxed}
+	c := cell{dec: -1, bold: bold, fill: fill, color: ink, align: align, sides: e.sides}
 	if m := placeholder.FindStringSubmatch(text); m != nil && m[0] == text {
 		v, _ := s.eval(m[1])
 		spec := strings.TrimSpace(m[2])
@@ -626,4 +633,49 @@ func (t *Template) date(tm time.Time, spec string) string {
 		}
 		return strings.Trim(tok, "'")
 	})
+}
+
+// terbilang spells a number in Indonesian words, as a receipt does: 2750000 is
+// "dua juta tujuh ratus lima puluh ribu". Decimals are rounded off; numbers
+// from 10^18 on, past what is ever written out, stay digits.
+func terbilang(f float64) string {
+	n := math.Round(math.Abs(f))
+	if n >= 1e18 || math.IsNaN(n) {
+		return str(f)
+	}
+	if n == 0 {
+		return "nol"
+	}
+	small := []string{"", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan", "sepuluh", "sebelas"}
+	join := func(a, b string) string { return strings.TrimSpace(a + " " + b) }
+	var spell func(n int64) string
+	spell = func(n int64) string {
+		switch {
+		case n < 12:
+			return small[n]
+		case n < 20:
+			return small[n-10] + " belas"
+		case n < 100:
+			return join(small[n/10]+" puluh", small[n%10])
+		case n < 200:
+			return join("seratus", spell(n-100))
+		case n < 1000:
+			return join(small[n/100]+" ratus", spell(n%100))
+		case n < 2000:
+			return join("seribu", spell(n-1000))
+		}
+		for _, u := range []struct {
+			v    int64
+			name string
+		}{{1e15, "kuadriliun"}, {1e12, "triliun"}, {1e9, "miliar"}, {1e6, "juta"}, {1e3, "ribu"}} {
+			if n >= u.v {
+				return join(spell(n/u.v)+" "+u.name, spell(n%u.v))
+			}
+		}
+		return ""
+	}
+	if f < 0 {
+		return "minus " + spell(int64(n))
+	}
+	return spell(int64(n))
 }

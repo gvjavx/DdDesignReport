@@ -61,10 +61,10 @@ func TestExpressions(t *testing.T) {
 	}
 
 	// a computed number stays a number in spreadsheets
-	if c := sc.cell(Element{Text: "{{qty * price:2}}"}); c != (cell{10000.0, false, 2, "", "", "", false}) {
+	if c := sc.cell(Element{Text: "{{qty * price:2}}"}); c != (cell{10000.0, false, 2, "", "", "", 0}) {
 		t.Errorf("cell = %+v", c)
 	}
-	if c := sc.cell(Element{Text: "{{price / zero}}"}); c != (cell{"", false, -1, "", "", "", false}) {
+	if c := sc.cell(Element{Text: "{{price / zero}}"}); c != (cell{"", false, -1, "", "", "", 0}) {
 		t.Errorf("cell without a value = %+v", c)
 	}
 }
@@ -90,5 +90,25 @@ func TestExpressionsInAReport(t *testing.T) {
 	}
 	if n := strings.Count(html, ">6,000<"); n != 3 { // the subtotal, above the chart's bar, and the top of its scale
 		t.Errorf("6,000 appears %d times, want 3", n)
+	}
+}
+
+func TestTerbilang(t *testing.T) {
+	for n, want := range map[float64]string{
+		0: "nol", 1: "satu", 10: "sepuluh", 11: "sebelas", 12: "dua belas", 19: "sembilan belas", 20: "dua puluh",
+		21: "dua puluh satu", 100: "seratus", 111: "seratus sebelas", 250: "dua ratus lima puluh", 1000: "seribu",
+		1001: "seribu satu", 1999: "seribu sembilan ratus sembilan puluh sembilan", 2000: "dua ribu",
+		100000: "seratus ribu", 2750000: "dua juta tujuh ratus lima puluh ribu", 1000000: "satu juta",
+		1e9 + 5: "satu miliar lima", 3e12: "tiga triliun", -15: "minus lima belas", 12.6: "tiga belas", 1e18: "1000000000000000000",
+	} {
+		if got := terbilang(n); got != want {
+			t.Errorf("terbilang(%v) = %q, want %q", n, got, want)
+		}
+	}
+	// in a report, with upper() as receipts write it
+	out := string(render(t, []byte(`{"bands":{"summary":{"height":20,"elements":[{"type":"text","w":400,"h":20,"text":"{{upper(terbilang(amount))}} RUPIAH"}]}}}`),
+		map[string]any{"amount": "2750000"}, "html"))
+	if !strings.Contains(out, "DUA JUTA TUJUH RATUS LIMA PULUH RIBU RUPIAH") {
+		t.Errorf("in a report: %s", out)
 	}
 }

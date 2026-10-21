@@ -42,7 +42,7 @@
   {
     "id": "kwitansi",
     "name": "Kuitansi",
-    "description": "Kuitansi pembayaran A5 mendatar: penerima, jumlah dengan terbilang, tanda tangan, dan QR nomor kuitansi."
+    "description": "Kuitansi pembayaran A5 mendatar: penerima, jumlah dengan terbilang otomatis, tanda tangan, dan QR nomor kuitansi."
   },
   {
     "id": "surat-jalan",

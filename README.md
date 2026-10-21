@@ -1,3 +1,5 @@
+<img src="logo.svg" alt="" width="72">
+
 # DdDesignReport
 
 Library reporting dengan designer drag and drop. Template didesain di browser, disimpan sebagai JSON, lalu di-render oleh satu core (Go) menjadi **PDF, HTML, XLSX, XLS, atau CSV** dari backend Go, Java, Kotlin, atau Node.js.
@@ -65,7 +67,7 @@ Designer punya ribbon seperti pengolah kata:
 | **Layout** | Ukuran kertas (A4, A5, Letter, Legal, F4), orientasi, margin per sisi, warna dan gambar latar halaman, urutan data, grouping, pemisah angka, bahasa tanggal, pemisah CSV |
 | **View** | Zoom, penggaris, snap, preview |
 
-Chart di kanvas digambar dari data contoh (opsi `data`), dan barcode tampil sebagai kodenya; hasil cetak tetap dari renderer. Tampilannya menyesuaikan lebar tempat designer dipasang: di layar sempit panel properti pindah ke bawah dan halaman dipaskan ke lebar. Zoom ada di bilah status bawah, dan bisa langsung di kanvas: `Ctrl` + scroll (atau pinch di trackpad) memperbesar di titik kursor, cubit dua jari di layar sentuh, serta `Ctrl` + `=` / `-` / `0`.
+Chart di kanvas digambar dari data contoh (opsi `data`) dengan skala nilai, label, dan format angka seperti hasil cetak. Barcode di kanvas adalah kode yang sama persis dengan hasil cetak (QR dan Code 128, modul demi modul), jadi bisa langsung dipindai; `{{field}}` di dalamnya diisi dari data contoh. Tampilannya menyesuaikan lebar tempat designer dipasang: di layar sempit panel properti pindah ke bawah dan halaman dipaskan ke lebar. Zoom ada di bilah status bawah, dan bisa langsung di kanvas: `Ctrl` + scroll (atau pinch di trackpad) memperbesar di titik kursor, cubit dua jari di layar sentuh, serta `Ctrl` + `=` / `-` / `0`.
 
 Klik tombol di tab Insert atau seret ke band. Klik ganda teks atau sel tabel untuk mengetik langsung di halaman; pilih sebagian teks lalu tekan **B**/**I**/**U** untuk memformat bagian itu saja. Shift-klik, atau seret kotak di area kosong, untuk memilih banyak elemen. Geser elemen untuk memindah (termasuk ke band lain), tarik pegangan biru di sudut kanan bawah untuk mengubah ukuran (juga dengan sentuhan), tarik tepi bawah band untuk mengubah tingginya. Untuk menghapus: klik tombol merah × di sudut elemen terpilih, seret elemen ke tempat sampah yang muncul saat menggeser, atau tekan `Delete`.
 
@@ -104,6 +106,8 @@ Tiga belas template ada di `designer/templates/` (faktur, laporan penjualan, str
 | `{{price:2}}`, `{{sum(price):0}}` | angka dengan N desimal dan pemisah ribuan (`thousands` / `decimal` di template, default `,` dan `.`; `"thousands": "none"` tanpa pemisah ribuan) |
 | `{{date:dd MMMM yyyy}}`, `{{now:dd/MM/yyyy HH:mm}}` | tanggal dengan pola `yyyy yy MMMM MMM MM M dd d EEEE EEE HH H mm ss`, teks dalam `'kutip'`. `{{now}}` adalah waktu laporan dibuat. Nama bulan dan hari Indonesia dengan `"locale": "id"` |
 | `{{if(paid, 'LUNAS', 'BELUM')}}`, `{{upper(name)}}`, `{{round(x, 2)}}` | fungsi `if`, `upper`, `lower`, `round`; perbandingan `= != < > <= >=`, `and`, `or`, `not`, teks dalam `'kutip'` |
+| `{{terbilang(total)}}`, `{{upper(terbilang(total))}} RUPIAH` | angka dalam kata bahasa Indonesia: 2750000 menjadi "dua juta tujuh ratus lima puluh ribu" (desimal dibulatkan) |
+| `{{index}}` | nomor urut baris di band `detail`, mulai dari 1 lagi di setiap grup; di tabel data dan sub-laporan, nomor item |
 
 Angka yang dikirim sebagai teks (`"18000"`, seperti dari BigDecimal atau kolom numeric database) dihitung sebagai angka di rumus, agregat, format `:N`, dan chart. Hasil hitungan tanpa `:N` tidak menampilkan sisa pembulatan (`0.1 + 0.2` menjadi `0.3`).
 
@@ -142,7 +146,7 @@ Gaya tabel, semuanya bisa diatur di panel properti:
   "cellStyle": { "2,0": { "colSpan": 2, "align": "right" } } }
 ```
 
-Tabel yang lebih panjang dari satu halaman berlanjut ke halaman berikutnya: baris tidak pernah terpotong di tengah, dan baris judul diulang di atas setiap halaman. Dengan `grow`, setiap baris setinggi selnya yang paling panjang. Di XLSX dan XLS, warna latar, warna teks, rata tengah/kanan, dan garis sel (tabel dengan `grid` `all`) ikut terbawa, dan tabel data menghasilkan satu baris spreadsheet per item.
+Tabel yang lebih panjang dari satu halaman berlanjut ke halaman berikutnya: baris tidak pernah terpotong di tengah, dan baris judul diulang di atas setiap halaman. Dengan `grow`, setiap baris setinggi selnya yang paling panjang. Di XLSX dan XLS, warna latar, warna teks, rata tengah/kanan, garis sel (sesuai `grid`: `all`, `rows`, atau `outer`), dan sel yang digabung ke kanan ikut terbawa, dan tabel data menghasilkan satu baris spreadsheet per item.
 
 Di designer: klik sebuah sel, lalu bagian **Sel** di panel kanan mengatur warna, rata, tebal/miring, serta **Gabung ke kanan** / **Gabung ke bawah** / **Pisahkan** (teks sel yang tergabung ikut dipindahkan). Seret garis antar kolom atau antar baris pada tabel terpilih untuk mengubah lebar dan tingginya. Saat mengetik di sel, `Enter` menyimpan, `Shift+Enter` membuat baris baru, `Tab` / `Shift+Tab` pindah ke sel berikutnya / sebelumnya. Sel yang disalin dari Excel bisa ditempel langsung ke tabel mulai dari sel yang diklik.
 
@@ -162,7 +166,7 @@ Di designer: klik sebuah sel, lalu bagian **Sel** di panel kanan mengatur warna,
 
 **Sub-laporan**: elemen `subreport` dengan `data` (nama daftar, misalnya `lines`) dan `report` (template dengan band sendiri: `header`, `columnHeader`, `groupHeader`... sampai tiga tingkat, `detail`, `summary`; `footer` tidak dipakai, dan `sortBy` / `groupBy` boleh diisi). Laporan itu dicetak untuk setiap item di dalam kotak elemen, dan band induknya ikut memanjang. Di band `detail` setiap baris mendapat sub-laporannya sendiri, misalnya setiap pesanan dengan rincian per jenisnya. Field induk tetap bisa dipakai di dalamnya (`{{number}}`), `{{index}}` adalah nomor item. Sub-laporan yang lebih panjang dari satu halaman berlanjut tanpa memotong band, dengan header dan judul kolomnya diulang. Di designer: tab Insert > **Sub-report**, lalu **Edit sub-report…** (atau klik ganda) membuka designer untuk band-bandnya, selebar kotaknya.
 
-**CSV, XLSX, dan XLS**: elemen teks dan sel tabel di band `detail` menjadi kolom. Teks di band lain (judul kolom, subtotal, total) masuk ke kolom yang sejajar dengannya. Di XLSX dan XLS, teks bold tetap bold, `{{f:2}}` menjadi format angka, teks rata tengah atau kanan tetap begitu, sel tabel bergaris tetap bergaris, dan lebar kolom mengikuti desain. Sel yang digabung tidak ikut digabung di spreadsheet. `xls` ditulis sebagai XML Spreadsheet 2003; Excel menampilkan satu peringatan format saat membukanya. CSV diawali BOM UTF-8 agar Excel membaca huruf seperti `é` dengan benar; `"csvSeparator": ";"` untuk Excel berbahasa Indonesia atau Eropa yang memakai `;`. Di CSV, teks yang berawalan seperti formula (`=`, `@`, `+`, `-`) diberi tanda kutip tunggal di depan agar tidak dijalankan spreadsheet.
+**CSV, XLSX, dan XLS**: elemen teks dan sel tabel di band `detail` menjadi kolom. Teks di band lain (judul kolom, subtotal, total) masuk ke kolom yang sejajar dengannya. Di XLSX dan XLS, teks bold tetap bold, `{{f:2}}` menjadi format angka, teks rata tengah atau kanan tetap begitu, sel tabel bergaris tetap bergaris, sel yang digabung ke kanan (`colSpan`) tetap tergabung, dan lebar kolom mengikuti desain. Gabungan ke bawah (`rowSpan`) tidak ikut, dan sel hanya digabung bila kolom yang ditutupnya jelas, agar tidak ada nilai yang tersembunyi; CSV tidak mengenal gabungan. `xls` ditulis sebagai XML Spreadsheet 2003; Excel menampilkan satu peringatan format saat membukanya. CSV diawali BOM UTF-8 agar Excel membaca huruf seperti `é` dengan benar; `"csvSeparator": ";"` untuk Excel berbahasa Indonesia atau Eropa yang memakai `;`. Di CSV, teks yang berawalan seperti formula (`=`, `@`, `+`, `-`) diberi tanda kutip tunggal di depan agar tidak dijalankan spreadsheet.
 
 ```json
 { "number": "INV-001", "customer": { "name": "Budi" }, "rows": [{ "name": "Kopi", "qty": 2 }] }
@@ -198,7 +202,14 @@ Package Java-nya tetap `io.ddreport` (`import io.ddreport.DdReport`).
 ```java
 byte[] pdf = DdReport.render(templateJson, dataJson, "pdf");
 // batas waktu default 1 menit; atau DdReport.render(templateJson, dataJson, "pdf", Duration.ofSeconds(30))
+
+// di server: satu proses yang terus berjalan, tanpa memulai proses baru untuk setiap laporan
+try (DdReport.Renderer renderer = new DdReport.Renderer()) {
+    byte[] report = renderer.render(templateJson, dataJson, "pdf");
+}
 ```
+
+`DdReport.Renderer` dipakai bergantian oleh beberapa thread; untuk mencetak paralel, buat satu `Renderer` per thread. Laporan yang gagal atau terlalu lama hanya menggagalkan laporan itu, dan laporan berikutnya memakai proses baru.
 
 **Kotlin**
 
@@ -213,7 +224,17 @@ const { render, renderAsync } = require('ddreport')
 const pdf = render(template, data, 'pdf')            // Buffer, sinkron
 const pdf2 = await renderAsync(template, data, 'pdf') // tidak memblokir event loop; pakai ini di server
 // batas waktu default 60 detik; ubah dengan { timeout: 30000 } sebagai argumen keempat
+
+// di server: proses yang terus berjalan, sekitar lima kali lebih cepat per laporan kecil
+const { createRenderer } = require('ddreport')
+const renderer = createRenderer({ processes: 2 })    // opsional: { timeout: 30000 }
+const pdf3 = await renderer.render(template, data, 'pdf')
+renderer.close()                                      // saat server berhenti
 ```
+
+Laporan menunggu giliran jika semua proses sedang bekerja. Proses yang berhenti atau terlalu lama hanya menggagalkan laporannya sendiri; proses baru menggantikannya. Proses yang menganggur tidak menahan Node.js tetap berjalan.
+
+Keduanya memakai `ddreport -stdio`: binary terus berjalan dan membaca permintaan satu per satu, masing-masing sebuah baris `<format> <panjang>` lalu `{"template": ..., "data": ...}` sepanjang itu; jawabannya baris `ok <panjang>` lalu dokumennya, atau `error <panjang>` lalu pesannya. Panjang di setiap permintaan menjaga agar isi satu permintaan tidak pernah terbaca sebagai permintaan berikutnya.
 
 **HTTP**: `ddreport -serve` juga menerima `POST /render?format=pdf` dengan body `{"template": ..., "data": ...}`. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran. Permintaan dari halaman situs lain di browser (header `Origin` yang berbeda) ditolak; panggil dari backend Anda, bukan langsung dari browser.
 
@@ -259,11 +280,13 @@ go build -o ddreport ./cmd/ddreport
 export DDREPORT_BIN="$PWD/ddreport"   # PowerShell: $env:DDREPORT_BIN = "$PWD\ddreport.exe"
 node --test node/test.js              # wrapper Node.js
 npm install --no-save playwright && npx playwright install chromium firefox webkit
-node designer/run-tests.mjs           # designer di Chromium, Firefox, dan WebKit (mesin Safari)
+node designer/run-tests.mjs           # designer di Chromium, Firefox, dan WebKit (mesin Safari), lalu di layar sentuh HP
 javac -d out java/io/ddreport/DdReport.java java/DdReportTest.java
 java -cp out DdReportTest             # wrapper Java
 ```
 
 Designer: sajikan folder `designer/` dengan web server (`npx serve designer`) lalu buka `/test.html`; halaman itu menjalankan pemeriksaan otomatis pada designer.
+
+Pengetesan manual: `./run-local.sh` (port lain: `./run-local.sh 9000`) membangun binary dari kode saat ini dan membuka designer di http://127.0.0.1:8080, lengkap dengan Preview, ekspor, dan template siap pakai. `Ctrl+C` menghentikannya.
 
 `.github/workflows/test.yml` menjalankan semua test Go, Node.js, dan Java di Linux dan Windows, serta test designer di Chromium, Firefox, dan WebKit, di setiap push.

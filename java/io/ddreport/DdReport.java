@@ -115,4 +115,127 @@ public final class DdReport {
             }
         }
     }
+
+    /**
+     * Keeps one ddreport process running and sends it one report after another, so a
+     * busy server does not start a process per report. Calls from several threads
+     * take turns; for reports in parallel, use one Renderer per thread or a pool.
+     * A process that stops or takes too long fails only the report it was on, and
+     * the next report starts a new one. Close it when the application stops.
+     * <pre>
+     * try (DdReport.Renderer renderer = new DdReport.Renderer()) {
+     *     byte[] pdf = renderer.render(templateJson, dataJson, "pdf");
+     * }
+     * </pre>
+     */
+    public static final class Renderer implements AutoCloseable {
+        private final Duration timeout;
+        private Process p;
+        private java.io.BufferedInputStream out;
+
+        /** A renderer whose reports may take up to a minute each. */
+        public Renderer() {
+            this(Duration.ofMinutes(1));
+        }
+
+        /** @param timeout how long one report may take before its process is stopped */
+        public Renderer(Duration timeout) {
+            this.timeout = timeout;
+        }
+
+        /** Like {@link DdReport#render(String, String, String)}, in the process this renderer keeps. */
+        public synchronized byte[] render(String templateJson, String dataJson, String format)
+                throws IOException, InterruptedException {
+            // the format goes on the request line: a word, so it can never change where a request ends
+            if (format == null || !format.matches("[A-Za-z0-9_]+")) {
+                throw new IOException("ddreport: unknown format \"" + format + "\"");
+            }
+            if (p == null || !p.isAlive()) {
+                start();
+            }
+            String data = dataJson == null || dataJson.isBlank() ? "null" : dataJson;
+            byte[] body = ("{\"template\":" + templateJson + ",\"data\":" + data + "}").getBytes(StandardCharsets.UTF_8);
+            Process running = p;
+            AtomicBoolean timedOut = new AtomicBoolean();
+            CompletableFuture<Void> watchdog = CompletableFuture.runAsync(() -> {
+                timedOut.set(true);
+                running.destroyForcibly();
+            }, CompletableFuture.delayedExecutor(timeout.toMillis(), TimeUnit.MILLISECONDS));
+            String status;
+            byte[] answer;
+            try {
+                OutputStream in = running.getOutputStream();
+                in.write((format + " " + body.length + "\n").getBytes(StandardCharsets.UTF_8));
+                in.write(body);
+                in.flush();
+                String[] head = line().split(" ");
+                int length = Integer.parseInt(head[1]);
+                status = head[0];
+                answer = out.readNBytes(length);
+                if (answer.length < length) {
+                    throw new IOException("ddreport stopped");
+                }
+            } catch (IOException | RuntimeException e) {
+                stop(); // the stream cannot be followed any more: the next report starts a new process
+                if (timedOut.get()) {
+                    throw new IOException("ddreport took longer than " + timeout.toMillis() + " ms");
+                }
+                throw e instanceof IOException ? (IOException) e : new IOException("ddreport answered something unreadable", e);
+            } finally {
+                watchdog.cancel(false);
+            }
+            if (status.equals("ok")) {
+                return answer;
+            }
+            throw new IOException(new String(answer, StandardCharsets.UTF_8)); // the report's own error; the process goes on
+        }
+
+        private void start() throws IOException {
+            try {
+                p = new ProcessBuilder(binary(), "-stdio").redirectError(ProcessBuilder.Redirect.DISCARD).start();
+            } catch (IOException e) {
+                throw new IOException(e.getMessage() + ". Add the dependency io.github.gvjavx:ddreport with the classifier of this system"
+                        + " (linux-x64, windows-x64, darwin-arm64...), or set DDREPORT_BIN to a ddreport binary", e);
+            }
+            out = new java.io.BufferedInputStream(p.getInputStream());
+        }
+
+        // line reads the answer's first line, "ok <length>" or "error <length>"
+        private String line() throws IOException {
+            StringBuilder b = new StringBuilder();
+            for (int c; (c = out.read()) != '\n'; ) {
+                if (c < 0) {
+                    throw new IOException("ddreport stopped");
+                }
+                b.append((char) c);
+            }
+            return b.toString();
+        }
+
+        private void stop() {
+            if (p != null) {
+                p.destroyForcibly();
+                p = null;
+            }
+        }
+
+        /** Stops the process. A renderer can be used again after this: the next report starts a new one. */
+        @Override
+        public synchronized void close() {
+            if (p != null) {
+                try {
+                    p.getOutputStream().close(); // it finishes and stops
+                    if (!p.waitFor(5, TimeUnit.SECONDS)) {
+                        p.destroyForcibly();
+                    }
+                } catch (IOException | InterruptedException e) {
+                    p.destroyForcibly();
+                    if (e instanceof InterruptedException) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                p = null;
+            }
+        }
+    }
 }

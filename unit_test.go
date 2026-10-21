@@ -135,13 +135,13 @@ func TestCell(t *testing.T) {
 		e    Element
 		want cell
 	}{
-		{Element{Text: "{{price}}"}, cell{12.5, false, -1, "", "", "", false}},  // stays a number
-		{Element{Text: "{{price:2}}"}, cell{12.5, false, 2, "", "", "", false}}, // with its format
-		{Element{Text: "{{sum(amt):0}}", Bold: true}, cell{3.0, true, 0, "", "", "", false}},
-		{Element{Text: "Rp {{price:2}}"}, cell{"Rp 12.50", false, -1, "", "", "", false}}, // mixed text is a string
-		{Element{Text: "{{name}}"}, cell{"Kopi", false, -1, "", "", "", false}},
-		{Element{Text: "<b>{{price}}</b>"}, cell{12.5, true, -1, "", "", "", false}}, // tags are not part of the value
-		{Element{Text: "a <i>b</i>"}, cell{"a b", false, -1, "", "", "", false}},
+		{Element{Text: "{{price}}"}, cell{12.5, false, -1, "", "", "", 0}},  // stays a number
+		{Element{Text: "{{price:2}}"}, cell{12.5, false, 2, "", "", "", 0}}, // with its format
+		{Element{Text: "{{sum(amt):0}}", Bold: true}, cell{3.0, true, 0, "", "", "", 0}},
+		{Element{Text: "Rp {{price:2}}"}, cell{"Rp 12.50", false, -1, "", "", "", 0}}, // mixed text is a string
+		{Element{Text: "{{name}}"}, cell{"Kopi", false, -1, "", "", "", 0}},
+		{Element{Text: "<b>{{price}}</b>"}, cell{12.5, true, -1, "", "", "", 0}}, // tags are not part of the value
+		{Element{Text: "a <i>b</i>"}, cell{"a b", false, -1, "", "", "", 0}},
 	} {
 		if got := sc.cell(c.e); got != c.want {
 			t.Errorf("cell(%q) = %+v, want %+v", c.e.Text, got, c.want)
@@ -585,7 +585,7 @@ func TestTable(t *testing.T) {
 	  "summary":{"height":20,"elements":[{"type":"chart","label":"g","value":"price"},{"type":"text","x":0,"w":280,"text":"{{count()}} rows","align":"center"}]},
 	  "footer":{"height":20,"elements":[{"type":"text","text":"ignored page {{page}}"}]}}}`
 	data := []map[string]any{{"g": "A", "name": "x", "price": 1.5}, {"g": "B", "name": "y", "price": 2}, {"g": "A", "name": "z", "price": 3}}
-	cells, widths := load(t, tpl, data).table()
+	cells, widths, _ := load(t, tpl, data).table()
 
 	var got [][]any
 	for _, row := range cells {
@@ -618,12 +618,12 @@ func TestTable(t *testing.T) {
 	}
 
 	// without a detail band the column header defines the columns
-	cells, _ = load(t, `{"bands":{"columnHeader":{"height":10,"elements":[{"type":"text","x":50,"text":"B"},{"type":"text","x":0,"text":"A"}]}}}`, nil).table()
+	cells, _, _ = load(t, `{"bands":{"columnHeader":{"height":10,"elements":[{"type":"text","x":50,"text":"B"},{"type":"text","x":0,"text":"A"}]}}}`, nil).table()
 	if len(cells) != 1 || cells[0][0].v != "A" || cells[0][1].v != "B" {
 		t.Errorf("header-only table = %+v", cells)
 	}
 	// and with no text at all there is nothing to export
-	if cells, _ := load(t, `{}`, data).table(); len(cells) != 0 {
+	if cells, _, _ := load(t, `{}`, data).table(); len(cells) != 0 {
 		t.Errorf("empty template exported %v", cells)
 	}
 }

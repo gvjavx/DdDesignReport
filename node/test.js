@@ -57,3 +57,49 @@ test('a render that takes too long is stopped', async () => {
   assert.throws(() => render(template, many, 'pdf', { timeout: 100 }), /longer than 100 ms/)
   await assert.rejects(renderAsync(template, many, 'pdf', { timeout: 100 }), /longer than 100 ms/)
 })
+
+test('createRenderer keeps processes running and gives the same output', async () => {
+  const { createRenderer } = require('.')
+  const renderer = createRenderer({ processes: 2 })
+  try {
+    const want = render(template, data, 'csv').toString()
+    // more reports than processes: they wait their turn, and come back in the right order
+    const all = await Promise.all(Array.from({ length: 5 }, (_, i) => renderer.render(template, { rows: [{ name: 'n' + i }] }, 'csv')))
+    all.forEach((b, i) => assert.strictEqual(b.toString(), bom + 'Name\nn' + i + '\n'))
+    assert.strictEqual((await renderer.render(template, data, 'csv')).toString(), want)
+    assert.ok((await renderer.render(template, data)).subarray(0, 5).equals(Buffer.from('%PDF-')), 'pdf is the default')
+    // an error fails only its own report
+    await assert.rejects(renderer.render(template, data, 'docx'), /unknown format "docx"/)
+    await assert.rejects(renderer.render(template, data, 'csv 2\n{}'), /unknown format/) // cannot pass for a request line
+    assert.strictEqual((await renderer.render(template, data, 'csv')).toString(), want)
+  } finally {
+    renderer.close()
+  }
+  await assert.rejects(renderer.render(template, data, 'csv'), /closed/)
+})
+
+test('createRenderer replaces a process that takes too long', async () => {
+  const { createRenderer } = require('.')
+  const renderer = createRenderer({ timeout: 100 })
+  try {
+    const many = Array.from({ length: 50000 }, () => ({ name: 'x' }))
+    await assert.rejects(renderer.render(template, many, 'pdf'), /longer than 100 ms/)
+    assert.strictEqual((await renderer.render(template, data, 'csv')).toString(), bom + 'Name\nKopi\n"Téh ""manis"""\n')
+  } finally {
+    renderer.close()
+  }
+})
+
+test('createRenderer says when the binary is missing', async () => {
+  const { createRenderer } = require('.')
+  const bin = process.env.DDREPORT_BIN
+  process.env.DDREPORT_BIN = 'no-such-ddreport-binary'
+  try {
+    const renderer = createRenderer()
+    await assert.rejects(Promise.all([renderer.render(template, data, 'csv'), renderer.render(template, data, 'csv')]), /ENOENT/)
+    renderer.close()
+  } finally {
+    if (bin === undefined) delete process.env.DDREPORT_BIN
+    else process.env.DDREPORT_BIN = bin
+  }
+})

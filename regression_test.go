@@ -116,7 +116,7 @@ func TestTabularKeepsEveryTextApart(t *testing.T) {
 	    {"type":"text","x":106,"y":8,"w":100,"h":14,"text":"{{sum(qty * price)}}","align":"right"},
 	    {"type":"text","x":0,"y":26,"w":100,"h":10,"text":"Cash"},
 	    {"type":"text","x":106,"y":26,"w":100,"h":10,"text":"{{cash}}","align":"right"}]}}}`
-	cells, widths := load(t, receipt, map[string]any{"cash": 100, "rows": []any{
+	cells, widths, _ := load(t, receipt, map[string]any{"cash": 100, "rows": []any{
 		map[string]any{"name": "Nasi", "qty": 2, "price": 22},
 		map[string]any{"name": "Teh", "qty": 1, "price": 5},
 	}}).table()
@@ -333,5 +333,55 @@ func TestPieLeavesOutEmptySlices(t *testing.T) {
 	// nothing but zeros still says what is there
 	if out := string(render(t, tpl, []map[string]any{{"name": "Sales", "cost": 0}}, "html")); !strings.Contains(out, "Sales: 0") {
 		t.Errorf("all zero: %s", out)
+	}
+}
+
+// Table cells over several columns stay merged in Excel, and the lines of a
+// "rows" grid are only above and below.
+func TestSpreadsheetMergesAndGridLines(t *testing.T) {
+	tpl := []byte(`{"bands":{
+	  "columnHeader":{"height":16,"elements":[{"type":"table","w":300,"h":16,"border":1,"cells":[["Name","Qty","Price"]]}]},
+	  "detail":{"height":16,"elements":[{"type":"table","w":300,"h":16,"border":1,"cells":[["{{name}}","{{qty}}","{{price}}"]]}]},
+	  "summary":{"height":16,"elements":[{"type":"table","w":300,"h":16,"border":1,"grid":"rows",
+	    "cells":[["Total","","{{sum(price)}}"]],"cellStyle":{"0,0":{"colSpan":2,"align":"right"}}}]}}}`)
+	data := []map[string]any{{"name": "Kopi", "qty": 2, "price": 10}, {"name": "Teh", "qty": 1, "price": 5}}
+
+	sheet := string(unzip(t, render(t, tpl, data, "xlsx"), "xl/worksheets/sheet1.xml"))
+	if !strings.Contains(sheet, `<mergeCells count="1"><mergeCell ref="A4:B4"/></mergeCells>`) {
+		t.Errorf("xlsx: want the total label merged over A4:B4: %s", sheet)
+	}
+	if !strings.Contains(sheet, `<t xml:space="preserve">Total</t></is></c><c s="`) {
+		t.Errorf("xlsx: want Total in A4 and a styled B4 under it: %s", sheet)
+	}
+	styles := string(unzip(t, render(t, tpl, data, "xlsx"), "xl/styles.xml"))
+	if !strings.Contains(styles, `<border><left/><right/><top style="thin"/><bottom style="thin"/><diagonal/></border>`) {
+		t.Errorf("xlsx: want a rows-only border: %s", styles)
+	}
+
+	xls := string(render(t, tpl, data, "xls"))
+	if !regexp.MustCompile(`<Cell ss:StyleID="s\d+" ss:MergeAcross="1"><Data ss:Type="String">Total</Data></Cell><Cell ss:StyleID="s\d+"><Data ss:Type="Number">15</Data>`).MatchString(xls) {
+		t.Errorf("xls: want Total merged across two columns, then the sum: %s", xls)
+	}
+	// CSV has no merging: the label stays in the column it lines up with
+	if csv := string(render(t, tpl, data, "csv")); !strings.Contains(csv, ",Total,15") {
+		t.Errorf("csv = %q", csv)
+	}
+}
+
+// {{index}} numbers the rows of the detail band, again from 1 in every group;
+// a data table in a row still numbers its own items.
+func TestRowNumbers(t *testing.T) {
+	rows := []map[string]any{{"g": "A", "n": "a1"}, {"g": "A", "n": "a2"}, {"g": "B", "n": "b1"}}
+	plain := []byte(`{"bands":{"detail":{"height":12,"elements":[{"type":"text","w":30,"h":12,"text":"{{index}}"},{"type":"text","x":40,"w":60,"h":12,"text":"{{n}}"}]}}}`)
+	if csv := string(render(t, plain, rows, "csv")); csv != "1,a1\n2,a2\n3,b1\n" {
+		t.Errorf("csv = %q", csv)
+	}
+	grouped := []byte(`{"groupBy":"g","bands":{"detail":{"height":12,"elements":[{"type":"text","w":100,"h":12,"text":"{{index}}. {{n}}"}]}}}`)
+	if html := string(render(t, grouped, rows, "html")); !strings.Contains(html, ">2. a2<") || !strings.Contains(html, ">1. b1<") {
+		t.Errorf("html: want numbers from 1 in each group: %s", html)
+	}
+	items := []byte(`{"bands":{"detail":{"height":12,"elements":[{"type":"table","data":"items","w":200,"h":12,"cells":[["{{index}} {{name}}"]]}]}}}`)
+	if html := string(render(t, items, []map[string]any{{"items": []map[string]any{{"name": "x"}, {"name": "y"}}}}, "html")); !strings.Contains(html, ">2 y<") {
+		t.Errorf("data table: want its items numbered: %s", html)
 	}
 }

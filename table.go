@@ -223,6 +223,30 @@ func (r *report) grid(e Element, sc scope, measure, once bool) ([]Element, float
 		out = append(out, Element{Type: "rect", X: e.X, Y: e.Y, W: e.W, H: total, Fill: e.Fill, ShowIf: e.ShowIf, tbl: id})
 	}
 	left, right, top, bottom := e.X, e.X+e.W, e.Y, e.Y+total
+	// edges are the lines a cell has, as the grid draws them, for the spreadsheets: left 1, right 2, top 4, bottom 8
+	edges := func(x0, x1, y0, y1 float64) uint8 {
+		var s uint8
+		if e.Border > 0 {
+			switch e.Grid {
+			case "rows":
+				s = 4 | 8
+			case "outer":
+			default:
+				s = 15
+			}
+		}
+		if e.Border > 0 && e.Grid == "outer" || e.Frame > 0 {
+			for _, side := range []struct {
+				on  bool
+				bit uint8
+			}{{x0 == left, 1}, {x1 == right, 2}, {y0 == top, 4}, {y1 == bottom, 8}} {
+				if side.on {
+					s |= side.bit
+				}
+			}
+		}
+		return s
+	}
 	for o, row := range rows {
 		for c := 0; c < nc; c++ {
 			if covered[[2]int{o, c}] {
@@ -242,8 +266,7 @@ func (r *report) grid(e Element, sc scope, measure, once bool) ([]Element, float
 			if hexColor.MatchString(fill) {
 				t.bg = fill // for the spreadsheets, which have no rectangles
 			}
-			// ponytail: only a full grid becomes cell borders; "rows" and "outer" export without lines
-			t.boxed = e.Border > 0 && (e.Grid == "" || e.Grid == "all")
+			t.sides, t.span = edges(x0, x1, y0, y1), cs
 			add(o, t)
 			if e.Border <= 0 {
 				continue

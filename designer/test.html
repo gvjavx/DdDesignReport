@@ -615,7 +615,7 @@ const tests = {
     t.click('add:chart')
     t.prop('label', 'cat'); t.prop('value', 'qty * price')
     const bars = () => t.qa('.ddr-el[data-type=chart] svg rect').length, labels = () => t.qa('.ddr-el[data-type=chart] svg text').map(x => x.textContent)
-    check('a bar per label, from the sample data', bars() === 2 && labels().includes('Kopi') && labels().includes('54.0k'), labels().join())
+    check('a bar per label, from the sample data', bars() === 2 && labels().includes('Kopi') && labels().includes('54,000'), labels().join())
     t.d.setData({ rows: [{ cat: 'A', qty: 1, price: 1 }, { cat: 'B', qty: 1, price: 1 }, { cat: 'C', qty: 1, price: 1 }] })
     check('setData redraws', bars() === 3)
     t.set('[data-prop=fontSize]', 10) // (no font on a chart: nothing changes)
@@ -671,6 +671,44 @@ const tests = {
     t.click('add:rect')
     const labels = t.qa('.ddr-props label').map(l => l.firstChild.textContent)
     check('no x and y, but width and height', !labels.includes('from left') && labels.includes('width') && labels.includes('height'), labels.join())
+  },
+  'barcodes on the page are the printed codes'() {
+    // the modules a drawn code covers, read back from its rectangles
+    const modules = (svg, size, module, offset, height) => {
+      const out = Array.from({ length: height }, () => new Array(size).fill('0'))
+      for (const r of svg.querySelectorAll('rect')) {
+        const x = Math.round((+r.getAttribute('x') - offset) / module), y = height === 1 ? 0 : Math.round((+r.getAttribute('y') - offset) / module)
+        for (let i = 0; i < Math.round(+r.getAttribute('width') / module); i++) out[y][x + i] = '1'
+      }
+      return out.map(row => row.join('')).join('')
+    }
+    // made by github.com/boombuler/barcode, which the renderer uses
+    const HELLO = '111111100010101111111100000101110001000001101110100010101011101101110100010101011101101110101011101011101100000100111001000001111111101010101111111000000000000000000000101010100100100010010011110001001000010001000111111101001011000111101011001110101110010011110101001110101000000001010001000101111111100000100101100100000100110001101000101110101100101111111101110100011010100010101110101111011101001100000100001110001011111111101101011100001'
+    const INV = '11010010000110001000101011100011011101011000100110111001011101111011001001110111001001101011110111010011011100101110111101100110110010110111000100101100001100011101011'
+    const t = open({ bands: { header: { height: 120, elements: [
+      { type: 'barcode', x: 0, y: 0, w: 100, h: 100, text: '{{code}}', format: 'qr' },
+      { type: 'barcode', x: 120, y: 0, w: 340, h: 40, text: 'INV-2026-0142', format: 'code128', showText: true },
+    ] } } }, { data: { rows: [{ code: 'HELLO WORLD' }] } })
+    const [q, c] = t.qa('.ddr-el[data-type=barcode] svg')
+    check('QR: the code of the sample data, module for module', modules(q, 21, 100 / 25, 200 / 25, 21) === HELLO)
+    check('Code 128: the printed bars', modules(c, INV.length, 340 / INV.length, 0, 1) === INV)
+    check('its text under it', c.querySelector('text')?.textContent === 'INV-2026-0142')
+    check('the tooltip still shows the field', t.qa('.ddr-el[data-type=barcode]')[0].title.includes('{{code}}'))
+  },
+  'charts on the page have the printed value scale'() {
+    const t = open({ thousands: '.', decimal: ',', bands: { summary: { height: 160, elements: [
+      { type: 'chart', w: 300, h: 140, chart: 'bar', label: 'name', value: 'qty * price' },
+      { type: 'chart', y: 0, x: 320, w: 200, h: 22, chart: 'pie', label: 'name', value: 'qty' },
+    ] } } }, { data: [{ name: 'Kopi', qty: 2, price: 18000 }, { name: 'Teh', qty: 1, price: 12000 }, { name: 'Gula', qty: 3, price: 15000 }], lang: 'id' })
+    const [bar, pie] = t.qa('.ddr-el[data-type=chart] svg'), words = svg => [...svg.querySelectorAll('text')].map(x => x.textContent)
+    check('values written as the report writes them', words(bar).includes('45.000') && words(bar).includes('36.000'), words(bar).join(' | '))
+    check('a scale from zero in round steps', ['0', '20.000', '40.000', '60.000'].every(v => words(bar).includes(v)), words(bar).join(' | '))
+    check('a pie legend that does not fit is summed into Other', words(pie).length === 2 && words(pie)[1] === 'Other: 3', words(pie).join(' | '))
+  },
+  'simple mode keeps Preview'() {
+    const t = open(undefined, { simple: true, preview: async () => '' })
+    check('the sub-report button goes', t.q('[data-cmd="add:subreport"]').closest('.ddr-group').hidden)
+    check('Preview stays in the View tab', !t.q('[data-panel=View] [data-cmd=preview]').closest('.ddr-group').hidden)
   },
   'hide leaves out tabs, groups, commands and settings'() {
     const t = open(undefined, { hide: ['Home', 'chart', 'Layout.Data', 'showIf', 'delete'] })

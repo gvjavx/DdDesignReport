@@ -1,6 +1,6 @@
 {
   "name": "Kuitansi",
-  "description": "Kuitansi pembayaran A5 mendatar: penerima, jumlah dengan terbilang, tanda tangan, dan QR nomor kuitansi.",
+  "description": "Kuitansi pembayaran A5 mendatar: penerima, jumlah dengan terbilang otomatis, tanda tangan, dan QR nomor kuitansi.",
   "template": {
     "page": {
       "width": 595,
@@ -105,7 +105,7 @@
             "y": 90,
             "w": 375,
             "h": 30,
-            "text": "<i>{{amountWords}}</i>",
+            "text": "<i>{{upper(terbilang(amount))}} RUPIAH</i>",
             "fontSize": 11,
             "fill": "#f0fdfa",
             "grow": true
@@ -221,7 +221,6 @@
     "number": "KW-2026-0318",
     "payer": "Ibu Sari Handayani",
     "amount": 2750000,
-    "amountWords": "Dua juta tujuh ratus lima puluh ribu rupiah",
     "purpose": "Pembayaran sewa ruang pertemuan Aula Melati, 20 Oktober 2026 (setengah hari), termasuk proyektor dan sound system.",
     "city": "Surabaya",
     "date": "15 Oktober 2026",

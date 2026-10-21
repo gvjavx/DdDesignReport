@@ -13,7 +13,7 @@ type cell struct {
 	dec         int
 	fill, color string // #rrggbb background and text colour, "" for none
 	align       string // center or right; "" for the spreadsheet's own
-	boxed       bool   // lines on every side, as in a table with a full grid
+	sides       uint8  // lines: left 1, right 2, top 4, bottom 8
 }
 
 // textLines returns the text elements of a band as the lines a reader sees:
@@ -47,8 +47,9 @@ func textLines(band Band) [][]Element {
 // A report without a detail band (a letter, a certificate) has no columns:
 // its texts are exported line by line as they read.
 //
-// It also returns the column widths.
-func (r *report) table() ([][]cell, []float64) {
+// It also returns the column widths, and the merged cells of table cells that
+// span columns: row, first and last column.
+func (r *report) table() ([][]cell, []float64, [][3]int) {
 	t, b := r.t, r.t.Bands
 	anchor := func(e Element, align string) float64 {
 		switch align {
@@ -75,6 +76,7 @@ func (r *report) table() ([][]cell, []float64) {
 	}
 
 	var out [][]cell
+	var merges [][3]int
 	// lines adds one row per visual line of the band
 	lines := func(band Band, rows []any, ctx ...map[string]any) {
 		sc := scope{t, rows, ctx}
@@ -111,6 +113,25 @@ func (r *report) table() ([][]cell, []float64) {
 					c.v, c.dec = str(prev.v)+" "+str(c.v), -1
 				}
 				cells[best] = c
+				// a table cell over several columns covers the columns whose middles it spans
+				if e.span > 1 {
+					lo, hi := -1, -1
+					for i, col := range cols {
+						if mid := col.X + col.W/2; mid >= e.X && mid <= e.X+e.W {
+							if hi >= 0 && i != hi+1 {
+								lo = -1 // not side by side: leave it unmerged
+								break
+							}
+							if lo < 0 {
+								lo = i
+							}
+							hi = i
+						}
+					}
+					if lo >= 0 && hi > lo && lo <= best && best <= hi {
+						merges = append(merges, [3]int{len(out), lo, hi})
+					}
+				}
 			}
 			out = append(out, cells)
 		}
@@ -138,12 +159,13 @@ func (r *report) table() ([][]cell, []float64) {
 	var walk func(rows []any, lv int)
 	walk = func(rows []any, lv int) {
 		if lv == len(levels) {
-			for _, row := range rows {
+			for i, row := range rows {
 				m, _ := row.(map[string]any)
+				number := map[string]any{"index": float64(i + 1)}
 				if nested {
-					lines(b.Detail, rows, m, r.root)
+					lines(b.Detail, rows, m, number, r.root)
 				} else {
-					detail(rows, m, r.root)
+					detail(rows, m, number, r.root)
 				}
 			}
 			return
@@ -164,5 +186,5 @@ func (r *report) table() ([][]cell, []float64) {
 	for i, c := range cols {
 		widths[i] = c.W
 	}
-	return out, widths
+	return out, widths, merges
 }

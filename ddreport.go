@@ -136,7 +136,8 @@ type Element struct {
 	head   bool      // a table header row, repeated on the next page when its table goes on there
 	tbl    int       // the table a line, background or cell belongs to
 	bg     string    // a table cell's background, for the spreadsheets
-	boxed  bool      // a table cell with lines on every side, for the spreadsheets
+	sides  uint8     // a table cell: its lines, for the spreadsheets; left 1, right 2, top 4, bottom 8
+	span   int       // a table cell: how many columns it covers
 	mw, mh float64   // a barcode: the size of one module, in pt
 	done   bool      // laid out and filled in already, inside a sub-report
 }
@@ -200,7 +201,7 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 	t := r.t
 	switch format {
 	case "csv":
-		cells, _ := r.table()
+		cells, _, _ := r.table()
 		return toCSV(cells, t.CSVSeparator)
 	case "xlsx":
 		return toXLSX(r.sheets())
@@ -758,9 +759,9 @@ func (r *report) paginate(total int) [][]Element {
 	var walk func(rows []any, lv int)
 	walk = func(rows []any, lv int) {
 		if lv == len(levels) {
-			for _, row := range rows {
+			for i, row := range rows {
 				m, _ := row.(map[string]any)
-				flow(b.Detail, rows, m, r.root)
+				flow(b.Detail, rows, m, map[string]any{"index": float64(i + 1)}, r.root) // {{index}}: its number in its group
 			}
 			return
 		}
@@ -1452,10 +1453,10 @@ func (s *sheetStyles) of(c cell) int {
 	if c.bold {
 		n++
 	}
-	if c.fill == "" && c.color == "" && c.align == "" && !c.boxed {
+	if c.fill == "" && c.color == "" && c.align == "" && c.sides == 0 {
 		return n
 	}
-	k := cell{dec: c.dec, bold: c.bold, fill: c.fill, color: c.color, align: c.align, boxed: c.boxed}
+	k := cell{dec: c.dec, bold: c.bold, fill: c.fill, color: c.color, align: c.align, sides: c.sides}
 	if i, ok := s.index[k]; ok {
 		return i
 	}
@@ -1493,6 +1494,50 @@ type worksheet struct {
 	name   string
 	rows   [][]cell
 	widths []float64
+	merges [][3]int // row, first and last column
+}
+
+// column is a spreadsheet column's letters: 0 is A, 25 Z, 26 AA.
+func column(i int) string {
+	s := ""
+	for i++; i > 0; i = (i - 1) / 26 {
+		s = string(rune('A'+(i-1)%26)) + s
+	}
+	return s
+}
+
+// row is row i as a spreadsheet writes it, with how far each merged cell
+// reaches: the value of a merged range goes to its first cell, and the others
+// keep its look (lines, fill) without a value. A range with more than one
+// value in it is left unmerged, so nothing is hidden.
+func (sh worksheet) row(i int) ([]cell, map[int]int) {
+	cells, across := slices.Clone(sh.rows[i]), map[int]int{}
+	for _, m := range sh.merges {
+		if m[0] != i || m[2] >= len(cells) {
+			continue
+		}
+		lo, hi, at := m[1], m[2], -1
+		for c := lo; c <= hi; c++ {
+			if cells[c].v != nil {
+				if at >= 0 {
+					at = -2
+					break
+				}
+				at = c
+			}
+		}
+		if at < 0 {
+			continue
+		}
+		v := cells[at]
+		for c := lo; c <= hi; c++ {
+			cells[c] = v
+			cells[c].v = nil
+		}
+		cells[lo] = v
+		across[lo] = hi
+	}
+	return cells, across
 }
 
 var badSheetName = regexp.MustCompile(`[\[\]:*?/\\]`)
@@ -1503,8 +1548,8 @@ var badSheetName = regexp.MustCompile(`[\[\]:*?/\\]`)
 func (r *report) sheets() []worksheet {
 	levels := r.t.levels()
 	if !r.t.SheetPerGroup || len(levels) == 0 || levels[0].by == "" || len(r.rows) == 0 {
-		rows, widths := r.table()
-		return []worksheet{{"Report", rows, widths}}
+		rows, widths, merges := r.table()
+		return []worksheet{{"Report", rows, widths, merges}}
 	}
 	all := r.rows
 	defer func() { r.rows = all }()
@@ -1512,7 +1557,7 @@ func (r *report) sheets() []worksheet {
 	used := map[string]bool{}
 	for _, g := range groupRows(all, levels[0].by) {
 		r.rows = g
-		rows, widths := r.table()
+		rows, widths, merges := r.table()
 		first, _ := g[0].(map[string]any)
 		// Excel allows 31 characters and none of []:*?/\ in a name, and no two alike
 		name := strings.TrimSpace(badSheetName.ReplaceAllString(str(lookup(levels[0].by, first)), " "))
@@ -1526,7 +1571,7 @@ func (r *report) sheets() []worksheet {
 			name = string([]rune(base)[:min(len([]rune(base)), 31-len(suffix))]) + suffix
 		}
 		used[strings.ToLower(name)] = true
-		out = append(out, worksheet{name, rows, widths})
+		out = append(out, worksheet{name, rows, widths, merges})
 	}
 	return out
 }
@@ -1543,9 +1588,15 @@ func toXLS(sheets []worksheet) ([]byte, error) {
 		for _, w := range sh.widths {
 			fmt.Fprintf(&body, `<Column ss:Width="%g"/>`, max(w, 20))
 		}
-		for _, r := range sh.rows {
+		for i := range sh.rows {
+			r, across := sh.row(i)
 			body.WriteString(`<Row>`)
-			for _, c := range r {
+			for j := 0; j < len(r); j++ {
+				c, merge := r[j], ""
+				if hi, ok := across[j]; ok {
+					merge = fmt.Sprintf(` ss:MergeAcross="%d"`, hi-j)
+					j = hi // the cells it covers are not written
+				}
 				if c.v == nil {
 					body.WriteString(`<Cell/>`)
 					continue
@@ -1554,7 +1605,7 @@ func toXLS(sheets []worksheet) ([]byte, error) {
 				if _, ok := c.v.(float64); ok {
 					kind = "Number"
 				}
-				fmt.Fprintf(&body, `<Cell ss:StyleID="s%d"><Data ss:Type="%s">`, st.of(c), kind)
+				fmt.Fprintf(&body, `<Cell ss:StyleID="s%d"%s><Data ss:Type="%s">`, st.of(c), merge, kind)
 				xml.EscapeText(&body, []byte(str(c.v)))
 				body.WriteString(`</Data></Cell>`)
 			}
@@ -1570,10 +1621,12 @@ func toXLS(sheets []worksheet) ([]byte, error) {
 		if l.align != "" {
 			inner += `<Alignment ss:Horizontal="` + map[string]string{"center": "Center", "right": "Right"}[l.align] + `"/>`
 		}
-		if l.boxed {
+		if l.sides != 0 {
 			inner += `<Borders>`
-			for _, side := range []string{"Left", "Right", "Top", "Bottom"} {
-				inner += `<Border ss:Position="` + side + `" ss:LineStyle="Continuous" ss:Weight="1"/>`
+			for i, side := range []string{"Left", "Right", "Top", "Bottom"} {
+				if l.sides&(1<<i) != 0 {
+					inner += `<Border ss:Position="` + side + `" ss:LineStyle="Continuous" ss:Weight="1"/>`
+				}
 			}
 			inner += `</Borders>`
 		}
@@ -1624,11 +1677,24 @@ func toXLSX(sheets []worksheet) ([]byte, error) {
 			x.WriteString(`</cols>`)
 		}
 		x.WriteString(`<sheetData>`)
-		for _, r := range sh.rows {
+		var merged []string
+		for i := range sh.rows {
+			r, across := sh.row(i)
+			covered := map[int]bool{}
+			for lo, hi := range across {
+				merged = append(merged, fmt.Sprintf("%s%d:%s%d", column(lo), i+1, column(hi), i+1))
+				for c := lo + 1; c <= hi; c++ {
+					covered[c] = true
+				}
+			}
 			x.WriteString(`<row>`)
-			for _, c := range r {
+			for j, c := range r {
 				if c.v == nil {
-					x.WriteString(`<c/>`)
+					if covered[j] {
+						fmt.Fprintf(&x, `<c s="%d"/>`, st.of(c)) // keeps the lines and fill of its merged cell
+					} else {
+						x.WriteString(`<c/>`)
+					}
 					continue
 				}
 				if f, ok := c.v.(float64); ok {
@@ -1641,7 +1707,16 @@ func toXLSX(sheets []worksheet) ([]byte, error) {
 			}
 			x.WriteString(`</row>`)
 		}
-		x.WriteString(`</sheetData></worksheet>`)
+		x.WriteString(`</sheetData>`)
+		if len(merged) > 0 {
+			slices.Sort(merged)
+			fmt.Fprintf(&x, `<mergeCells count="%d">`, len(merged))
+			for _, ref := range merged {
+				fmt.Fprintf(&x, `<mergeCell ref="%s"/>`, ref)
+			}
+			x.WriteString(`</mergeCells>`)
+		}
+		x.WriteString(`</worksheet>`)
 		path := fmt.Sprintf("worksheets/sheet%d.xml", i+1)
 		files = append(files, [2]string{"xl/" + path, x.String()})
 		fmt.Fprintf(&overrides, `<Override PartName="/xl/%s" ContentType="%sworksheet+xml"/>`, path, ctype)
@@ -1654,6 +1729,7 @@ func toXLSX(sheets []worksheet) ([]byte, error) {
 	// fonts and fills are numbered as they are needed: font 0 plain, 1 bold; fill 0 none, 1 the required gray125
 	fonts := []string{`<font><sz val="11"/><name val="Calibri"/></font>`, `<font><b/><sz val="11"/><name val="Calibri"/></font>`}
 	fills := []string{`<fill><patternFill patternType="none"/></fill>`, `<fill><patternFill patternType="gray125"/></fill>`}
+	borders := []string{`<border><left/><right/><top/><bottom/><diagonal/></border>`} // 0: none
 	number := func(list *[]string, item string) int {
 		if i := slices.Index(*list, item); i >= 0 {
 			return i
@@ -1685,8 +1761,16 @@ func toXLSX(sheets []worksheet) ([]byte, error) {
 			id = 164 + l.dec
 		}
 		border, align := 0, ""
-		if l.boxed {
-			border = 1
+		if l.sides != 0 {
+			b := `<border>`
+			for i, side := range []string{"left", "right", "top", "bottom"} {
+				if l.sides&(1<<i) != 0 {
+					b += `<` + side + ` style="thin"/>`
+				} else {
+					b += `<` + side + `/>`
+				}
+			}
+			border = number(&borders, b+`<diagonal/></border>`)
 		}
 		if l.align != "" {
 			align = `<alignment horizontal="` + l.align + `"/>`
@@ -1697,8 +1781,7 @@ func toXLSX(sheets []worksheet) ([]byte, error) {
 	styles := head + `<styleSheet ` + main + `><numFmts count="` + strconv.Itoa(maxDecimals+1) + `">` + fmts.String() + `</numFmts>` +
 		`<fonts count="` + strconv.Itoa(len(fonts)) + `">` + strings.Join(fonts, "") + `</fonts>` +
 		`<fills count="` + strconv.Itoa(len(fills)) + `">` + strings.Join(fills, "") + `</fills>` +
-		`<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>` +
-		`<border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders>` +
+		`<borders count="` + strconv.Itoa(len(borders)) + `">` + strings.Join(borders, "") + `</borders>` +
 		`<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
 		`<cellXfs count="` + strconv.Itoa(len(looks)) + `">` + xfs.String() + `</cellXfs></styleSheet>`
 

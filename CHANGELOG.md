@@ -11,15 +11,29 @@
 - Tipe TypeScript (`designer.d.ts`), dan template siap pakai ikut di paket npm: `import invoice from 'ddreport-designer/templates/invoice.json'`.
 - Properti posisi dan ukuran bernama *dari kiri*, *dari atas*, *lebar*, *tinggi* (bukan x, y, w, h); jenis elemen ikut diterjemahkan.
 - Di layar HP, bilah atas aplikasi standalone turun ke baris berikutnya, tidak lagi terpotong.
+- QR code dan Code 128 di kanvas adalah kode yang sama persis dengan hasil cetak, jadi bisa langsung dipindai; `{{field}}` di dalamnya diisi dari data contoh.
+- Chart di kanvas punya skala nilai, label, dan format angka seperti hasil cetak, termasuk "Lainnya" untuk irisan pie yang tidak muat.
+- Menu Field berisi `{{index}}` dan `{{terbilang(field)}}`.
 
 **Template baru**: Kuitansi, Surat jalan, Rapor siswa, Daftar hadir, dan Laporan laba rugi (total 13).
 
-**Excel**: sel tabel bergaris (`grid` `all`) tetap bergaris di XLSX dan XLS, dan teks rata tengah atau kanan tetap begitu. Dicoba dengan membukanya di Microsoft Excel.
+**Mesin cetak**
+- `{{terbilang(total)}}`: angka dalam kata bahasa Indonesia, misalnya untuk kuitansi. Template Kuitansi memakainya.
+- `{{index}}` di band `detail`: nomor urut baris, mulai dari 1 lagi di setiap grup.
+
+**Excel**: garis sel tabel (`grid` `all`, `rows`, dan `outer`), sel yang digabung ke kanan, dan teks rata tengah atau kanan ikut ke XLSX dan XLS. Dicoba dengan membukanya di Microsoft Excel.
+
+**Java, Kotlin, dan Node.js**: `DdReport.Renderer` dan `createRenderer()` menjaga proses `ddreport` tetap berjalan untuk laporan demi laporan, sekitar lima kali lebih cepat per laporan kecil. Binary-nya mendapat mode `-stdio` untuk itu.
 
 **Perbaikan**
 - Pie dan donut tidak lagi mencantumkan irisan bernilai nol di legendanya.
 - Gambar rusak di template langsung dilaporkan dengan pesan yang jelas di semua format, bukan `pdf: not a PNG buffer`.
 - Designer: elemen rusak dari clipboard tidak lagi membuat designer berhenti bekerja; editor sub-laporan tidak lagi meninggalkan pendengar clipboard setiap kali ditutup.
+- Designer di layar sentuh: mencubit untuk zoom di area kosong halaman tidak lagi membuang (atau mengganti) elemen yang dipilih.
+
+**Pengembangan**
+- `./run-local.sh` membangun binary dari kode saat ini dan membuka designer lengkap (Preview, ekspor, template) untuk pengetesan manual.
+- `node designer/run-tests.mjs` juga mencoba designer di layar sentuh HP dengan sentuhan sungguhan dari browser: ketuk di Chromium dan WebKit, serta geser, ubah ukuran, dan cubit di Chromium.
 
 **Keamanan**
 - `ddreport -serve` menolak `POST /render` dari halaman situs lain yang terbuka di browser yang sama (header `Origin` yang berbeda). Program yang memanggilnya langsung tidak terpengaruh.

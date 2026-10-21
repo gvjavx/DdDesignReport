@@ -5,12 +5,18 @@
 // With -serve it hosts the designer instead, with POST /render?format=...
 // taking the same JSON body, which is what the designer's preview uses.
 //
+// With -stdio it stays running and renders one request after another, so a
+// server pays for starting it once. A request is a line "<format> <length>" and
+// that many bytes of {"template": ..., "data": ...}; the answer a line
+// "ok <length>" and the document, or "error <length>" and the message.
+//
 // DDREPORT_FONT and DDREPORT_FONT_BOLD name TrueType files that replace the
 // built-in Latin-only PDF font. DDREPORT_FONTS names a folder of Family-Face.ttf
 // files (Inter-Regular.ttf, Inter-Bold.ttf, ...) that templates can use by name.
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -90,6 +96,7 @@ func font(env string) ([]byte, error) {
 func main() {
 	log.SetFlags(0)
 	format := flag.String("format", "pdf", "pdf, html, xlsx, xls or csv")
+	stdio := flag.Bool("stdio", false, "keep running and render one request after another from stdin (for the Java and Node.js renderers)")
 	serve := flag.String("serve", "", "serve the designer and POST /render on this address, e.g. 127.0.0.1:8080")
 	flag.Parse()
 	var err error
@@ -103,6 +110,12 @@ func main() {
 		log.Fatal(err)
 	}
 
+	if *stdio {
+		if err := serveStdio(os.Stdin, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if *serve != "" {
 		fmt.Fprintln(os.Stderr, "designer on http://"+*serve)
 		// time limits, so a stalled or malicious client cannot tie the server up for good
@@ -116,5 +129,42 @@ func main() {
 	}
 	if _, err := os.Stdout.Write(out); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// serveStdio renders requests one after another until stdin ends. Every
+// request says how long it is, so whatever is in one can never be read as the
+// next: a body that is not exactly one JSON object is an error for that request.
+// A request line that cannot be read ends it, since the stream cannot be followed.
+func serveStdio(in io.Reader, out io.Writer) error {
+	r, w := bufio.NewReader(in), bufio.NewWriter(out)
+	for {
+		line, err := r.ReadString('\n')
+		if err == io.EOF && line == "" {
+			return nil
+		}
+		var format string
+		var n int
+		if _, scan := fmt.Sscanf(line, "%s %d", &format, &n); err != nil || scan != nil || n < 0 || n > 1<<30 {
+			return fmt.Errorf("ddreport: not a request line: %q", line)
+		}
+		body := make([]byte, n)
+		if _, err := io.ReadFull(r, body); err != nil {
+			return err
+		}
+		var req struct{ Template, Data json.RawMessage }
+		doc, err := []byte(nil), json.Unmarshal(body, &req)
+		if err == nil {
+			doc, err = ddreport.Render(req.Template, req.Data, format)
+		}
+		if err != nil {
+			fmt.Fprintf(w, "error %d\n%s", len(err.Error()), err.Error())
+		} else {
+			fmt.Fprintf(w, "ok %d\n", len(doc))
+			w.Write(doc)
+		}
+		if err := w.Flush(); err != nil {
+			return err
+		}
 	}
 }

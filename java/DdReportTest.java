@@ -54,6 +54,40 @@ public class DdReportTest {
             check("broken template throws", true);
         }
 
+        // a renderer keeps one process for report after report
+        try (DdReport.Renderer renderer = new DdReport.Renderer(java.time.Duration.ofMillis(300))) {
+            String csv = bom + "Kopi\nTéh\n";
+            check("renderer: same output", new String(renderer.render(TEMPLATE, DATA, "csv"), StandardCharsets.UTF_8).equals(csv));
+            check("renderer: pdf", new String(renderer.render(TEMPLATE, DATA, "pdf"), StandardCharsets.UTF_8).startsWith("%PDF-"));
+            try {
+                renderer.render(TEMPLATE, DATA, "docx");
+                check("renderer: unknown format throws", false);
+            } catch (IOException e) {
+                check("renderer: unknown format throws with the binary's message", e.getMessage().contains("unknown format \"docx\""));
+            }
+            try {
+                renderer.render(TEMPLATE, DATA, "csv 2\n{}");
+                check("renderer: a format cannot pass for a request line", false);
+            } catch (IOException e) {
+                check("renderer: a format cannot pass for a request line", e.getMessage().contains("unknown format"));
+            }
+            // data that hides a second request in it is one broken request, not two
+            try {
+                renderer.render(TEMPLATE, "null}{\"template\":{},\"data\":null", "csv");
+                check("renderer: smuggled request refused", false);
+            } catch (IOException e) {
+                check("renderer: smuggled request refused", true);
+            }
+            check("renderer: still in step afterwards", new String(renderer.render(TEMPLATE, DATA, "csv"), StandardCharsets.UTF_8).equals(csv));
+            try {
+                renderer.render(TEMPLATE, many, "pdf");
+                check("renderer: a report that takes too long is stopped", false);
+            } catch (IOException e) {
+                check("renderer: a report that takes too long is stopped", e.getMessage().contains("longer than 300 ms"));
+            }
+            check("renderer: works again after that", new String(renderer.render(TEMPLATE, DATA, "csv"), StandardCharsets.UTF_8).equals(csv));
+        }
+
         if (failed > 0) {
             System.out.println(failed + " failed");
             System.exit(1);
