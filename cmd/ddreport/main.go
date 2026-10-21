@@ -17,6 +17,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"time"
@@ -50,6 +51,14 @@ func handler() http.Handler {
 	// turn, or give up when their client does, so a burst cannot exhaust the machine
 	busy := make(chan struct{}, runtime.NumCPU())
 	mux.HandleFunc("POST /render", func(w http.ResponseWriter, r *http.Request) {
+		// a page on another site, open in the same browser, cannot use this server:
+		// browsers say where a request comes from, programs calling it send no Origin
+		if o := r.Header.Get("Origin"); o != "" {
+			if u, err := url.Parse(o); err != nil || u.Host != r.Host {
+				http.Error(w, "ddreport: requests from other sites are refused", http.StatusForbidden)
+				return
+			}
+		}
 		select {
 		case busy <- struct{}{}:
 			defer func() { <-busy }()

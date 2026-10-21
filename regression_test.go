@@ -265,6 +265,9 @@ func TestImagesMustBeDataURIs(t *testing.T) {
 		"script url":        `{"bands":{"detail":{"height":20,"elements":[{"type":"image","w":10,"h":10,"src":"javascript:alert(1)"}]}}}`,
 		"not base64":        `{"bands":{"detail":{"height":20,"elements":[{"type":"image","w":10,"h":10,"src":"data:image/svg+xml,<svg/>"}]}}}`,
 		"remote background": `{"page":{"backgroundImage":"http://example.com/bg.png"}}`,
+		// a broken picture says so up front, in every format, instead of "pdf: not a PNG buffer"
+		"broken picture":    `{"bands":{"header":{"height":20,"elements":[{"type":"image","w":10,"h":10,"src":"data:image/png;base64,AAAA"}]}}}`,
+		"broken background": `{"page":{"backgroundImage":"data:image/jpeg;base64,/9j/AAAA"}}`,
 	} {
 		for _, format := range []string{"pdf", "html", "csv"} {
 			if _, err := Render([]byte(tpl), nil, format); err == nil || !strings.Contains(err.Error(), "data:image") {
@@ -317,5 +320,18 @@ func TestExampleMatchesTheSalesTemplate(t *testing.T) {
 	}
 	if !reflect.DeepEqual(mustJSON(t, "examples/data.json"), file["data"]) {
 		t.Error("examples/data.json and the template's sample data have drifted apart")
+	}
+}
+
+func TestPieLeavesOutEmptySlices(t *testing.T) {
+	tpl := []byte(`{"bands":{"summary":{"height":120,"elements":[{"type":"chart","chart":"donut","w":300,"h":110,"label":"name","value":"cost"}]}}}`)
+	rows := []map[string]any{{"name": "Sales", "cost": 0}, {"name": "Rent", "cost": 5}, {"name": "Salaries", "cost": 7}}
+	out := string(render(t, tpl, rows, "html"))
+	if strings.Contains(out, "Sales") || !strings.Contains(out, "Rent: 5") || !strings.Contains(out, "Salaries: 7") {
+		t.Errorf("legend: %s", out)
+	}
+	// nothing but zeros still says what is there
+	if out := string(render(t, tpl, []map[string]any{{"name": "Sales", "cost": 0}}, "html")); !strings.Contains(out, "Sales: 0") {
+		t.Errorf("all zero: %s", out)
 	}
 }

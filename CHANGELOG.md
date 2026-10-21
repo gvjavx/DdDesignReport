@@ -1,5 +1,30 @@
 # Riwayat versi
 
+## Belum dirilis
+
+**Designer**
+- **Mode mudah** (`simple: true`): hanya alat yang dibutuhkan laporan pertama, setiap tombol dengan namanya, band grup baru muncul setelah Group by diisi. Aplikasi standalone memakainya secara default, dengan tombol untuk beralih ke mode lengkap.
+- Halaman kosong punya tombol **Kotak teks**, **Tabel**, **Gambar**, dan **Chart** untuk langsung mulai.
+- `hide`: sembunyikan tab, grup ribbon, perintah, elemen, atau properti per nama, misalnya `['Layout', 'chart', 'showIf']`. Perintah yang disembunyikan juga tidak jalan lewat pintasan keyboard.
+- `messages`: ganti teks apa pun di antarmuka dengan kata-kata sendiri (atau bahasa lain).
+- `destroy()`: melepas designer dari halaman, untuk React, Vue, dan aplikasi satu halaman lainnya.
+- Tipe TypeScript (`designer.d.ts`), dan template siap pakai ikut di paket npm: `import invoice from 'ddreport-designer/templates/invoice.json'`.
+- Properti posisi dan ukuran bernama *dari kiri*, *dari atas*, *lebar*, *tinggi* (bukan x, y, w, h); jenis elemen ikut diterjemahkan.
+- Di layar HP, bilah atas aplikasi standalone turun ke baris berikutnya, tidak lagi terpotong.
+
+**Template baru**: Kuitansi, Surat jalan, Rapor siswa, Daftar hadir, dan Laporan laba rugi (total 13).
+
+**Excel**: sel tabel bergaris (`grid` `all`) tetap bergaris di XLSX dan XLS, dan teks rata tengah atau kanan tetap begitu. Dicoba dengan membukanya di Microsoft Excel.
+
+**Perbaikan**
+- Pie dan donut tidak lagi mencantumkan irisan bernilai nol di legendanya.
+- Gambar rusak di template langsung dilaporkan dengan pesan yang jelas di semua format, bukan `pdf: not a PNG buffer`.
+- Designer: elemen rusak dari clipboard tidak lagi membuat designer berhenti bekerja; editor sub-laporan tidak lagi meninggalkan pendengar clipboard setiap kali ditutup.
+
+**Keamanan**
+- `ddreport -serve` menolak `POST /render` dari halaman situs lain yang terbuka di browser yang sama (header `Origin` yang berbeda). Program yang memanggilnya langsung tidak terpengaruh.
+- Designer hanya menampilkan gambar yang tertanam di template (data URI). Template dari orang lain tidak bisa membuat browser memuat alamat luar lewat latar halaman, gambar, atau warna isi.
+
 ## 0.1.3 · 20 Okt 2026
 
 - Semua paket npm terbit lewat *trusted publishing*: CI memakai identitas GitHub Actions, tanpa token npm.

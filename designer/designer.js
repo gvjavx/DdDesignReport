@@ -60,6 +60,7 @@ const SELECT = { chart: ['bar', 'hbar', 'line', 'pie', 'donut'], format: ['qr', 
 const BOOL = new Set(['header', 'footer', 'showText', 'newPage'])
 const CLEARABLE = new Set(['textColor', 'stripe', 'headerFill', 'headerColor', 'footerFill', 'footerColor']) // colours that may be left empty
 const LABEL = {
+  x: 'from left', y: 'from top', w: 'width', h: 'height',
   cols: 'column widths', color: 'line colour', grid: 'lines', textColor: 'text colour', stripe: 'banded rows',
   header: 'header row', headerFill: 'header fill', headerColor: 'header text', footer: 'total row', footerFill: 'total row fill', footerColor: 'total row text',
   showIf: 'show when', dataSrc: 'picture from data', slope: 'direction', showText: 'show text', newPage: 'new page',
@@ -116,7 +117,7 @@ const ID = {
   'A report of its own for each item of a list in the data: header, column header, groups, detail and summary. Its footer is not used.':
     'Laporan tersendiri untuk setiap item daftar di data: kepala, judul kolom, grup, detail, dan ringkasan. Kaki halamannya tidak dipakai.',
   'show when': 'tampil jika', 'picture from data': 'gambar dari data', direction: 'arah', straight: 'lurus', down: 'turun', up: 'naik', 'show text': 'tampilkan teks',
-  'new page': 'halaman baru', pages: 'halaman', all: 'semua', first: 'pertama', last: 'terakhir', 'every page': 'setiap halaman', 'first page': 'halaman pertama', 'last page': 'halaman terakhir',
+  'new page': 'halaman baru', all: 'semua', first: 'pertama', last: 'terakhir', 'every page': 'setiap halaman', 'first page': 'halaman pertama', 'last page': 'halaman terakhir',
   'Justify': 'Rata kanan-kiri', 'Vertical alignment': 'Perataan vertikal', top: 'atas', middle: 'tengah', bottom: 'bawah',
   'Sort by': 'Urutkan', 'row field, -field for descending': 'field baris, -field untuk menurun', 'Dates in': 'Tanggal dalam', English: 'Inggris', Indonesian: 'Indonesia',
   'CSV separator': 'Pemisah CSV', Tab: 'Tab', 'No thousands separator': 'Tanpa pemisah ribuan',
@@ -128,8 +129,17 @@ const ID = {
     'Daftar di data, misalnya items: baris di antara judul dan baris total diulang untuk setiap itemnya. {{field}} adalah field item itu, {{index}} nomor urutnya.',
   Expressions: 'Ekspresi', 'Row above': 'Baris di atas', 'Row below': 'Baris di bawah', 'Delete row': 'Hapus baris', 'Column left': 'Kolom di kiri', 'Column right': 'Kolom di kanan', 'Delete column': 'Hapus kolom',
   'Click a cell first; rows and columns are added next to it': 'Klik sebuah sel dulu; baris dan kolom ditambahkan di sebelahnya',
-  'Start here': 'Mulai di sini', 'Open the Insert tab, then click an element or drag it onto the page.': 'Buka tab Sisipkan, lalu klik sebuah elemen atau seret ke halaman.',
+  'Start here': 'Mulai di sini',
+  'Click to put one on the page. Drag it to move it, double-click it to type.': 'Klik untuk menaruhnya di halaman. Geser untuk memindah, klik ganda untuk mengetik.',
+  'from left': 'dari kiri', 'from top': 'dari atas', width: 'lebar', height: 'tinggi',
+  table: 'tabel', image: 'gambar', rect: 'kotak', line: 'garis', barcode: 'barcode', subreport: 'sub-laporan',
 }
+
+// simple: true hides what a first report does not need, and names every button
+const SIMPLE = ['Arrange', 'Report', 'Grouping', 'Margins', 'Layout.Data', 'Show', 'cut', 'valign', 'lineHeight',
+  'x', 'y', 'showIf', 'cols', 'heights', 'padding', 'grid', 'headerLine', 'footerLine', 'frame', 'dataSrc']
+// only a picture inside the template is drawn: a link elsewhere would be fetched by whoever opens the template
+const isPicture = v => /^data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=\s]*$/.test(v)
 
 // icons: 24 x 24, drawn as strokes
 const ICONS = {
@@ -175,6 +185,14 @@ const CSS = `
 .ddr[data-theme=dark]{--a:#7aa2ff;--a-soft:#1e2a44;--a-text:#0b1220;--bg:#161a22;--surface:#1d222c;--text:#e5e9f0;--muted:#98a2b3;--line:#303745;--stage:#11141a;--hover:#272e3b;color-scheme:dark}
 @media (prefers-color-scheme:dark){.ddr[data-theme=auto]{--a:#7aa2ff;--a-soft:#1e2a44;--a-text:#0b1220;--bg:#161a22;--surface:#1d222c;--text:#e5e9f0;--muted:#98a2b3;--line:#303745;--stage:#11141a;--hover:#272e3b;color-scheme:dark}}
 .ddr *{box-sizing:border-box}
+.ddr [hidden]{display:none!important}
+.ddr[data-simple] .ddr-panel .ddr-b:not(.ddr-tile){flex-direction:column;gap:1px;height:46px;min-width:50px;padding:2px 5px;font-size:10.5px}
+.ddr[data-simple] .ddr-panel .ddr-b:not(.ddr-tile)::after{content:attr(data-label);font:10.5px/1.1 system-ui,sans-serif}
+.ddr[data-simple] .ddr-band::before{font-size:10px;line-height:14px}
+.ddr[data-simple] .ddr-panel .ddr-swatch{flex-direction:column;gap:3px;width:auto;min-width:50px;height:46px;padding:4px 5px 2px}
+.ddr[data-simple] .ddr-panel .ddr-swatch input{position:static;width:22px}
+.ddr[data-simple] .ddr-panel .ddr-swatch span{margin:0}
+.ddr[data-simple] .ddr-panel .ddr-swatch::after{content:attr(data-label);font:400 10.5px/1.1 system-ui,sans-serif}
 .ddr button,.ddr select,.ddr input,.ddr textarea{font:inherit;color:inherit}
 .ddr :is(select,input:not([type=checkbox],[type=color],[type=range]),textarea){height:30px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
 .ddr textarea{height:76px;padding:6px 8px;resize:vertical}
@@ -224,8 +242,11 @@ const CSS = `
 .ddr-band::before{content:attr(data-label);position:absolute;right:0;top:0;padding:0 5px;font:600 8.5px/13px system-ui,sans-serif;color:#64748b;background:#f1f5f9;border-radius:0 0 0 4px;pointer-events:none;opacity:.85}
 .ddr-grip{position:absolute;left:0;right:0;bottom:-4px;height:8px;cursor:ns-resize;z-index:1}
 .ddr-grip:hover,.ddr-grip:active{background:#2563eb55}
-.ddr-hint{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);width:min(300px,70%);padding:14px 16px;border:1.5px dashed #94a3b8;border-radius:10px;text-align:center;font:13px/1.45 system-ui,sans-serif;color:#475569;background:#fffc;pointer-events:none}
+.ddr-hint{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);width:min(360px,80%);padding:14px 16px;border:1.5px dashed #94a3b8;border-radius:10px;text-align:center;font:13px/1.45 system-ui,sans-serif;color:#475569;background:#fffc;pointer-events:none}
 .ddr-hint b{display:block;margin-bottom:2px;color:#1f2937}
+.ddr-hint div{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:8px 0}
+.ddr-hint .ddr-b{pointer-events:auto;border-color:#cbd5e1;background:#fff;color:#1f2937}
+.ddr-hint .ddr-b:hover{background:#eef2f7}
 .ddr-el{position:absolute;overflow:hidden;cursor:move;outline:1px dashed #cbd5e1;white-space:pre-wrap;overflow-wrap:anywhere;font-family:Helvetica,Arial,sans-serif;line-height:1.2;touch-action:none;user-select:none}
 .ddr-el:hover{outline:1px solid #93b4f5}
 .ddr-el[data-type=line]{overflow:visible}
@@ -333,28 +354,33 @@ function clean(t) {
     out.bands[b] = {
       ...band,
       height: Math.max(0, num(band.height, d.bands[b].height)),
-      elements: (Array.isArray(band.elements) ? band.elements : []).filter(isObject).map(e => {
-        const def = NEW[e.type] ?? { w: 80, h: 20 }
-        e = { ...e, type: String(e.type ?? 'text'), x: Math.max(0, num(e.x)), y: Math.max(0, num(e.y)), w: Math.max(0, num(e.w, def.w)), h: Math.max(0, num(e.h, def.h)) }
-        if (e.type === 'text' || e.type === 'barcode') e.text = String(e.text ?? '')
-        if (e.type === 'subreport' && !isObject(e.report)) e.report = { bands: {} } // its bands are cleaned when it is opened
-        if (e.type === 'table') {
-          const rows = (Array.isArray(e.cells) ? e.cells : []).filter(Array.isArray), width = Math.max(1, ...rows.map(r => r.length))
-          e.cells = (rows.length ? rows : [[]]).map(r => Array.from({ length: width }, (_, c) => String(r[c] ?? '')))
-          e.cols = Array.from({ length: width }, (_, c) => num(e.cols?.[c]) > 0 ? num(e.cols[c]) : 1)
-          e.heights = Array.from({ length: e.cells.length }, (_, r) => num(e.heights?.[r]) > 0 ? num(e.heights[r]) : 1)
-          e.aligns = Array.isArray(e.aligns) ? e.aligns : []
-          // per-cell styles: only those of cells that exist, and only objects
-          e.cellStyle = Object.fromEntries(Object.entries(isObject(e.cellStyle) ? e.cellStyle : {}).filter(([k, v]) => {
-            const [r, c] = k.split(',').map(Number)
-            return isObject(v) && r >= 0 && c >= 0 && r < e.cells.length && c < width
-          }))
-        }
-        return e
-      }),
+      elements: (Array.isArray(band.elements) ? band.elements : []).filter(isObject).map(cleanElement),
     }
   }
+  for (const k of ['background', 'backgroundImage']) out.page[k] = String(out.page[k] ?? '')
   return out
+}
+
+// cleanElement repairs one element, from a template or from the clipboard, so drawing it cannot fail
+function cleanElement(e) {
+  const def = NEW[e.type] ?? { w: 80, h: 20 }
+  e = { ...e, type: String(e.type ?? 'text'), x: Math.max(0, num(e.x)), y: Math.max(0, num(e.y)), w: Math.max(0, num(e.w, def.w)), h: Math.max(0, num(e.h, def.h)) }
+  for (const k of ['text', 'src', 'label', 'value']) if (e[k] != null && typeof e[k] !== 'string') e[k] = String(e[k])
+  if (e.type === 'text' || e.type === 'barcode') e.text = String(e.text ?? '')
+  if (e.type === 'subreport' && !isObject(e.report)) e.report = { bands: {} } // its bands are cleaned when it is opened
+  if (e.type === 'table') {
+    const rows = (Array.isArray(e.cells) ? e.cells : []).filter(Array.isArray), width = Math.max(1, ...rows.map(r => r.length))
+    e.cells = (rows.length ? rows : [[]]).map(r => Array.from({ length: width }, (_, c) => String(r[c] ?? '')))
+    e.cols = Array.from({ length: width }, (_, c) => num(e.cols?.[c]) > 0 ? num(e.cols[c]) : 1)
+    e.heights = Array.from({ length: e.cells.length }, (_, r) => num(e.heights?.[r]) > 0 ? num(e.heights[r]) : 1)
+    e.aligns = Array.isArray(e.aligns) ? e.aligns : []
+    // per-cell styles: only those of cells that exist, and only objects
+    e.cellStyle = Object.fromEntries(Object.entries(isObject(e.cellStyle) ? e.cellStyle : {}).filter(([k, v]) => {
+      const [r, c] = k.split(',').map(Number)
+      return isObject(v) && r >= 0 && c >= 0 && r < e.cells.length && c < width
+    }))
+  }
+  return e
 }
 
 // markup <-> DOM for text with <b>, <i>, <u>. A literal "<b>" is written "&lt;b>".
@@ -421,6 +447,8 @@ function chartSketch(e, rows) {
     if (Number.isFinite(v)) sums.set(label, (sums.get(label) ?? 0) + v)
   }
   if (!e.label || !e.value || !sums.size) [['A', 3], ['B', 5], ['C', 2], ['D', 4]].forEach(([l, v]) => sums.set(l, v)) // an example, for the shape
+  // as printed: a pie leaves slices of nothing out of its legend
+  if ((e.chart === 'pie' || e.chart === 'donut') && [...sums.values()].some(v => v)) for (const [l, v] of sums) if (!v) sums.delete(l)
   const labels = [...sums.keys()], vals = labels.map(l => sums.get(l)), w = e.w, h = e.h, color = e.color || PALETTE[0]
   const svg = svgEl('svg', { width: '100%', height: '100%', viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: 'none', style: 'display:block' })
   const text = (x, y, s, anchor = 'middle') => { const t = svgEl('text', { x, y, 'font-size': 7, 'text-anchor': anchor, fill: '#334155' }); t.textContent = s; svg.append(t) }
@@ -507,12 +535,17 @@ function codeSketch(e) {
   return svg
 }
 
-export function createDesigner(root, { template, onChange, preview, lang = 'en', theme = 'light', fonts = [], fontBase, fields = [], data } = {}) {
+export function createDesigner(root, { template, onChange, preview, lang = 'en', theme = 'light', fonts = [], fontBase, fields = [], data, simple = false, hide = [], messages = {} } = {}) {
   let tpl, sel = [], editing = null, cancelled = false, clip = [], zoom = 1, snap = true, activeCol = 0, activeRow = 0
   let history = [], at = -1
   const images = [] // data URIs, kept out of the undo snapshots
   const nodes = new Map() // element -> its DOM node
-  const L = s => (lang === 'id' && ID[s]) || s
+  // messages: the host's own words for any text, keyed by its English; then Indonesian with lang 'id'
+  const L = s => messages[s] ?? ((lang === 'id' && ID[s]) || s)
+  // what is left out of the interface: tabs, groups (or Tab.Group), commands, fields and properties, by name
+  const hidden = new Set([...(simple ? SIMPLE : []), ...hide])
+  const off = [] // undoes what reaches outside the designer, for destroy()
+  const listen = (target, type, fn) => { target.addEventListener(type, fn); off.push(() => target.removeEventListener(type, fn)) }
   const fontList = { ...FONTS, ...Object.fromEntries(fonts.map(f => [f, `'${f}',sans-serif`])) }
   // Great Vibes comes with a regular face only
   const faces = fontBase ? BUNDLED.flatMap(f => FACES.slice(0, f === 'Great Vibes' ? 1 : 4).map(([face, weight, style]) =>
@@ -520,12 +553,14 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
 
   const icon = name => `<svg class="ddr-i" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`
   // three kinds of ribbon button: a picture, a letter (B, I, U), and a tile with a picture above its name
-  const ib = (cmd, pic, title) => `<button type="button" class="ddr-b" data-cmd="${cmd}" title="${L(title)}" aria-label="${L(title)}">${icon(pic)}</button>`
-  const lb = (cmd, letter, title) => `<button type="button" class="ddr-b ddr-letter" data-cmd="${cmd}" title="${L(title)}" aria-label="${L(title)}">${letter}</button>`
+  // data-label is the name without its shortcut, shown under the picture in simple mode
+  const named = title => `title="${L(title)}" aria-label="${L(title)}" data-label="${L(title).replace(/ \(.*\)$/, '')}"`
+  const ib = (cmd, pic, title) => `<button type="button" class="ddr-b" data-cmd="${cmd}" ${named(title)}>${icon(pic)}</button>`
+  const lb = (cmd, letter, title) => `<button type="button" class="ddr-b ddr-letter" data-cmd="${cmd}" ${named(title)}>${letter}</button>`
   const tile = (cmd, pic, label, title = label, more = '') => `<button type="button" class="ddr-b ddr-tile" data-cmd="${cmd}" title="${L(title)}" aria-label="${L(label)}" ${more}>${icon(pic)}<span>${L(label)}</span></button>`
   const insert = (type, pic, label) => tile('add:' + type, pic, label, `${L(label)}: ${L('click to insert, or drag onto the page')}`, `draggable="true" data-type="${type}"`)
-  const swatch = (prop, letter, title) => `<label class="ddr-swatch" title="${L(title)}"><span>${letter}</span><input data-prop="${prop}" type="color" aria-label="${L(title)}"></label>`
-  const group = (name, html) => `<div class="ddr-group"><div>${html}</div><span>${L(name)}</span></div>`
+  const swatch = (prop, letter, title) => `<label class="ddr-swatch" title="${L(title)}" data-label="${L(title).split(" / ")[0]}"><span>${letter}</span><input data-prop="${prop}" type="color" aria-label="${L(title)}"></label>`
+  const group = (name, html) => `<div class="ddr-group" data-group="${name}"><div>${html}</div><span>${L(name)}</span></div>`
   const options = (list, translate) => list.map(v => `<option value="${v}">${translate ? L(v) : v}</option>`).join('')
   const sideLetters = lang === 'id' ? ['A', 'Ka', 'B', 'Ki'] : ['T', 'R', 'B', 'L']
   const RIBBON = {
@@ -575,6 +610,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
 
   root.classList.add('ddr')
   root.dataset.theme = theme
+  root.toggleAttribute('data-simple', simple)
   const tabs = Object.keys(RIBBON)
   root.innerHTML = `<style>${CSS}${faces}</style>
     <div class="ddr-tabs" role="tablist">${tabs.map((t, i) => `<button type="button" role="tab" aria-selected="${i === 0}" tabindex="${i ? -1 : 0}" data-tab="${t}">${L(t)}</button>`).join('')}</div>
@@ -606,7 +642,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     // its sample rows: the list in the sample data, in the report's data or in its first row
     const list = [Array.isArray(data) ? data[0] : data, sampleRows()[0]].map(o => o?.[e.data]).find(Array.isArray) ?? []
     const page = { width: e.w, height: 1000, margin: 0, marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0 }
-    const inner = createDesigner(host, { template: { ...(e.report ?? {}), page }, lang, theme, fonts, fontBase, fields, data: list })
+    const inner = createDesigner(host, { template: { ...(e.report ?? {}), page }, lang, theme, fonts, fontBase, fields, data: list, simple, hide, messages })
     dialog.onclose = () => {
       if (dialog.returnValue === 'done') {
         const t = inner.getTemplate()
@@ -614,6 +650,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
         e.report = t
         redraw()
       }
+      inner.destroy()
       dialog.remove()
       keepFocus()
     }
@@ -633,7 +670,8 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   const px = v => v + 'px'
   const bandOf = e => BANDS.find(b => tpl.bands[b].elements.includes(e))
   const levels = () => String(tpl.groupBy ?? '').split(',').filter(f => f.trim()).length
-  const shown = () => BANDS.filter(b => !LEVEL[b] || levels() >= LEVEL[b] || tpl.bands[b].elements.length)
+  // group bands show once Group by names their level; in simple mode the first level too
+  const shown = () => BANDS.filter(b => tpl.bands[b].elements.length || levels() >= (LEVEL[b] ?? (simple && /^group/.test(b) ? 1 : 0)))
   const contentW = () => tpl.page.width - tpl.page.marginLeft - tpl.page.marginRight
   const target = () => (sel[0] && bandOf(sel[0])) || 'header'
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(+v) || lo))
@@ -766,11 +804,15 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   }
 
   function paste(list) {
-    sel = list.map(([band, json]) => {
-      const e = JSON.parse(json)
+    // what comes from the clipboard may be anything: only elements that can be drawn get in
+    sel = list.flatMap(([band, json]) => {
+      let e
+      try { e = JSON.parse(json) } catch {}
+      if (!isObject(e)) return []
+      e = cleanElement(e)
       e.x += 10; e.y += 10
       tpl.bands[band].elements.push(e)
-      return e
+      return [e]
     })
     redraw()
     return sel.map(e => [bandOf(e), JSON.stringify(e)]) // pasting again steps a little further
@@ -960,7 +1002,9 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     const pad = parseFloat(getComputedStyle(stage).paddingLeft) || 0
     sizer.style.marginLeft = px(Math.max(0, Math.floor((stage.clientWidth - 2 * pad - sizer.offsetWidth) / 2)))
   }
-  new ResizeObserver(center).observe(stage)
+  const resizes = new ResizeObserver(center)
+  resizes.observe(stage)
+  off.push(() => resizes.disconnect())
   const fitZoom = () => (stage.clientWidth - 34) / tpl.page.width || 1
   // zoomAt keeps the point of the page under (cx, cy) where it is
   function zoomAt(z, cx, cy) {
@@ -1031,7 +1075,8 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     noBackgroundImage: () => { tpl.page.backgroundImage = ''; redraw() },
     zoom: step => setZoom(step === 'fit' ? fitZoom() : +step ? zoom + step * 0.1 : 1),
   }
-  const run = cmd => { const [name, ...args] = cmd.split(':'); commands[name](...args) }
+  // a command the host hid does not run from a shortcut either
+  const run = cmd => { const [name, ...args] = cmd.split(':'); if (!hidden.has(name) && !(name === 'add' && hidden.has(args[0]))) commands[name](...args) }
 
   // The system clipboard: Ctrl+C / Ctrl+X put the selected elements on it as
   // JSON, so they can be pasted into another designer (another tab, another
@@ -1045,7 +1090,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     try { document.execCommand(how) } catch {} finally { copying = false }
   }
   for (const how of ['copy', 'cut']) {
-    document.addEventListener(how, ev => {
+    listen(document, how, ev => {
       if (!ours(ev) || !sel.length) return
       ev.preventDefault()
       clip = copied()
@@ -1054,7 +1099,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       else sync()
     })
   }
-  document.addEventListener('paste', ev => {
+  listen(document, 'paste', ev => {
     if (!ours(ev)) return
     ev.preventDefault()
     const text = ev.clipboardData.getData('text/plain')
@@ -1237,8 +1282,8 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     $('[data-cmd=paste]').disabled = !clip.length
     $('[data-cmd=distribute]').disabled = sel.length < 3
     const paper = Object.keys(PAPER).find(k => PAPER[k][0] === short && PAPER[k][1] === long) ?? L('Custom')
-    $('[data-id=status]').textContent = `${paper} · ${p.width} × ${p.height} pt` + (sel.length === 1 ? ` · ${sel[0].type} ${sel[0].w} × ${sel[0].h}` : sel.length ? ` · ${sel.length} ${L('selected')}` : '')
-    $('[data-id=side]').textContent = L('Properties') + (sel.length === 1 ? ' · ' + sel[0].type : '')
+    $('[data-id=status]').textContent = `${paper} · ${p.width} × ${p.height} pt` + (sel.length === 1 ? ` · ${L(sel[0].type)} ${sel[0].w} × ${sel[0].h}` : sel.length ? ` · ${sel.length} ${L('selected')}` : '')
+    $('[data-id=side]').textContent = L('Properties') + (sel.length === 1 ? ' · ' + L(sel[0].type) : '')
   }
 
   function draw() {
@@ -1247,7 +1292,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     nodes.clear()
     Object.assign(page.style, {
       width: px(p.width), minHeight: px(p.height), padding: SIDES.map(s => px(p[s])).join(' '),
-      backgroundColor: p.background || '#fff', backgroundImage: p.backgroundImage ? `url("${p.backgroundImage}")` : '',
+      backgroundColor: p.background || '#fff', backgroundImage: isPicture(p.backgroundImage) ? `url("${p.backgroundImage}")` : '',
     })
     page.replaceChildren(...shown().map(name => {
       const band = tpl.bands[name], el = document.createElement('div'), grip = document.createElement('div')
@@ -1274,10 +1319,11 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       el.append(...band.elements.map(node), grip)
       return el
     }))
-    if (!BANDS.some(b => tpl.bands[b].elements.length)) { // an empty page says how to begin
-      const hint = page.appendChild(document.createElement('div'))
+    if (!BANDS.some(b => tpl.bands[b].elements.length)) { // an empty page says how to begin, with buttons to begin with
+      const hint = page.appendChild(document.createElement('div')), starters = [['add:text', 'text', 'Text box'], ['add:table', 'table', 'Table'], ['picture', 'image', 'Picture'], ['add:chart', 'chart', 'Chart']]
       hint.className = 'ddr-hint'
-      hint.append(Object.assign(document.createElement('b'), { textContent: L('Start here') }), L('Open the Insert tab, then click an element or drag it onto the page.'))
+      hint.innerHTML = `<b>${L('Start here')}</b><div>${starters.filter(([cmd]) => !hidden.has(cmd.replace('add:', ''))).map(([cmd, pic, label]) => tile(cmd, pic, label)).join('')}</div>`
+      hint.append(L('Click to put one on the page. Drag it to move it, double-click it to type.'))
     }
     // ruler: shaded margins, a tick every 50pt, a number every 100pt
     ruler.style.width = px(p.width)
@@ -1320,7 +1366,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       s.fontFamily = fontList[e.font] || ''
       s.fontSize = px(e.fontSize || 10); s.lineHeight = e.lineHeight || ''
       s.fontWeight = e.bold ? 'bold' : ''; s.fontStyle = e.italic ? 'italic' : ''; s.textDecoration = e.underline ? 'underline' : ''
-      s.background = e.fill || ''
+      s.backgroundColor = e.fill || ''
     }
     if (e.showIf) { // printed only when its condition holds: marked, and the condition in the tooltip
       n.dataset.cond = ''
@@ -1376,7 +1422,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
         if (grid === 'all') cell.style.borderRight = line
         Object.assign(cell.style, {
           gridColumn: `${c + 1} / span ${cs}`, gridRow: `${r + 1} / span ${rs}`, padding: pad,
-          textAlign: st.align || e.aligns?.[c] || 'left', background: st.fill || bg || '', color: st.color || ink || '',
+          textAlign: st.align || e.aligns?.[c] || 'left', backgroundColor: st.fill || bg || '', color: st.color || ink || '',
           fontWeight: (st.bold ?? bold) ? 'bold' : 'normal', fontStyle: (st.italic ?? e.italic) ? 'italic' : 'normal',
         })
         if (e.valign === 'middle' || e.valign === 'bottom') Object.assign(cell.style, { display: 'flex', flexDirection: 'column', justifyContent: e.valign === 'middle' ? 'center' : 'flex-end' })
@@ -1410,7 +1456,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       e.cols.slice(0, -1).forEach((w, i) => { x += w / colSum * e.w; grip('col', i + 1, x) })
       heights.slice(0, -1).forEach((h, i) => { y += h / rowSum * e.h; grip('row', i + 1, y) })
     } else if (e.type === 'rect') {
-      s.background = e.fill || ''
+      s.backgroundColor = e.fill || ''
       if (e.border > 0) s.border = `${e.border}px solid ${stroke}`
     } else if (e.type === 'line' && (e.slope === 'down' || e.slope === 'up')) {
       const svg = n.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'svg')), l = svg.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'line'))
@@ -1420,7 +1466,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     } else if (e.type === 'line') {
       s[e.h > e.w ? 'borderLeft' : 'borderTop'] = `${e.border || 1}px solid ${stroke}`
     } else if (e.type === 'image') {
-      if (e.src?.startsWith('data:')) s.backgroundImage = `url("${e.src}")`
+      if (isPicture(e.src)) s.backgroundImage = `url("${e.src}")`
       else if (e.src) n.textContent = e.src // a picture from the data: its placeholder
     } else if (e.type === 'chart') {
       n.append(chartSketch(e, sampleRows()))
@@ -1429,7 +1475,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       n.append(codeSketch(e))
       n.title = `${e.format === 'code128' ? 'Code 128' : 'QR code'}: ${e.text}`
     } else if (e.type === 'subreport') { // what its bands hold; double-click to change them
-      const bands = Object.entries(e.report?.bands ?? {}).filter(([, b]) => b.elements?.length).map(([k, b]) => `${L(k)} (${b.elements.length})`)
+      const bands = Object.entries(e.report?.bands ?? {}).filter(([, b]) => b?.elements?.length).map(([k, b]) => `${L(k)} (${b.elements.length})`)
       n.textContent = `${L('Sub-report')}: ${e.data || '?'}\n${bands.join(' · ') || L('Edit sub-report…')}`
       n.ondblclick = () => editSubreport(e)
     } else { // a type this designer does not know: keep it, show what it is
@@ -1616,6 +1662,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   }
 
   function field(obj, key, label = key) {
+    if (hidden.has(key)) return
     let input
     const virtual = VIRTUAL[key], typing = {} // names this field's run of edits for the undo history
     if (SELECT[key]) {
@@ -1663,6 +1710,17 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     row(label, box)
   }
 
+  // leave out what the host hid; a name matches a tab, a group (Tab.Group for one tab's), a command or a setting
+  for (const name of hidden) {
+    const [a, b] = name.split('.').map(s => globalThis.CSS.escape(s))
+    const found = b ? `[data-panel="${a}"] [data-group="${b}"]`
+      : ['data-tab', 'data-panel', 'data-group', 'data-cmd', 'data-prop', 'data-tpl', 'data-page'].map(k => `[${k}="${a}"]`).join() + `,[data-cmd="add:${a}"]`
+    for (const el of root.querySelectorAll(found)) (el.closest('label') ?? el).hidden = true
+  }
+  // a ribbon group with nothing left in it goes too, and the first tab still shown opens
+  for (const g of $$('.ddr-group')) if (![...g.firstChild.children].some(c => !c.hidden)) g.hidden = true
+  if ($('[data-tab][aria-selected=true]').hidden) $$('[data-tab]').find(t => !t.hidden)?.click()
+
   load(template, true)
   requestAnimationFrame(() => {
     if (!stage.clientWidth) return
@@ -1674,5 +1732,11 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     setTemplate: t => load(t),
     setFields: list => { fields = Array.isArray(list) ? list.map(String) : []; fillFields() },
     setData: d => { data = d; draw() },
+    // destroy empties the element and lets go of the document, for a page that removes the designer
+    destroy: () => {
+      for (const undo of off.splice(0)) undo()
+      root.replaceChildren()
+      root.classList.remove('ddr')
+    },
   }
 }

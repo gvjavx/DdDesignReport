@@ -1,0 +1,290 @@
+{
+  "name": "Daftar hadir",
+  "description": "Daftar hadir acara: nomor urut, nama, instansi, kolom tanda tangan, jumlah peserta, dan penanggung jawab.",
+  "template": {
+    "page": {
+      "width": 595,
+      "height": 842,
+      "margin": 0,
+      "marginTop": 40,
+      "marginRight": 40,
+      "marginBottom": 40,
+      "marginLeft": 40,
+      "background": "",
+      "backgroundImage": ""
+    },
+    "dataKey": "rows",
+    "groupBy": "",
+    "groupPageBreak": false,
+    "thousands": ".",
+    "decimal": ",",
+    "bands": {
+      "header": {
+        "height": 114,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 0,
+            "w": 515,
+            "h": 22,
+            "text": "DAFTAR HADIR",
+            "fontSize": 16,
+            "bold": true,
+            "align": "center"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 24,
+            "w": 515,
+            "h": 16,
+            "text": "{{event}}",
+            "fontSize": 12,
+            "align": "center",
+            "color": "#1e3a8a",
+            "grow": true
+          },
+          {
+            "type": "line",
+            "x": 0,
+            "y": 46,
+            "w": 515,
+            "h": 1,
+            "border": 1.5,
+            "color": "#1e3a8a"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 56,
+            "w": 90,
+            "h": 13,
+            "text": "Hari / tanggal",
+            "fontSize": 10,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 90,
+            "y": 56,
+            "w": 300,
+            "h": 13,
+            "text": ": {{day}}, {{date}}",
+            "fontSize": 10
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 72,
+            "w": 90,
+            "h": 13,
+            "text": "Waktu",
+            "fontSize": 10,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 90,
+            "y": 72,
+            "w": 300,
+            "h": 13,
+            "text": ": {{time}}",
+            "fontSize": 10
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 88,
+            "w": 90,
+            "h": 13,
+            "text": "Tempat",
+            "fontSize": 10,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 90,
+            "y": 88,
+            "w": 400,
+            "h": 13,
+            "text": ": {{place}}",
+            "fontSize": 10
+          }
+        ]
+      },
+      "columnHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "groupHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "detail": {
+        "height": 0,
+        "elements": []
+      },
+      "groupFooter": {
+        "height": 0,
+        "elements": []
+      },
+      "summary": {
+        "height": 170,
+        "elements": [
+          {
+            "type": "table",
+            "x": 0,
+            "y": 0,
+            "w": 515,
+            "h": 64,
+            "data": "items",
+            "header": true,
+            "footer": true,
+            "grow": true,
+            "border": 1,
+            "color": "#94a3b8",
+            "fontSize": 10,
+            "headerFill": "#dbeafe",
+            "headerColor": "#1e3a8a",
+            "footerFill": "#f1f5f9",
+            "cells": [
+              [
+                "No",
+                "Nama",
+                "Instansi / jabatan",
+                "Tanda tangan"
+              ],
+              [
+                "{{index}}",
+                "{{name}}",
+                "{{org}}",
+                ""
+              ],
+              [
+                "Jumlah peserta",
+                "",
+                "{{count()}} orang",
+                ""
+              ]
+            ],
+            "cols": [
+              0.6,
+              4,
+              4,
+              3
+            ],
+            "heights": [
+              1,
+              1.6,
+              1
+            ],
+            "aligns": [
+              "center",
+              "left",
+              "left",
+              "left"
+            ],
+            "valign": "middle",
+            "cellStyle": {
+              "2,0": {
+                "colSpan": 2,
+                "align": "right"
+              }
+            }
+          },
+          {
+            "type": "text",
+            "x": 315,
+            "y": 80,
+            "w": 200,
+            "h": 26,
+            "text": "{{city}}, {{date}}\nPenanggung jawab",
+            "align": "center",
+            "fontSize": 9,
+            "grow": true
+          },
+          {
+            "type": "line",
+            "x": 335,
+            "y": 154,
+            "w": 160,
+            "h": 1,
+            "border": 0.5,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 315,
+            "y": 158,
+            "w": 200,
+            "h": 12,
+            "text": "{{organizer}}",
+            "align": "center",
+            "fontSize": 9,
+            "bold": true
+          }
+        ]
+      },
+      "footer": {
+        "height": 20,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 6,
+            "w": 515,
+            "h": 12,
+            "text": "Halaman {{page}} dari {{pages}}",
+            "fontSize": 8,
+            "align": "center",
+            "color": "#666666"
+          }
+        ]
+      }
+    }
+  },
+  "data": {
+    "event": "Sosialisasi Literasi Keuangan untuk Pelaku UMKM",
+    "day": "Kamis",
+    "date": "22 Oktober 2026",
+    "time": "09.00 – 12.00 WIB",
+    "place": "Balai Desa Sukamaju, Kab. Bandung",
+    "city": "Bandung",
+    "organizer": "Dewi Kartika",
+    "items": [
+      {
+        "name": "Agus Salim",
+        "org": "Warung Kopi Agus"
+      },
+      {
+        "name": "Bunga Citra Lestari",
+        "org": "Batik Bunga"
+      },
+      {
+        "name": "Cahyo Nugroho",
+        "org": "Bengkel Las Cahyo"
+      },
+      {
+        "name": "Dian Permata",
+        "org": "Katering Dian"
+      },
+      {
+        "name": "Eko Prasetyo",
+        "org": "Toko Sembako Eko"
+      },
+      {
+        "name": "Fitri Handayani",
+        "org": "Kue Basah Fitri"
+      },
+      {
+        "name": "Gilang Ramadhan",
+        "org": "Sablon Gilang"
+      },
+      {
+        "name": "Hana Pertiwi",
+        "org": "Laundry Bersih"
+      }
+    ]
+  }
+}

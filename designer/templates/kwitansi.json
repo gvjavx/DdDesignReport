@@ -1,0 +1,230 @@
+{
+  "name": "Kuitansi",
+  "description": "Kuitansi pembayaran A5 mendatar: penerima, jumlah dengan terbilang, tanda tangan, dan QR nomor kuitansi.",
+  "template": {
+    "page": {
+      "width": 595,
+      "height": 420,
+      "margin": 0,
+      "marginTop": 30,
+      "marginRight": 30,
+      "marginBottom": 30,
+      "marginLeft": 30,
+      "background": "",
+      "backgroundImage": ""
+    },
+    "dataKey": "rows",
+    "groupBy": "",
+    "groupPageBreak": false,
+    "thousands": ".",
+    "decimal": ",",
+    "bands": {
+      "header": {
+        "height": 300,
+        "elements": [
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 0,
+            "w": 535,
+            "h": 300,
+            "border": 1.5,
+            "color": "#0f766e"
+          },
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 0,
+            "w": 10,
+            "h": 300,
+            "fill": "#0f766e"
+          },
+          {
+            "type": "text",
+            "x": 24,
+            "y": 16,
+            "w": 250,
+            "h": 26,
+            "text": "KUITANSI",
+            "fontSize": 22,
+            "bold": true,
+            "color": "#0f766e"
+          },
+          {
+            "type": "text",
+            "x": 335,
+            "y": 22,
+            "w": 190,
+            "h": 14,
+            "text": "No. <b>{{number}}</b>",
+            "align": "right",
+            "fontSize": 10
+          },
+          {
+            "type": "line",
+            "x": 24,
+            "y": 50,
+            "w": 501,
+            "h": 1,
+            "border": 0.5,
+            "color": "#99a1ad"
+          },
+          {
+            "type": "text",
+            "x": 24,
+            "y": 66,
+            "w": 120,
+            "h": 14,
+            "text": "Sudah terima dari",
+            "fontSize": 10,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 150,
+            "y": 66,
+            "w": 375,
+            "h": 14,
+            "text": "{{payer}}",
+            "fontSize": 11,
+            "bold": true
+          },
+          {
+            "type": "text",
+            "x": 24,
+            "y": 92,
+            "w": 120,
+            "h": 14,
+            "text": "Uang sejumlah",
+            "fontSize": 10,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 150,
+            "y": 90,
+            "w": 375,
+            "h": 30,
+            "text": "<i>{{amountWords}}</i>",
+            "fontSize": 11,
+            "fill": "#f0fdfa",
+            "grow": true
+          },
+          {
+            "type": "text",
+            "x": 24,
+            "y": 132,
+            "w": 120,
+            "h": 14,
+            "text": "Untuk pembayaran",
+            "fontSize": 10,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 150,
+            "y": 132,
+            "w": 375,
+            "h": 30,
+            "text": "{{purpose}}",
+            "fontSize": 10,
+            "grow": true
+          },
+          {
+            "type": "rect",
+            "x": 24,
+            "y": 214,
+            "w": 200,
+            "h": 34,
+            "fill": "#0f766e"
+          },
+          {
+            "type": "text",
+            "x": 32,
+            "y": 222,
+            "w": 184,
+            "h": 20,
+            "text": "Rp {{amount:0}}",
+            "fontSize": 16,
+            "bold": true,
+            "color": "#ffffff"
+          },
+          {
+            "type": "barcode",
+            "x": 240,
+            "y": 196,
+            "w": 58,
+            "h": 58,
+            "text": "{{number}}",
+            "format": "qr"
+          },
+          {
+            "type": "text",
+            "x": 335,
+            "y": 186,
+            "w": 190,
+            "h": 26,
+            "text": "{{city}}, {{date}}\nPenerima,",
+            "align": "center",
+            "fontSize": 9,
+            "grow": true
+          },
+          {
+            "type": "line",
+            "x": 355,
+            "y": 260,
+            "w": 150,
+            "h": 1,
+            "border": 0.5,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 335,
+            "y": 264,
+            "w": 190,
+            "h": 12,
+            "text": "{{receiver}}",
+            "align": "center",
+            "fontSize": 9,
+            "bold": true
+          }
+        ]
+      },
+      "columnHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "groupHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "detail": {
+        "height": 0,
+        "elements": []
+      },
+      "groupFooter": {
+        "height": 0,
+        "elements": []
+      },
+      "summary": {
+        "height": 0,
+        "elements": []
+      },
+      "footer": {
+        "height": 0,
+        "elements": []
+      }
+    }
+  },
+  "data": {
+    "number": "KW-2026-0318",
+    "payer": "Ibu Sari Handayani",
+    "amount": 2750000,
+    "amountWords": "Dua juta tujuh ratus lima puluh ribu rupiah",
+    "purpose": "Pembayaran sewa ruang pertemuan Aula Melati, 20 Oktober 2026 (setengah hari), termasuk proyektor dan sound system.",
+    "city": "Surabaya",
+    "date": "15 Oktober 2026",
+    "receiver": "Bagus Santoso"
+  }
+}

@@ -71,7 +71,8 @@ write(path.join(wrapper, 'README.md'), fs.readFileSync(path.join(root, 'release'
 // the designer
 const designer = path.join(dist, 'npm', 'ddreport-designer')
 fs.mkdirSync(designer, { recursive: true })
-for (const f of ['designer.js', 'index.html']) fs.copyFileSync(path.join(root, 'designer', f), path.join(designer, f))
+for (const f of ['designer.js', 'designer.d.ts', 'index.html']) fs.copyFileSync(path.join(root, 'designer', f), path.join(designer, f))
+fs.cpSync(path.join(root, 'designer', 'templates'), path.join(designer, 'templates'), { recursive: true }) // import 'ddreport-designer/templates/invoice.json'
 fs.copyFileSync(path.join(root, 'LICENSE'), path.join(designer, 'LICENSE'))
 const des = JSON.parse(fs.readFileSync(path.join(root, 'designer', 'package.json'), 'utf8'))
 json(path.join(designer, 'package.json'), { ...des, ...common, keywords: ['report', 'designer', 'drag-and-drop', 'pdf', 'reporting'] })

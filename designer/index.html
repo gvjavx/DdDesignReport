@@ -24,6 +24,8 @@
   .seg span { padding: 0 10px; color: var(--muted); font-size: 12px }
   .seg button { border: 0; border-left: 1px solid var(--line); border-radius: 0; padding: 0 10px; font-weight: 600; font-size: 12px }
   .spacer { flex: 1 }
+  .switch { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); cursor: pointer; white-space: nowrap }
+  .switch input { width: 16px; height: 16px; margin: 0; accent-color: var(--a) }
   header a { color: var(--a); text-decoration: none; font-weight: 600; white-space: nowrap }
   header a:hover { text-decoration: underline }
   #msg { position: fixed; left: 50%; bottom: 46px; transform: translateX(-50%); z-index: 30; max-width: min(92vw, 560px); padding: 10px 16px; border-radius: 10px; background: #1f2937; color: #fff; box-shadow: 0 8px 24px #0004; font-size: 13px }
@@ -36,8 +38,7 @@
   textarea { display: block; width: min(100%, 760px); height: 150px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: 12px/1.5 ui-monospace, Consolas, monospace }
   #designer { flex: 1; min-height: 0; border: 0; border-radius: 0 }
   @media (max-width: 640px) {
-    header { padding: 6px 8px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none }
-    header > * { flex: none }
+    header { padding: 6px 8px }
     .brand span { display: none }
     .spacer { display: none }
   }
@@ -63,6 +64,7 @@
     <button type="button" data-export="csv">CSV</button>
   </div>
   <button id="datatoggle" type="button" aria-expanded="false" aria-controls="datapanel" data-t>Sample data</button>
+  <label class="switch" title="Fewer tools, each with its name"><input id="simple" type="checkbox"> <span data-t>Simple mode</span></label>
   <span class="spacer"></span>
   <a id="lang" href="?lang=id">Bahasa Indonesia</a>
 </header>
@@ -91,6 +93,7 @@ const ID = {
   'Could not load the template: ': 'Template tidak bisa dimuat: ', 'Not a valid template: ': 'Bukan template yang sah: ', 'Export failed: ': 'Ekspor gagal: ',
   'Replaced. Ctrl+Z or the Undo button brings the previous report back.': 'Diganti. Ctrl+Z atau tombol Urungkan mengembalikan laporan sebelumnya.',
   'Could not save in this browser (storage is full or blocked). Use "Save template" to keep your work.': 'Tidak bisa menyimpan di browser ini (penyimpanan penuh atau diblokir). Pakai "Simpan template" agar pekerjaan tidak hilang.',
+  'Simple mode': 'Mode mudah', 'Fewer tools, each with its name': 'Lebih sedikit alat, masing-masing dengan namanya',
 }
 const L = s => (lang === 'id' && ID[s]) || s
 document.documentElement.lang = lang
@@ -165,16 +168,28 @@ function download(blob, name) {
   URL.revokeObjectURL(a.href)
 }
 
-const designer = createDesigner($('designer'), {
-  lang,
-  theme: 'auto',
-  fontBase: 'fonts/', // served by ddreport -serve
-  fields: fieldNames(),
-  data: sample(),
-  template: saved ?? undefined,
-  onChange: persist,
-  preview: async template => (await render(template, 'html')).text(),
-})
+// simple mode, on until it is turned off: fewer tools, each with its name. Switching keeps the report.
+const SIMPLE = 'ddreport-simple'
+$('simple').checked = stored(SIMPLE) !== 'off'
+$('simple').parentNode.title = L($('simple').parentNode.title)
+let designer
+function make() {
+  const template = designer?.getTemplate() ?? saved ?? undefined
+  designer?.destroy()
+  designer = createDesigner($('designer'), {
+    lang,
+    theme: 'auto',
+    simple: $('simple').checked,
+    fontBase: 'fonts/', // served by ddreport -serve
+    fields: fieldNames(),
+    data: sample(),
+    template,
+    onChange: persist,
+    preview: async template => (await render(template, 'html')).text(),
+  })
+}
+make()
+$('simple').onchange = () => { store(SIMPLE, $('simple').checked ? 'on' : 'off'); make() }
 // replacing the report is one undo step in the designer, so nothing is lost for good
 const replace = t => {
   designer.setTemplate(t)

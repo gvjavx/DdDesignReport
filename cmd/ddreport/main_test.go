@@ -47,6 +47,20 @@ func TestHandler(t *testing.T) {
 		t.Errorf("bad body: status %d, want 400", res.StatusCode)
 	}
 
+	// the designer's own page may render; a page of another site open in the same browser may not
+	for origin, want := range map[string]int{srv.URL: 200, "http://evil.example": 403, "null": 403} {
+		req, _ := http.NewRequest("POST", srv.URL+"/render?format=csv", strings.NewReader(request))
+		req.Header.Set("Origin", origin)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != want {
+			t.Errorf("Origin %s: status %d, want %d", origin, res.StatusCode, want)
+		}
+	}
+
 	// the designer is embedded in the binary
 	for _, path := range []string{"/", "/designer.js"} {
 		res, err := http.Get(srv.URL + path)

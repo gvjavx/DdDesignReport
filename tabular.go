@@ -12,6 +12,8 @@ type cell struct {
 	bold        bool
 	dec         int
 	fill, color string // #rrggbb background and text colour, "" for none
+	align       string // center or right; "" for the spreadsheet's own
+	boxed       bool   // lines on every side, as in a table with a full grid
 }
 
 // textLines returns the text elements of a band as the lines a reader sees:
@@ -106,7 +108,7 @@ func (r *report) table() ([][]cell, []float64) {
 				}
 				c := sc.cell(e)
 				if prev := cells[best]; prev.v != nil { // two texts over one column
-					c = cell{v: str(prev.v) + " " + str(c.v), bold: c.bold, dec: -1, fill: c.fill, color: c.color}
+					c.v, c.dec = str(prev.v)+" "+str(c.v), -1
 				}
 				cells[best] = c
 			}

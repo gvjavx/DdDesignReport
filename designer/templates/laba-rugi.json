@@ -1,0 +1,322 @@
+{
+  "name": "Laporan laba rugi",
+  "description": "Laba rugi per periode: pendapatan dan beban berkelompok dengan subtotal, laba atau rugi bersih otomatis, dan chart.",
+  "template": {
+    "page": {
+      "width": 595,
+      "height": 842,
+      "margin": 0,
+      "marginTop": 40,
+      "marginRight": 40,
+      "marginBottom": 40,
+      "marginLeft": 40,
+      "background": "",
+      "backgroundImage": ""
+    },
+    "dataKey": "rows",
+    "groupBy": "section",
+    "groupPageBreak": false,
+    "thousands": ".",
+    "decimal": ",",
+    "bands": {
+      "header": {
+        "height": 70,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 0,
+            "w": 515,
+            "h": 20,
+            "text": "{{company}}",
+            "fontSize": 16,
+            "bold": true,
+            "align": "center",
+            "color": "#065f46"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 22,
+            "w": 515,
+            "h": 16,
+            "text": "LAPORAN LABA RUGI",
+            "fontSize": 12,
+            "bold": true,
+            "align": "center"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 40,
+            "w": 515,
+            "h": 12,
+            "text": "Periode {{period}}",
+            "fontSize": 9,
+            "align": "center",
+            "color": "#555555"
+          },
+          {
+            "type": "line",
+            "x": 0,
+            "y": 60,
+            "w": 515,
+            "h": 1,
+            "border": 1.5,
+            "color": "#065f46"
+          }
+        ]
+      },
+      "columnHeader": {
+        "height": 18,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 3,
+            "w": 300,
+            "h": 12,
+            "text": "KETERANGAN",
+            "fontSize": 8,
+            "bold": true,
+            "color": "#888888"
+          },
+          {
+            "type": "text",
+            "x": 375,
+            "y": 3,
+            "w": 140,
+            "h": 12,
+            "text": "JUMLAH (RP)",
+            "fontSize": 8,
+            "bold": true,
+            "color": "#888888",
+            "align": "right"
+          }
+        ]
+      },
+      "groupHeader": {
+        "height": 18,
+        "elements": [
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 0,
+            "w": 515,
+            "h": 16,
+            "fill": "#ecfdf5"
+          },
+          {
+            "type": "text",
+            "x": 4,
+            "y": 3,
+            "w": 300,
+            "h": 12,
+            "text": "{{section}}",
+            "fontSize": 10,
+            "bold": true,
+            "color": "#065f46"
+          }
+        ]
+      },
+      "detail": {
+        "height": 15,
+        "elements": [
+          {
+            "type": "text",
+            "x": 14,
+            "y": 2,
+            "w": 340,
+            "h": 11,
+            "text": "{{name}}",
+            "fontSize": 9
+          },
+          {
+            "type": "text",
+            "x": 375,
+            "y": 2,
+            "w": 136,
+            "h": 11,
+            "text": "{{amount:0}}",
+            "fontSize": 9,
+            "align": "right"
+          }
+        ]
+      },
+      "groupFooter": {
+        "height": 24,
+        "elements": [
+          {
+            "type": "line",
+            "x": 300,
+            "y": 1,
+            "w": 215,
+            "h": 1,
+            "border": 0.5,
+            "color": "#999999"
+          },
+          {
+            "type": "text",
+            "x": 150,
+            "y": 5,
+            "w": 220,
+            "h": 12,
+            "text": "Total {{section}}",
+            "fontSize": 9,
+            "bold": true,
+            "align": "right"
+          },
+          {
+            "type": "text",
+            "x": 375,
+            "y": 5,
+            "w": 136,
+            "h": 12,
+            "text": "{{sum(amount):0}}",
+            "fontSize": 9,
+            "bold": true,
+            "align": "right"
+          }
+        ]
+      },
+      "summary": {
+        "height": 230,
+        "elements": [
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 4,
+            "w": 515,
+            "h": 28,
+            "fill": "#065f46"
+          },
+          {
+            "type": "text",
+            "x": 8,
+            "y": 11,
+            "w": 260,
+            "h": 16,
+            "text": "{{if(sum(amount * sign) >= 0, 'LABA BERSIH', 'RUGI BERSIH')}}",
+            "fontSize": 12,
+            "bold": true,
+            "color": "#ffffff"
+          },
+          {
+            "type": "text",
+            "x": 315,
+            "y": 11,
+            "w": 192,
+            "h": 16,
+            "text": "{{sum(amount * sign):0}}",
+            "fontSize": 12,
+            "bold": true,
+            "color": "#ffffff",
+            "align": "right"
+          },
+          {
+            "type": "chart",
+            "x": 0,
+            "y": 48,
+            "w": 250,
+            "h": 160,
+            "chart": "bar",
+            "label": "section",
+            "value": "amount",
+            "color": "#065f46"
+          },
+          {
+            "type": "chart",
+            "x": 265,
+            "y": 48,
+            "w": 250,
+            "h": 160,
+            "chart": "donut",
+            "label": "name",
+            "value": "amount * (1 - sign) / 2"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 212,
+            "w": 515,
+            "h": 12,
+            "text": "Kiri: pendapatan dan beban. Kanan: rincian beban.",
+            "fontSize": 8,
+            "color": "#888888",
+            "align": "center"
+          }
+        ]
+      },
+      "footer": {
+        "height": 20,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 6,
+            "w": 515,
+            "h": 12,
+            "text": "Dicetak {{now:dd/MM/yyyy}} · Halaman {{page}} dari {{pages}}",
+            "fontSize": 8,
+            "align": "center",
+            "color": "#666666"
+          }
+        ]
+      }
+    }
+  },
+  "data": {
+    "company": "Kedai Kopi Senja",
+    "period": "1 – 30 September 2026",
+    "rows": [
+      {
+        "section": "Pendapatan",
+        "name": "Penjualan minuman",
+        "amount": 48500000,
+        "sign": 1
+      },
+      {
+        "section": "Pendapatan",
+        "name": "Penjualan makanan",
+        "amount": 17250000,
+        "sign": 1
+      },
+      {
+        "section": "Pendapatan",
+        "name": "Pesanan katering",
+        "amount": 6800000,
+        "sign": 1
+      },
+      {
+        "section": "Beban",
+        "name": "Bahan baku",
+        "amount": 24300000,
+        "sign": -1
+      },
+      {
+        "section": "Beban",
+        "name": "Gaji karyawan",
+        "amount": 18000000,
+        "sign": -1
+      },
+      {
+        "section": "Beban",
+        "name": "Sewa tempat",
+        "amount": 7500000,
+        "sign": -1
+      },
+      {
+        "section": "Beban",
+        "name": "Listrik dan air",
+        "amount": 2150000,
+        "sign": -1
+      },
+      {
+        "section": "Beban",
+        "name": "Pemasaran",
+        "amount": 1200000,
+        "sign": -1
+      }
+    ]
+  }
+}

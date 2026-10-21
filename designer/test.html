@@ -147,7 +147,7 @@ const tests = {
   'keeps elements on the paper'() {
     const t = open()
     t.click('add:rect')
-    t.prop('x', 5000); t.prop('y', 300)
+    t.prop('from left', 5000); t.prop('from top', 300)
     const e = t.els('header')[0]
     check('x is limited to the printable width', e.x === 523 - e.w, 'x=' + e.x)
     check('the band grows instead of letting the element spill out', t.tpl.bands.header.height === 300 + e.h, 'height=' + t.tpl.bands.header.height)
@@ -390,8 +390,8 @@ const tests = {
     e = t.els('header')[0]
     check('colours and lines are saved', e.header && e.headerFill === '#00ff00' && e.footerFill === '#ff0000' && e.stripe === '#0000ff' && e.textColor === '#123456' && e.grid === 'rows', JSON.stringify(e))
     const cells = t.qa('.ddr-cell')
-    check('header cell drawn bold on its fill', cells[0].style.fontWeight === 'bold' && cells[0].style.background.includes('rgb(0, 255, 0)'))
-    check('total row drawn on its fill', cells[4].style.fontWeight === 'bold' && cells[4].style.background.includes('rgb(255, 0, 0)'))
+    check('header cell drawn bold on its fill', cells[0].style.fontWeight === 'bold' && cells[0].style.backgroundColor.includes('rgb(0, 255, 0)'))
+    check('total row drawn on its fill', cells[4].style.fontWeight === 'bold' && cells[4].style.backgroundColor.includes('rgb(255, 0, 0)'))
     check('body text in its colour', cells[2].style.color === 'rgb(18, 52, 86)' && cells[2].style.fontWeight !== 'bold')
     check('rows grid has no vertical lines', !cells[0].style.borderRight && !!cells[0].style.borderBottom)
     box('total row fill').querySelector('button').click()
@@ -455,7 +455,7 @@ const tests = {
   'a position of 0 shows as 0'() {
     const t = open()
     t.click('add:rect')
-    const x = t.qa('.ddr-props label').find(l => l.firstChild.textContent === 'x').querySelector('input')
+    const x = t.qa('.ddr-props label').find(l => l.firstChild.textContent === 'from left').querySelector('input')
     check('x', x.value === '0', JSON.stringify(x.value))
   },
   'typing in a field is one undo step'() {
@@ -569,7 +569,7 @@ const tests = {
     const fill = t.q('[data-cell=fill]')
     fill.value = '#ff0000'; fill.dispatchEvent(new Event('input', { bubbles: true }))
     t.q('[data-cell=align]').value = 'right'; t.q('[data-cell=align]').dispatchEvent(new Event('change', { bubbles: true }))
-    check('cell style saved and drawn', table().cellStyle['1,1'].fill === '#ff0000' && table().cellStyle['1,1'].align === 'right' && at(1, 1).style.background.includes('255, 0, 0'))
+    check('cell style saved and drawn', table().cellStyle['1,1'].fill === '#ff0000' && table().cellStyle['1,1'].align === 'right' && at(1, 1).style.backgroundColor.includes('255, 0, 0'))
     // the style moves with its cell when a row goes in above it
     click(0, 0); op('rowBelow')
     check('styles follow their cells', table().cellStyle['2,1']?.fill === '#ff0000' && !table().cellStyle['1,1'], JSON.stringify(table().cellStyle))
@@ -659,6 +659,71 @@ const tests = {
     check('paste brings them into another designer', b.els('header').length === 1 && b.els('header')[0].type === 'rect')
     paste('Halo <b>dunia</b>')
     check('plain text becomes a text box, tags kept as text', b.els('header')[1]?.text === 'Halo &lt;b>dunia&lt;/b>', JSON.stringify(b.els('header')[1]))
+  },
+  'simple mode: fewer tools, each with its name'() {
+    const t = open(undefined, { simple: true })
+    check('marked simple', t.root.hasAttribute('data-simple'))
+    check('ribbon buttons carry a short name to show', t.q('[data-cmd=undo]').dataset.label === 'Undo')
+    check('Arrange and Margins are left out', t.q('[data-group=Arrange]').hidden && t.q('[data-group=Margins]').hidden)
+    check('group bands wait for Group by', !t.q('.ddr-band[data-name=groupHeader]'))
+    t.set('[data-tpl=groupBy]', 'category')
+    check('then they show', !!t.q('.ddr-band[data-name=groupHeader]'))
+    t.click('add:rect')
+    const labels = t.qa('.ddr-props label').map(l => l.firstChild.textContent)
+    check('no x and y, but width and height', !labels.includes('from left') && labels.includes('width') && labels.includes('height'), labels.join())
+  },
+  'hide leaves out tabs, groups, commands and settings'() {
+    const t = open(undefined, { hide: ['Home', 'chart', 'Layout.Data', 'showIf', 'delete'] })
+    check('the tab and its panel are gone', t.q('[data-tab=Home]').hidden && t.q('[data-panel=Home]').hidden)
+    check('the first tab still shown is open', t.q('[data-tab=Insert]').getAttribute('aria-selected') === 'true' && !t.q('[data-panel=Insert]').hidden)
+    check('the chart button is gone, from the ribbon and the start hint', t.q('[data-cmd="add:chart"]').hidden && !t.q('.ddr-hint [data-cmd="add:chart"]'))
+    check('only the Data group of Layout goes', t.q('[data-panel=Layout] [data-group=Data]').hidden && !t.q('[data-panel=Insert] [data-group=Data]').hidden)
+    t.click('add:rect')
+    check('the property is not offered', !t.qa('.ddr-props label').some(l => l.firstChild.textContent === 'show when'))
+    t.q('.ddr-el').focus()
+    t.key('Delete')
+    check('a hidden command does not run from its shortcut', t.els('header').length === 1)
+  },
+  'messages replace any text'() {
+    const t = open(undefined, { lang: 'id', messages: { Insert: 'Tambah', 'Text box': 'Tulisan' } })
+    check('own word wins', t.q('[data-tab=Insert]').textContent === 'Tambah')
+    check('the rest stays Indonesian', t.q('[data-tab=Home]').textContent === 'Beranda')
+    check('on buttons too', t.q('[data-cmd="add:text"] span').textContent === 'Tulisan')
+  },
+  'the start hint has buttons that add'() {
+    const t = open()
+    t.q('.ddr-hint [data-cmd="add:table"]').click()
+    check('a table is on the page', t.els('header')[0]?.type === 'table')
+    check('and the hint is gone', !t.q('.ddr-hint'))
+  },
+  'destroy lets go of the page'() {
+    const t = open()
+    t.click('add:rect')
+    t.d.destroy()
+    check('the element is empty', !t.root.children.length && !t.root.classList.contains('ddr'))
+    if (!clipboardWorks) return
+    const d = new DataTransfer()
+    d.setData('text/plain', 'hello')
+    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: d, bubbles: true, cancelable: true }))
+    check('no longer listens to the clipboard', t.d.getTemplate().bands.header.elements.length === 1)
+  },
+  'hostile templates and clipboards cannot break it or reach out'() {
+    const t = open({ page: { backgroundImage: 'https://example.com/track.png' }, bands: { header: { height: 40, elements: [
+      { type: 'text', text: 5, fill: 'url(https://example.com/a.png)' }, { type: 'image', src: 'data:image/png;base64,x"), url("https://example.com/b.png' },
+      { type: 'chart', label: 7, value: 3 }, { type: 'subreport', report: { bands: { detail: null } } },
+    ] } } })
+    check('a link as page background is not fetched', !t.q('.ddr-page').style.backgroundImage)
+    const [text, image] = t.qa('.ddr-el')
+    check('a fill cannot load a picture', !text.style.backgroundImage && !text.style.background.includes('url'))
+    check('a picture that is not just a picture is not drawn', !image.style.backgroundImage)
+    check('every element is drawn', t.qa('.ddr-el').length === 4)
+    if (!clipboardWorks) return
+    t.q('.ddr-page').focus()
+    const d = new DataTransfer()
+    d.setData('text/plain', JSON.stringify({ ddreport: [['header', '{"type":"table"}'], ['header', 'null'], ['header', '{oops']] }))
+    document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: d, bubbles: true, cancelable: true }))
+    const els = t.els('header')
+    check('a broken pasted table is repaired, the rest left out', els.length === 5 && els[4].type === 'table' && Array.isArray(els[4].cells), JSON.stringify(els.slice(4)))
   },
   'tells the host about changes, with a copy on request'() {
     const t = open()

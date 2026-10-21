@@ -538,15 +538,25 @@ func (s scope) cell(e Element) cell {
 	if hexColor.MatchString(e.Color) && e.Color != "#000000" {
 		ink = e.Color
 	}
+	align := ""
+	if e.Align == "center" || e.Align == "right" {
+		align = e.Align
+	}
+	c := cell{dec: -1, bold: bold, fill: fill, color: ink, align: align, boxed: e.boxed}
 	if m := placeholder.FindStringSubmatch(text); m != nil && m[0] == text {
 		v, _ := s.eval(m[1])
 		spec := strings.TrimSpace(m[2])
 		_, isNumber := v.(float64)
 		if f, ok := num(v); ok && (isNumber || digits.MatchString(spec)) {
-			return cell{f, bold, decimals(spec), fill, ink}
+			c.v, c.dec = f, decimals(spec)
+			if c.align == "right" { // where a spreadsheet puts a number anyway
+				c.align = ""
+			}
+			return c
 		}
 	}
-	return cell{s.resolve(text), bold, -1, fill, ink}
+	c.v = s.resolve(text)
+	return c
 }
 
 // asTime reads a date: a time, an ISO date text, or a Unix time in seconds or milliseconds.

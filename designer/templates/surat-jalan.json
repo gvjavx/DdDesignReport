@@ -1,0 +1,403 @@
+{
+  "name": "Surat jalan",
+  "description": "Surat jalan pengiriman barang: daftar barang dengan total, kendaraan, dan tanda tangan pengirim, sopir, dan penerima.",
+  "template": {
+    "page": {
+      "width": 595,
+      "height": 842,
+      "margin": 0,
+      "marginTop": 40,
+      "marginRight": 40,
+      "marginBottom": 40,
+      "marginLeft": 40,
+      "background": "",
+      "backgroundImage": ""
+    },
+    "dataKey": "rows",
+    "groupBy": "",
+    "groupPageBreak": false,
+    "thousands": ".",
+    "decimal": ",",
+    "bands": {
+      "header": {
+        "height": 136,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 0,
+            "w": 300,
+            "h": 20,
+            "text": "{{company.name}}",
+            "fontSize": 16,
+            "bold": true,
+            "color": "#9a3412"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 22,
+            "w": 300,
+            "h": 26,
+            "text": "{{company.address}}",
+            "fontSize": 9,
+            "color": "#555555",
+            "grow": true
+          },
+          {
+            "type": "text",
+            "x": 315,
+            "y": 0,
+            "w": 200,
+            "h": 24,
+            "text": "SURAT JALAN",
+            "fontSize": 18,
+            "bold": true,
+            "align": "right"
+          },
+          {
+            "type": "text",
+            "x": 315,
+            "y": 28,
+            "w": 200,
+            "h": 12,
+            "text": "No. <b>{{number}}</b>",
+            "fontSize": 9,
+            "align": "right"
+          },
+          {
+            "type": "text",
+            "x": 315,
+            "y": 41,
+            "w": 200,
+            "h": 12,
+            "text": "Tanggal {{date}}",
+            "fontSize": 9,
+            "align": "right"
+          },
+          {
+            "type": "line",
+            "x": 0,
+            "y": 62,
+            "w": 515,
+            "h": 1,
+            "border": 2,
+            "color": "#9a3412"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 72,
+            "w": 200,
+            "h": 11,
+            "text": "DIKIRIM KEPADA",
+            "fontSize": 8,
+            "color": "#888888"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 85,
+            "w": 300,
+            "h": 14,
+            "text": "{{to.name}}",
+            "fontSize": 11,
+            "bold": true
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 101,
+            "w": 300,
+            "h": 26,
+            "text": "{{to.address}}",
+            "fontSize": 9,
+            "grow": true
+          },
+          {
+            "type": "text",
+            "x": 330,
+            "y": 72,
+            "w": 185,
+            "h": 11,
+            "text": "KENDARAAN",
+            "fontSize": 8,
+            "color": "#888888"
+          },
+          {
+            "type": "text",
+            "x": 330,
+            "y": 85,
+            "w": 185,
+            "h": 14,
+            "text": "{{vehicle}}",
+            "fontSize": 10,
+            "bold": true
+          },
+          {
+            "type": "text",
+            "x": 330,
+            "y": 101,
+            "w": 185,
+            "h": 12,
+            "text": "Sopir: {{driver}}",
+            "fontSize": 9
+          }
+        ]
+      },
+      "columnHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "groupHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "detail": {
+        "height": 0,
+        "elements": []
+      },
+      "groupFooter": {
+        "height": 0,
+        "elements": []
+      },
+      "summary": {
+        "height": 200,
+        "elements": [
+          {
+            "type": "table",
+            "x": 0,
+            "y": 0,
+            "w": 515,
+            "h": 60,
+            "data": "items",
+            "header": true,
+            "footer": true,
+            "grow": true,
+            "border": 1,
+            "color": "#999999",
+            "fontSize": 9,
+            "headerFill": "#fff7ed",
+            "headerColor": "#9a3412",
+            "footerFill": "#fff7ed",
+            "cells": [
+              [
+                "No",
+                "Nama barang",
+                "Jumlah",
+                "Satuan",
+                "Keterangan"
+              ],
+              [
+                "{{index}}",
+                "{{name}}",
+                "{{qty}}",
+                "{{unit}}",
+                "{{note}}"
+              ],
+              [
+                "Total",
+                "",
+                "{{sum(qty)}}",
+                "",
+                ""
+              ]
+            ],
+            "cols": [
+              0.7,
+              5,
+              1.2,
+              1.2,
+              3
+            ],
+            "heights": [
+              1,
+              1,
+              1
+            ],
+            "aligns": [
+              "center",
+              "left",
+              "right",
+              "left",
+              "left"
+            ],
+            "cellStyle": {
+              "2,0": {
+                "colSpan": 2,
+                "align": "right"
+              }
+            }
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 70,
+            "w": 515,
+            "h": 12,
+            "text": "Barang di atas sudah diterima dalam keadaan baik dan jumlah yang benar.",
+            "fontSize": 8,
+            "italic": true,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 96,
+            "w": 160,
+            "h": 26,
+            "text": "Pengirim,",
+            "align": "center",
+            "fontSize": 9,
+            "grow": true
+          },
+          {
+            "type": "line",
+            "x": 20,
+            "y": 170,
+            "w": 120,
+            "h": 1,
+            "border": 0.5,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 174,
+            "w": 160,
+            "h": 12,
+            "text": "{{sender}}",
+            "align": "center",
+            "fontSize": 9,
+            "bold": true
+          },
+          {
+            "type": "text",
+            "x": 178,
+            "y": 96,
+            "w": 160,
+            "h": 26,
+            "text": "Sopir,",
+            "align": "center",
+            "fontSize": 9,
+            "grow": true
+          },
+          {
+            "type": "line",
+            "x": 198,
+            "y": 170,
+            "w": 120,
+            "h": 1,
+            "border": 0.5,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 178,
+            "y": 174,
+            "w": 160,
+            "h": 12,
+            "text": "{{driver}}",
+            "align": "center",
+            "fontSize": 9,
+            "bold": true
+          },
+          {
+            "type": "text",
+            "x": 355,
+            "y": 96,
+            "w": 160,
+            "h": 26,
+            "text": "Penerima,",
+            "align": "center",
+            "fontSize": 9,
+            "grow": true
+          },
+          {
+            "type": "line",
+            "x": 375,
+            "y": 170,
+            "w": 120,
+            "h": 1,
+            "border": 0.5,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 355,
+            "y": 174,
+            "w": 160,
+            "h": 12,
+            "text": "( ........................ )",
+            "align": "center",
+            "fontSize": 9,
+            "bold": true
+          }
+        ]
+      },
+      "footer": {
+        "height": 20,
+        "elements": [
+          {
+            "type": "text",
+            "x": 0,
+            "y": 6,
+            "w": 515,
+            "h": 12,
+            "text": "Halaman {{page}} dari {{pages}}",
+            "fontSize": 8,
+            "align": "center",
+            "color": "#666666"
+          }
+        ]
+      }
+    }
+  },
+  "data": {
+    "company": {
+      "name": "CV Sumber Rejeki",
+      "address": "Jl. Raya Industri No. 45, Sidoarjo 61256\nTelp. (031) 555-0123"
+    },
+    "number": "SJ-2026-1045",
+    "date": "16 Oktober 2026",
+    "to": {
+      "name": "Toko Bangunan Makmur",
+      "address": "Jl. Diponegoro No. 210\nMalang 65119"
+    },
+    "vehicle": "Colt Diesel L 8123 XY",
+    "driver": "Joko Susilo",
+    "sender": "Rudi Hartono",
+    "items": [
+      {
+        "name": "Semen Portland 50 kg",
+        "qty": 40,
+        "unit": "sak",
+        "note": ""
+      },
+      {
+        "name": "Besi beton ulir 10 mm",
+        "qty": 25,
+        "unit": "batang",
+        "note": "panjang 12 m"
+      },
+      {
+        "name": "Cat tembok putih 25 kg",
+        "qty": 6,
+        "unit": "pail",
+        "note": ""
+      },
+      {
+        "name": "Pipa PVC 3 inci",
+        "qty": 12,
+        "unit": "batang",
+        "note": "tipe AW"
+      },
+      {
+        "name": "Paku 7 cm",
+        "qty": 10,
+        "unit": "kg",
+        "note": "dus terpisah"
+      }
+    ]
+  }
+}

@@ -1,0 +1,454 @@
+{
+  "name": "Rapor siswa",
+  "description": "Rapor siswa yang ceria: nilai per mata pelajaran dengan predikat otomatis, rata-rata, kehadiran, catatan wali kelas, dan tanda tangan.",
+  "template": {
+    "page": {
+      "width": 595,
+      "height": 842,
+      "margin": 0,
+      "marginTop": 40,
+      "marginRight": 40,
+      "marginBottom": 40,
+      "marginLeft": 40,
+      "background": "",
+      "backgroundImage": ""
+    },
+    "dataKey": "rows",
+    "groupBy": "",
+    "groupPageBreak": false,
+    "thousands": ".",
+    "decimal": ",",
+    "bands": {
+      "header": {
+        "height": 128,
+        "elements": [
+          {
+            "type": "rect",
+            "x": 0,
+            "y": 0,
+            "w": 515,
+            "h": 56,
+            "fill": "#4f46e5"
+          },
+          {
+            "type": "text",
+            "x": 14,
+            "y": 10,
+            "w": 380,
+            "h": 20,
+            "text": "{{school.name}}",
+            "fontSize": 16,
+            "bold": true,
+            "color": "#ffffff"
+          },
+          {
+            "type": "text",
+            "x": 14,
+            "y": 33,
+            "w": 380,
+            "h": 12,
+            "text": "{{school.address}}",
+            "fontSize": 9,
+            "color": "#e0e7ff"
+          },
+          {
+            "type": "text",
+            "x": 395,
+            "y": 15,
+            "w": 106,
+            "h": 26,
+            "text": "RAPOR",
+            "fontSize": 20,
+            "bold": true,
+            "align": "right",
+            "color": "#ffffff"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 70,
+            "w": 70,
+            "h": 13,
+            "text": "Nama",
+            "fontSize": 10,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 70,
+            "y": 70,
+            "w": 230,
+            "h": 13,
+            "text": ": <b>{{student.name}}</b>",
+            "fontSize": 10
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 86,
+            "w": 70,
+            "h": 13,
+            "text": "NIS",
+            "fontSize": 10,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 70,
+            "y": 86,
+            "w": 230,
+            "h": 13,
+            "text": ": {{student.nis}}",
+            "fontSize": 10
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 102,
+            "w": 70,
+            "h": 13,
+            "text": "Kelas",
+            "fontSize": 10,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 70,
+            "y": 102,
+            "w": 230,
+            "h": 13,
+            "text": ": {{student.class}}",
+            "fontSize": 10
+          },
+          {
+            "type": "text",
+            "x": 315,
+            "y": 70,
+            "w": 80,
+            "h": 13,
+            "text": "Semester",
+            "fontSize": 10,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 395,
+            "y": 70,
+            "w": 120,
+            "h": 13,
+            "text": ": {{semester}}",
+            "fontSize": 10
+          },
+          {
+            "type": "text",
+            "x": 315,
+            "y": 86,
+            "w": 80,
+            "h": 13,
+            "text": "Tahun ajaran",
+            "fontSize": 10,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 395,
+            "y": 86,
+            "w": 120,
+            "h": 13,
+            "text": ": {{year}}",
+            "fontSize": 10
+          }
+        ]
+      },
+      "columnHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "groupHeader": {
+        "height": 0,
+        "elements": []
+      },
+      "detail": {
+        "height": 0,
+        "elements": []
+      },
+      "groupFooter": {
+        "height": 0,
+        "elements": []
+      },
+      "summary": {
+        "height": 300,
+        "elements": [
+          {
+            "type": "table",
+            "x": 0,
+            "y": 0,
+            "w": 515,
+            "h": 60,
+            "data": "items",
+            "header": true,
+            "footer": true,
+            "grow": true,
+            "border": 1,
+            "color": "#c7d2fe",
+            "fontSize": 10,
+            "headerFill": "#e0e7ff",
+            "headerColor": "#312e81",
+            "stripe": "#f5f7ff",
+            "footerFill": "#e0e7ff",
+            "footerColor": "#312e81",
+            "cells": [
+              [
+                "No",
+                "Mata pelajaran",
+                "Nilai",
+                "Predikat",
+                "Catatan"
+              ],
+              [
+                "{{index}}",
+                "{{subject}}",
+                "{{score}}",
+                "{{if(score >= 90, 'A', if(score >= 80, 'B', if(score >= 70, 'C', 'D')))}}",
+                "{{note}}"
+              ],
+              [
+                "Rata-rata",
+                "",
+                "{{avg(score):1}}",
+                "",
+                ""
+              ]
+            ],
+            "cols": [
+              0.7,
+              4,
+              1.2,
+              1.4,
+              5
+            ],
+            "heights": [
+              1,
+              1,
+              1
+            ],
+            "aligns": [
+              "center",
+              "left",
+              "center",
+              "center",
+              "left"
+            ],
+            "cellStyle": {
+              "2,0": {
+                "colSpan": 2,
+                "align": "right"
+              }
+            }
+          },
+          {
+            "type": "table",
+            "x": 0,
+            "y": 76,
+            "w": 220,
+            "h": 72,
+            "header": true,
+            "border": 1,
+            "color": "#c7d2fe",
+            "fontSize": 9,
+            "headerFill": "#e0e7ff",
+            "headerColor": "#312e81",
+            "cells": [
+              [
+                "Ketidakhadiran",
+                "Hari"
+              ],
+              [
+                "Sakit",
+                "{{attendance.sick}}"
+              ],
+              [
+                "Izin",
+                "{{attendance.permit}}"
+              ],
+              [
+                "Tanpa keterangan",
+                "{{attendance.absent}}"
+              ]
+            ],
+            "cols": [
+              3,
+              1
+            ],
+            "aligns": [
+              "left",
+              "center"
+            ]
+          },
+          {
+            "type": "rect",
+            "x": 240,
+            "y": 76,
+            "w": 275,
+            "h": 72,
+            "border": 1,
+            "color": "#c7d2fe",
+            "fill": "#f8fafc"
+          },
+          {
+            "type": "text",
+            "x": 250,
+            "y": 82,
+            "w": 255,
+            "h": 12,
+            "text": "Catatan wali kelas",
+            "fontSize": 9,
+            "bold": true,
+            "color": "#312e81"
+          },
+          {
+            "type": "text",
+            "x": 250,
+            "y": 96,
+            "w": 255,
+            "h": 46,
+            "text": "{{comment}}",
+            "fontSize": 9,
+            "grow": true
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 172,
+            "w": 200,
+            "h": 26,
+            "text": "Mengetahui,\nOrang tua / wali",
+            "align": "center",
+            "fontSize": 9,
+            "grow": true
+          },
+          {
+            "type": "line",
+            "x": 20,
+            "y": 246,
+            "w": 160,
+            "h": 1,
+            "border": 0.5,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 0,
+            "y": 250,
+            "w": 200,
+            "h": 12,
+            "text": "( {{parent}} )",
+            "align": "center",
+            "fontSize": 9,
+            "bold": true
+          },
+          {
+            "type": "text",
+            "x": 315,
+            "y": 172,
+            "w": 200,
+            "h": 26,
+            "text": "{{city}}, {{date}}\nWali kelas",
+            "align": "center",
+            "fontSize": 9,
+            "grow": true
+          },
+          {
+            "type": "line",
+            "x": 335,
+            "y": 246,
+            "w": 160,
+            "h": 1,
+            "border": 0.5,
+            "color": "#555555"
+          },
+          {
+            "type": "text",
+            "x": 315,
+            "y": 250,
+            "w": 200,
+            "h": 12,
+            "text": "{{teacher}}",
+            "align": "center",
+            "fontSize": 9,
+            "bold": true
+          }
+        ]
+      },
+      "footer": {
+        "height": 0,
+        "elements": []
+      }
+    }
+  },
+  "data": {
+    "school": {
+      "name": "SD Negeri Pelangi 3",
+      "address": "Jl. Melati No. 5, Kota Bogor 16128"
+    },
+    "student": {
+      "name": "Aisyah Putri Ramadhani",
+      "nis": "2026.04.117",
+      "class": "4B"
+    },
+    "semester": "1 (Ganjil)",
+    "year": "2026/2027",
+    "city": "Bogor",
+    "date": "19 Desember 2026",
+    "teacher": "Bu Endah Lestari, S.Pd.",
+    "parent": "Bapak Ahmad Fauzi",
+    "attendance": {
+      "sick": 2,
+      "permit": 1,
+      "absent": 0
+    },
+    "comment": "Aisyah rajin bertanya dan senang membantu teman. Pertahankan semangat membacanya, dan terus berlatih perkalian di rumah ya!",
+    "items": [
+      {
+        "subject": "Pendidikan Agama",
+        "score": 92,
+        "note": "Hafalan sangat baik"
+      },
+      {
+        "subject": "Pendidikan Pancasila",
+        "score": 88,
+        "note": ""
+      },
+      {
+        "subject": "Bahasa Indonesia",
+        "score": 95,
+        "note": "Cerita karangannya menarik"
+      },
+      {
+        "subject": "Matematika",
+        "score": 78,
+        "note": "Perlu latihan perkalian"
+      },
+      {
+        "subject": "IPAS",
+        "score": 85,
+        "note": ""
+      },
+      {
+        "subject": "Seni Rupa",
+        "score": 90,
+        "note": "Gambarnya penuh warna"
+      },
+      {
+        "subject": "PJOK",
+        "score": 87,
+        "note": ""
+      },
+      {
+        "subject": "Bahasa Inggris",
+        "score": 82,
+        "note": ""
+      }
+    ]
+  }
+}

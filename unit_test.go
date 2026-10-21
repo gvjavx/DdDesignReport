@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -134,13 +135,13 @@ func TestCell(t *testing.T) {
 		e    Element
 		want cell
 	}{
-		{Element{Text: "{{price}}"}, cell{12.5, false, -1, "", ""}},  // stays a number
-		{Element{Text: "{{price:2}}"}, cell{12.5, false, 2, "", ""}}, // with its format
-		{Element{Text: "{{sum(amt):0}}", Bold: true}, cell{3.0, true, 0, "", ""}},
-		{Element{Text: "Rp {{price:2}}"}, cell{"Rp 12.50", false, -1, "", ""}}, // mixed text is a string
-		{Element{Text: "{{name}}"}, cell{"Kopi", false, -1, "", ""}},
-		{Element{Text: "<b>{{price}}</b>"}, cell{12.5, true, -1, "", ""}}, // tags are not part of the value
-		{Element{Text: "a <i>b</i>"}, cell{"a b", false, -1, "", ""}},
+		{Element{Text: "{{price}}"}, cell{12.5, false, -1, "", "", "", false}},  // stays a number
+		{Element{Text: "{{price:2}}"}, cell{12.5, false, 2, "", "", "", false}}, // with its format
+		{Element{Text: "{{sum(amt):0}}", Bold: true}, cell{3.0, true, 0, "", "", "", false}},
+		{Element{Text: "Rp {{price:2}}"}, cell{"Rp 12.50", false, -1, "", "", "", false}}, // mixed text is a string
+		{Element{Text: "{{name}}"}, cell{"Kopi", false, -1, "", "", "", false}},
+		{Element{Text: "<b>{{price}}</b>"}, cell{12.5, true, -1, "", "", "", false}}, // tags are not part of the value
+		{Element{Text: "a <i>b</i>"}, cell{"a b", false, -1, "", "", "", false}},
 	} {
 		if got := sc.cell(c.e); got != c.want {
 			t.Errorf("cell(%q) = %+v, want %+v", c.e.Text, got, c.want)
@@ -563,7 +564,7 @@ func TestPaginate(t *testing.T) {
 		t.Errorf("one huge line: %d pages", n)
 	}
 
-	back := load(t, `{"page":{"background":"#ffeecc","backgroundImage":"data:image/png;base64,AAAA"},"bands":{"header":{"height":10,"elements":[{"type":"rect"}]}}}`, nil).paginate(0)[0]
+	back := load(t, `{"page":{"background":"#ffeecc","backgroundImage":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="},"bands":{"header":{"height":10,"elements":[{"type":"rect"}]}}}`, nil).paginate(0)[0]
 	if len(back) != 3 || back[0].Fill != "#ffeecc" || back[0].W != 595 || back[1].Type != "image" || back[1].H != 842 {
 		t.Errorf("background elements = %+v", back)
 	}
@@ -710,12 +711,37 @@ func TestRenderWordFeatures(t *testing.T) {
 	for _, want := range []string{
 		`<?mso-application progid="Excel.Sheet"?>`,
 		`<Column ss:Width="194"/><Column ss:Width="94"/>`,
-		`<Cell ss:StyleID="s1"><Data ss:Type="String">Name</Data></Cell>`,    // bold
-		`<Cell ss:StyleID="s6"><Data ss:Type="Number">12000.5</Data></Cell>`, // two decimals
 		`<Style ss:ID="s6"><NumberFormat ss:Format="#,##0.00"/></Style>`,
 	} {
 		if !strings.Contains(xls, want) {
 			t.Errorf("xls: missing %q", want)
+		}
+	}
+	// the cells of a table with lines keep them, with their own weight and number format
+	styleOf := func(value string) string {
+		id := regexp.MustCompile(`<Cell ss:StyleID="(s\d+)"><Data ss:Type="\w+">` + regexp.QuoteMeta(value) + `<`).FindStringSubmatch(xls)
+		if id == nil {
+			return ""
+		}
+		def := regexp.MustCompile(`<Style ss:ID="` + id[1] + `">(.*?)</Style>`).FindStringSubmatch(xls)
+		if def == nil {
+			return ""
+		}
+		return def[1]
+	}
+	if s := styleOf("Name"); !strings.Contains(s, `ss:Bold="1"`) || !strings.Contains(s, `<Border ss:Position="Bottom"`) {
+		t.Errorf("xls: header cell style %q, want bold with borders", s)
+	}
+	if s := styleOf("12000.5"); !strings.Contains(s, `#,##0.00`) || !strings.Contains(s, `<Borders>`) || strings.Contains(s, "Alignment") {
+		t.Errorf("xls: price cell style %q, want two decimals with borders, aligned as numbers are", s)
+	}
+	if s := styleOf("Price"); !strings.Contains(s, `<Alignment ss:Horizontal="Right"/>`) {
+		t.Errorf("xls: a right-aligned heading %q, want it on the right", s)
+	}
+	styles := string(unzip(t, render(t, tpl, data, "xlsx"), "xl/styles.xml"))
+	for _, want := range []string{`<borders count="2">`, `<left style="thin"/>`, `borderId="1"`, `<alignment horizontal="right"/>`} {
+		if !strings.Contains(styles, want) {
+			t.Errorf("xlsx styles: missing %q", want)
 		}
 	}
 }

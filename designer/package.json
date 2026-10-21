@@ -4,7 +4,11 @@
   "description": "Drag-and-drop report designer for DdDesignReport",
   "type": "module",
   "main": "designer.js",
-  "exports": "./designer.js",
-  "files": ["designer.js", "index.html"],
+  "types": "designer.d.ts",
+  "exports": {
+    ".": { "types": "./designer.d.ts", "default": "./designer.js" },
+    "./templates/*": "./templates/*"
+  },
+  "files": ["designer.js", "designer.d.ts", "index.html", "templates"],
   "license": "MIT"
 }

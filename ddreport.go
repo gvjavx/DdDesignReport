@@ -136,6 +136,7 @@ type Element struct {
 	head   bool      // a table header row, repeated on the next page when its table goes on there
 	tbl    int       // the table a line, background or cell belongs to
 	bg     string    // a table cell's background, for the spreadsheets
+	boxed  bool      // a table cell with lines on every side, for the spreadsheets
 	mw, mh float64   // a barcode: the size of one module, in pt
 	done   bool      // laid out and filled in already, inside a sub-report
 }
@@ -324,8 +325,8 @@ func newReport(template []byte, data any) (*report, error) {
 	images = append(images, t.pictures()...)
 	for _, src := range images {
 		// a placeholder ({{photo}}) is checked once it is filled in, and drawn only if it is a picture
-		if src != "" && !strings.Contains(src, "{{") && !dataImage.MatchString(src) {
-			return nil, errors.New("ddreport: image: src must be a PNG, JPEG or GIF data URI (data:image/png;base64,...)")
+		if src != "" && !strings.Contains(src, "{{") && !picture(src) {
+			return nil, errors.New("ddreport: image: src must be a PNG, JPEG or GIF data URI (data:image/png;base64,...) of a picture that can be read")
 		}
 	}
 	raw, err := json.Marshal(data)
@@ -915,6 +916,10 @@ func chart(t *Template, e Element, rows []any) []Element {
 	var out []Element
 
 	if e.Chart == "pie" || e.Chart == "donut" {
+		// a slice of nothing draws nothing, so its legend line goes too
+		if some := slices.DeleteFunc(slices.Clone(labels), func(l string) bool { return sums[l] == 0 }); len(some) > 0 {
+			labels = some
+		}
 		// the legend gets as many lines as fit next to the pie; the smallest
 		// slices beyond that are summed into one, so it never runs off the chart
 		if fit := max(int(e.H/11), 1); len(labels) > fit {
@@ -1447,10 +1452,10 @@ func (s *sheetStyles) of(c cell) int {
 	if c.bold {
 		n++
 	}
-	if c.fill == "" && c.color == "" {
+	if c.fill == "" && c.color == "" && c.align == "" && !c.boxed {
 		return n
 	}
-	k := cell{dec: c.dec, bold: c.bold, fill: c.fill, color: c.color}
+	k := cell{dec: c.dec, bold: c.bold, fill: c.fill, color: c.color, align: c.align, boxed: c.boxed}
 	if i, ok := s.index[k]; ok {
 		return i
 	}
@@ -1562,8 +1567,18 @@ func toXLS(sheets []worksheet) ([]byte, error) {
 		`<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles>`)
 	for i, l := range st.looks() {
 		inner := ""
+		if l.align != "" {
+			inner += `<Alignment ss:Horizontal="` + map[string]string{"center": "Center", "right": "Right"}[l.align] + `"/>`
+		}
+		if l.boxed {
+			inner += `<Borders>`
+			for _, side := range []string{"Left", "Right", "Top", "Bottom"} {
+				inner += `<Border ss:Position="` + side + `" ss:LineStyle="Continuous" ss:Weight="1"/>`
+			}
+			inner += `</Borders>`
+		}
 		if l.bold || l.color != "" {
-			inner = `<Font`
+			inner += `<Font`
 			if l.bold {
 				inner += ` ss:Bold="1"`
 			}
@@ -1669,12 +1684,21 @@ func toXLSX(sheets []worksheet) ([]byte, error) {
 		if l.dec >= 0 {
 			id = 164 + l.dec
 		}
-		fmt.Fprintf(&xfs, `<xf numFmtId="%d" fontId="%d" fillId="%d" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>`, id, number(&fonts, font), fill)
+		border, align := 0, ""
+		if l.boxed {
+			border = 1
+		}
+		if l.align != "" {
+			align = `<alignment horizontal="` + l.align + `"/>`
+		}
+		fmt.Fprintf(&xfs, `<xf numFmtId="%d" fontId="%d" fillId="%d" borderId="%d" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">%s</xf>`,
+			id, number(&fonts, font), fill, border, align)
 	}
 	styles := head + `<styleSheet ` + main + `><numFmts count="` + strconv.Itoa(maxDecimals+1) + `">` + fmts.String() + `</numFmts>` +
 		`<fonts count="` + strconv.Itoa(len(fonts)) + `">` + strings.Join(fonts, "") + `</fonts>` +
 		`<fills count="` + strconv.Itoa(len(fills)) + `">` + strings.Join(fills, "") + `</fills>` +
-		`<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>` +
+		`<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>` +
+		`<border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders>` +
 		`<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
 		`<cellXfs count="` + strconv.Itoa(len(looks)) + `">` + xfs.String() + `</cellXfs></styleSheet>`
 

@@ -42,7 +42,19 @@ const designer = createDesigner(document.getElementById('designer'), {
   },
 })
 designer.getTemplate()                // JSON untuk dikirim ke backend
+designer.destroy()                    // saat designer dilepas dari halaman (React, Vue, ...)
 ```
+
+Paketnya membawa tipe TypeScript dan 13 template siap pakai: `import invoice from 'ddreport-designer/templates/invoice.json'`, lalu `designer.setTemplate(invoice.template)`. Contoh untuk React dan Vue ada di [README paket npm-nya](release/designer-README.md).
+
+**Menyesuaikan designer untuk project Anda**:
+
+| Opsi | Arti |
+| --- | --- |
+| `simple: true` | Mode mudah untuk pemula: alat yang jarang dipakai disembunyikan, setiap tombol diberi nama, band grup baru muncul setelah Group by diisi |
+| `hide: ['Layout', 'chart', 'showIf']` | Sembunyikan per nama: tab (`Layout`), grup ribbon (`Arrange`, atau `Layout.Data` untuk grup di satu tab saja), perintah (`delete`, `preview`), elemen (`chart`, `subreport`), atau pengaturan (`sortBy`, `showIf`). Perintah yang disembunyikan juga tidak jalan lewat pintasan |
+| `messages: { 'Text box': 'Label' }` | Ganti teks antarmuka mana pun, dengan teks Inggrisnya sebagai kunci (daftar lengkapnya `ID` di `designer.js`) |
+| CSS `#designer.ddr { --a: #e11d48 }` | Warna: `--a` (aksen), `--a-soft`, `--bg`, `--surface`, `--text`, `--muted`, `--line`, `--stage`, `--hover` |
 
 Designer punya ribbon seperti pengolah kata:
 
@@ -61,13 +73,13 @@ Pintasan: `Ctrl+Z` / `Ctrl+Y` (mengetik di satu kolom properti dihitung satu lan
 
 `Ctrl+C` / `Ctrl+X` menaruh elemen terpilih di clipboard sistem, jadi bisa ditempel di designer lain (tab atau laporan lain). Menempel teks biasa membuat text box baru. Untuk tabel, klik sebuah sel lalu pakai tombol di panel properti untuk menyisipkan atau menghapus baris dan kolom di sebelahnya. Klik kanvas kosong untuk mengatur band: tinggi, kepala/kaki halaman hanya di halaman pertama atau terakhir, dan band yang dimulai di halaman baru.
 
-Aplikasi standalone juga punya tombol ekspor PDF, HTML, XLSX, XLS, dan CSV, serta antarmuka Indonesia lewat `?lang=id`. `Esc` saat mengetik membatalkan; **New** dan **Templates…** bisa dibatalkan dengan `Ctrl+Z`.
+Aplikasi standalone juga punya tombol ekspor PDF, HTML, XLSX, XLS, dan CSV, antarmuka Indonesia lewat `?lang=id`, dan **Mode mudah** yang aktif sejak awal (hapus centangnya untuk semua alat). `Esc` saat mengetik membatalkan; **New** dan **Templates…** bisa dibatalkan dengan `Ctrl+Z`.
 
 **Preview** (tombol mata di bilah status, atau tab View) membuka hasil cetak HTML dengan data contoh: tiap halaman tampil sebagai lembar terpisah, dipaskan ke lebar jendela, dengan jumlah halamannya. Preview dan ekspor butuh halaman dibuka dari `ddreport -serve`; jika tidak, designer mengatakannya.
 
 ## Template siap pakai
 
-Delapan template ada di `designer/templates/` (faktur, laporan penjualan, struk kasir, slip gaji, sertifikat, surat resmi, daftar stok, label produk). Tiap file berisi `template` dan `data` contohnya. Di aplikasi standalone pilih lewat **Templates…**; `go test` mencetak semuanya ke setiap format.
+Tiga belas template ada di `designer/templates/` (faktur, laporan penjualan, struk kasir, slip gaji, sertifikat, surat resmi, daftar stok, label produk, kuitansi, surat jalan, rapor siswa, daftar hadir, laporan laba rugi). Tiap file berisi `template` dan `data` contohnya. Di aplikasi standalone pilih lewat **Templates…**; `go test` mencetak semuanya ke setiap format.
 
 ## Template
 
@@ -130,7 +142,7 @@ Gaya tabel, semuanya bisa diatur di panel properti:
   "cellStyle": { "2,0": { "colSpan": 2, "align": "right" } } }
 ```
 
-Tabel yang lebih panjang dari satu halaman berlanjut ke halaman berikutnya: baris tidak pernah terpotong di tengah, dan baris judul diulang di atas setiap halaman. Dengan `grow`, setiap baris setinggi selnya yang paling panjang. Di XLSX dan XLS, warna latar dan warna teks sel ikut terbawa, dan tabel data menghasilkan satu baris spreadsheet per item.
+Tabel yang lebih panjang dari satu halaman berlanjut ke halaman berikutnya: baris tidak pernah terpotong di tengah, dan baris judul diulang di atas setiap halaman. Dengan `grow`, setiap baris setinggi selnya yang paling panjang. Di XLSX dan XLS, warna latar, warna teks, rata tengah/kanan, dan garis sel (tabel dengan `grid` `all`) ikut terbawa, dan tabel data menghasilkan satu baris spreadsheet per item.
 
 Di designer: klik sebuah sel, lalu bagian **Sel** di panel kanan mengatur warna, rata, tebal/miring, serta **Gabung ke kanan** / **Gabung ke bawah** / **Pisahkan** (teks sel yang tergabung ikut dipindahkan). Seret garis antar kolom atau antar baris pada tabel terpilih untuk mengubah lebar dan tingginya. Saat mengetik di sel, `Enter` menyimpan, `Shift+Enter` membuat baris baru, `Tab` / `Shift+Tab` pindah ke sel berikutnya / sebelumnya. Sel yang disalin dari Excel bisa ditempel langsung ke tabel mulai dari sel yang diklik.
 
@@ -144,13 +156,13 @@ Di designer: klik sebuah sel, lalu bagian **Sel** di panel kanan mengatur warna,
 
 **Teks panjang**: centang `grow` pada elemen teks agar teks dibungkus dan band ikut bertambah tinggi. Elemen di bawahnya turun, kotak dan garis vertikal di sekelilingnya ikut memanjang.
 
-**Chart**: `bar`, `hbar` (batang mendatar), `line`, `pie`, atau `donut`. `label` adalah nama field baris dan `value` nama field atau perhitungan (`qty * price`); nilai dijumlahkan per label. `bar`, `hbar`, dan `line` punya skala nilai yang selalu memuat nol, jadi nilai negatif tampil di bawah garis nol; label kategori ditampilkan selang-seling bila terlalu rapat. `pie` dan `donut` menggambar nilai negatif sebagai nol; legendanya selalu punya tempat di samping pie, dan irisan terkecil yang tidak muat digabung menjadi "Other" ("Lainnya" dengan `locale` `id`). Chart garis memberi titik di setiap nilai.
+**Chart**: `bar`, `hbar` (batang mendatar), `line`, `pie`, atau `donut`. `label` adalah nama field baris dan `value` nama field atau perhitungan (`qty * price`); nilai dijumlahkan per label. `bar`, `hbar`, dan `line` punya skala nilai yang selalu memuat nol, jadi nilai negatif tampil di bawah garis nol; label kategori ditampilkan selang-seling bila terlalu rapat. `pie` dan `donut` menggambar nilai negatif sebagai nol; legendanya selalu punya tempat di samping pie, irisan bernilai nol tidak dicantumkan, dan irisan terkecil yang tidak muat digabung menjadi "Other" ("Lainnya" dengan `locale` `id`). Chart garis memberi titik di setiap nilai.
 
 **Barcode**: elemen `barcode` dengan `format` `qr` (default) atau `code128`. Isinya ada di `text` dan boleh memuat placeholder, misalnya `https://example.com/verify/{{id}}`. `"showText": true` mencetak teksnya di bawah kode. QR code diberi ruang kosong dua modul di sekelilingnya (di dalam kotaknya) agar mudah dipindai di samping elemen lain.
 
 **Sub-laporan**: elemen `subreport` dengan `data` (nama daftar, misalnya `lines`) dan `report` (template dengan band sendiri: `header`, `columnHeader`, `groupHeader`... sampai tiga tingkat, `detail`, `summary`; `footer` tidak dipakai, dan `sortBy` / `groupBy` boleh diisi). Laporan itu dicetak untuk setiap item di dalam kotak elemen, dan band induknya ikut memanjang. Di band `detail` setiap baris mendapat sub-laporannya sendiri, misalnya setiap pesanan dengan rincian per jenisnya. Field induk tetap bisa dipakai di dalamnya (`{{number}}`), `{{index}}` adalah nomor item. Sub-laporan yang lebih panjang dari satu halaman berlanjut tanpa memotong band, dengan header dan judul kolomnya diulang. Di designer: tab Insert > **Sub-report**, lalu **Edit sub-report…** (atau klik ganda) membuka designer untuk band-bandnya, selebar kotaknya.
 
-**CSV, XLSX, dan XLS**: elemen teks dan sel tabel di band `detail` menjadi kolom. Teks di band lain (judul kolom, subtotal, total) masuk ke kolom yang sejajar dengannya. Di XLSX dan XLS, teks bold tetap bold, `{{f:2}}` menjadi format angka, dan lebar kolom mengikuti desain. `xls` ditulis sebagai XML Spreadsheet 2003; Excel menampilkan satu peringatan format saat membukanya. CSV diawali BOM UTF-8 agar Excel membaca huruf seperti `é` dengan benar; `"csvSeparator": ";"` untuk Excel berbahasa Indonesia atau Eropa yang memakai `;`. Di CSV, teks yang berawalan seperti formula (`=`, `@`, `+`, `-`) diberi tanda kutip tunggal di depan agar tidak dijalankan spreadsheet.
+**CSV, XLSX, dan XLS**: elemen teks dan sel tabel di band `detail` menjadi kolom. Teks di band lain (judul kolom, subtotal, total) masuk ke kolom yang sejajar dengannya. Di XLSX dan XLS, teks bold tetap bold, `{{f:2}}` menjadi format angka, teks rata tengah atau kanan tetap begitu, sel tabel bergaris tetap bergaris, dan lebar kolom mengikuti desain. Sel yang digabung tidak ikut digabung di spreadsheet. `xls` ditulis sebagai XML Spreadsheet 2003; Excel menampilkan satu peringatan format saat membukanya. CSV diawali BOM UTF-8 agar Excel membaca huruf seperti `é` dengan benar; `"csvSeparator": ";"` untuk Excel berbahasa Indonesia atau Eropa yang memakai `;`. Di CSV, teks yang berawalan seperti formula (`=`, `@`, `+`, `-`) diberi tanda kutip tunggal di depan agar tidak dijalankan spreadsheet.
 
 ```json
 { "number": "INV-001", "customer": { "name": "Budi" }, "rows": [{ "name": "Kopi", "qty": 2 }] }
@@ -203,7 +215,7 @@ const pdf2 = await renderAsync(template, data, 'pdf') // tidak memblokir event l
 // batas waktu default 60 detik; ubah dengan { timeout: 30000 } sebagai argumen keempat
 ```
 
-**HTTP**: `ddreport -serve` juga menerima `POST /render?format=pdf` dengan body `{"template": ..., "data": ...}`. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran.
+**HTTP**: `ddreport -serve` juga menerima `POST /render?format=pdf` dengan body `{"template": ..., "data": ...}`. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran. Permintaan dari halaman situs lain di browser (header `Origin` yang berbeda) ditolak; panggil dari backend Anda, bukan langsung dari browser.
 
 ### Font
 

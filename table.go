@@ -242,6 +242,8 @@ func (r *report) grid(e Element, sc scope, measure, once bool) ([]Element, float
 			if hexColor.MatchString(fill) {
 				t.bg = fill // for the spreadsheets, which have no rectangles
 			}
+			// ponytail: only a full grid becomes cell borders; "rows" and "outer" export without lines
+			t.boxed = e.Border > 0 && (e.Grid == "" || e.Grid == "all")
 			add(o, t)
 			if e.Border <= 0 {
 				continue
