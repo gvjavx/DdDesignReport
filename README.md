@@ -187,14 +187,14 @@ Java, Kotlin, dan Node.js memanggil binary `ddreport`. Paketnya membawa binary u
 **Java** (Maven Central, `io.github.gvjavx:ddreport`): tambahkan wrapper-nya dan binary untuk sistem tempat aplikasi berjalan, dengan classifier `linux-x64`, `linux-arm64`, `windows-x64`, `windows-arm64`, `darwin-x64`, atau `darwin-arm64`.
 
 ```xml
-<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.1.3</version></dependency>
-<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.1.3</version><classifier>linux-x64</classifier></dependency>
+<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.2.0</version></dependency>
+<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.2.0</version><classifier>linux-x64</classifier></dependency>
 ```
 
 ```kotlin
 // Gradle
-implementation("io.github.gvjavx:ddreport:0.1.3")
-runtimeOnly("io.github.gvjavx:ddreport:0.1.3:linux-x64")
+implementation("io.github.gvjavx:ddreport:0.2.0")
+runtimeOnly("io.github.gvjavx:ddreport:0.2.0:linux-x64")
 ```
 
 Package Java-nya tetap `io.ddreport` (`import io.ddreport.DdReport`).

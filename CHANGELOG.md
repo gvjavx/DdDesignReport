@@ -1,6 +1,6 @@
 # Riwayat versi
 
-## Belum dirilis
+## 0.2.0 · 22 Okt 2026
 
 **Designer**
 - **Mode mudah** (`simple: true`): hanya alat yang dibutuhkan laporan pertama, setiap tombol dengan namanya, band grup baru muncul setelah Group by diisi. Aplikasi standalone memakainya secara default, dengan tombol untuk beralih ke mode lengkap.
