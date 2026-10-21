@@ -31,9 +31,7 @@
 - Designer: elemen rusak dari clipboard tidak lagi membuat designer berhenti bekerja; editor sub-laporan tidak lagi meninggalkan pendengar clipboard setiap kali ditutup.
 - Designer di layar sentuh: mencubit untuk zoom di area kosong halaman tidak lagi membuang (atau mengganti) elemen yang dipilih.
 
-**Pengembangan**
-- `./run-local.sh` membangun binary dari kode saat ini dan membuka designer lengkap (Preview, ekspor, template) untuk pengetesan manual.
-- `node designer/run-tests.mjs` juga mencoba designer di layar sentuh HP dengan sentuhan sungguhan dari browser: ketuk di Chromium dan WebKit, serta geser, ubah ukuran, dan cubit di Chromium.
+**Pengembangan**: `node designer/run-tests.mjs` juga mencoba designer di layar sentuh HP dengan sentuhan sungguhan dari browser: ketuk di Chromium dan WebKit, serta geser, ubah ukuran, dan cubit di Chromium.
 
 **Keamanan**
 - `ddreport -serve` menolak `POST /render` dari halaman situs lain yang terbuka di browser yang sama (header `Origin` yang berbeda). Program yang memanggilnya langsung tidak terpengaruh.

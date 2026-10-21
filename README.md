@@ -287,6 +287,4 @@ java -cp out DdReportTest             # wrapper Java
 
 Designer: sajikan folder `designer/` dengan web server (`npx serve designer`) lalu buka `/test.html`; halaman itu menjalankan pemeriksaan otomatis pada designer.
 
-Pengetesan manual: `./run-local.sh` (port lain: `./run-local.sh 9000`) membangun binary dari kode saat ini dan membuka designer di http://127.0.0.1:8080, lengkap dengan Preview, ekspor, dan template siap pakai. `Ctrl+C` menghentikannya.
-
 `.github/workflows/test.yml` menjalankan semua test Go, Node.js, dan Java di Linux dan Windows, serta test designer di Chromium, Firefox, dan WebKit, di setiap push.
