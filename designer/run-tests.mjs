@@ -36,7 +36,8 @@ async function touch(browser, name) {
   await page.waitForSelector('.ddr-hint')
   const els = () => page.locator('.ddr-el').count()
   check('fits the phone: no sideways scrolling', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
-  check('properties folded away, the page first', await page.evaluate(() => !document.querySelector('.ddr-side').open))
+  // the designer folds them a frame after it starts, so wait for that frame
+  check('properties folded away, the page first', await page.waitForFunction(() => !document.querySelector('.ddr-side').open, null, { timeout: 2000 }).then(() => true, () => false))
   await page.tap('.ddr-hint [data-cmd="add:text"]')
   check('tap a start button: a text box', await els() === 1)
   await page.tap('[data-tab=Insert]')
