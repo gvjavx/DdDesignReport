@@ -1,5 +1,9 @@
 # Riwayat versi
 
+## 0.2.1 · 22 Okt 2026
+
+**Keamanan**: binary `ddreport` sekarang dibangun dengan Go 1.26.10. Binary 0.2.0 dibangun dengan Go 1.25.0 dan membawa 59 celah pustaka standar Go yang sudah diketahui (antara lain di `net/http`, `crypto/tls`, `crypto/x509`, dan `html/template`); yang paling berisiko adalah mode `-serve`. Perbarui ke 0.2.1, terutama bila memakai `-serve`. Tidak ada perubahan perilaku.
+
 ## 0.2.0 · 22 Okt 2026
 
 **Designer**
