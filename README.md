@@ -287,4 +287,4 @@ java -cp out DdReportTest             # wrapper Java
 
 Designer: sajikan folder `designer/` dengan web server (`npx serve designer`) lalu buka `/test.html`; halaman itu menjalankan pemeriksaan otomatis pada designer.
 
-`.github/workflows/test.yml` menjalankan semua test Go, Node.js, dan Java di Linux dan Windows, serta test designer di Chromium, Firefox, dan WebKit, di setiap push.
+`.github/workflows/test.yml` menjalankan semua test Go, Node.js, dan Java di Linux dan Windows, serta test designer di Chromium, Firefox, dan WebKit, di setiap push. CI juga memeriksa kode Go dengan `govulncheck` dan gagal bila ada celah keamanan yang sudah diketahui; jalankan sendiri dengan `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`.
