@@ -4,7 +4,7 @@
 
 Library reporting dengan designer drag and drop. Template didesain di browser, disimpan sebagai JSON, lalu di-render oleh satu core (Go) menjadi **PDF, HTML, XLSX, XLS, atau CSV** dari backend Go, Java, Kotlin, atau Node.js.
 
-Yang baru di setiap versi: [CHANGELOG.md](CHANGELOG.md).
+Yang baru di setiap versi: [CHANGELOG.md](CHANGELOG.md). English: [README.en.md](README.en.md).
 
 ```
 designer/   designer drag and drop (vanilla JS, tanpa dependency) + aplikasi standalone
@@ -85,6 +85,8 @@ Tiga belas template ada di `designer/templates/` (faktur, laporan penjualan, str
 
 ## Template
 
+Template adalah JSON. [`designer/template.schema.json`](designer/template.schema.json) adalah JSON Schema-nya (juga di `ddreport-designer/template.schema.json` dan di `/template.schema.json` pada `ddreport -serve`), untuk validasi dan pelengkapan otomatis di editor; properti yang tidak dikenal adalah kesalahan. [`llms.txt`](llms.txt) meringkas cara menulis template untuk asisten AI, dengan contoh yang dicek oleh test.
+
 | Band | Muncul |
 | --- | --- |
 | `header`, `columnHeader`, `footer` | di setiap halaman; `"pages": "first"` hanya di halaman pertama, `"last"` (footer) hanya di halaman terakhir |
@@ -116,6 +118,8 @@ Angka yang dikirim sebagai teks (`"18000"`, seperti dari BigDecimal atau kolom n
 **Grouping**: isi `groupBy` dengan nama field. Baris dengan nilai yang sama dikumpulkan menjadi satu grup, urut sesuai kemunculan pertama (atau sesuai `sortBy`). Sampai tiga tingkat: `"region, city, store"`; tingkat kedua memakai band `groupHeader2` / `groupFooter2`, tingkat ketiga `groupHeader3` / `groupFooter3`, dan agregat di tiap band menghitung grup tingkatnya. Judul semua grup yang sedang berjalan diulang di atas halaman baru. Di designer, band tingkat 2 dan 3 muncul begitu Group by berisi dua atau tiga field.
 
 **Sheet per grup**: `"sheetPerGroup": true` membuat XLSX dan XLS berisi satu sheet untuk setiap grup tingkat pertama, dinamai sesuai grupnya (dengan aturan nama sheet Excel: maksimal 31 huruf, tanpa `[]:*?/\`, tidak kembar). Tiap sheet berisi judul kolom, baris, dan totalnya sendiri. `groupPageBreak` memulai setiap grup di halaman baru.
+
+**Warna sesuai data**: `color`, `fill`, `textColor`, `stripe`, `headerFill`, `headerColor`, `footerFill`, `footerColor`, dan `fill` / `color` di `cellStyle` boleh berupa rumus, misalnya `"color": "{{if(total < 0, '#dc2626', '#000000')}}"` untuk angka negatif merah, atau `"fill": "{{if(stock < minimum, '#fee2e2', '')}}"`. Rumusnya dihitung per baris (di tabel data: per item) dan ikut ke XLSX dan XLS. Hasil yang bukan `#rrggbb` diabaikan, seperti warna yang salah tulis. Di designer: kolom **colour from data** dan **fill from data** di panel kanan (untuk tabel: warna teks isinya), ditulis tanpa kurung kurawal seperti *show when*: `if(total < 0, '#dc2626', '#000000')`. Mengosongkannya kembali ke warna dari ribbon.
 
 **Format teks**: `font` (lihat [Font](#font)), `fontSize`, `lineHeight`, `bold`, `italic`, `underline`, `color`, `fill` (highlight), `align` (`left`, `center`, `right`, `justify`), `valign` (`top`, `middle`, `bottom`). Sebagian teks bisa diformat dengan tag `<b>`, `<i>`, `<u>`: `Total <b>{{sum(price):2}}</b>`.
 
@@ -236,7 +240,61 @@ Laporan menunggu giliran jika semua proses sedang bekerja. Proses yang berhenti 
 
 Keduanya memakai `ddreport -stdio`: binary terus berjalan dan membaca permintaan satu per satu, masing-masing sebuah baris `<format> <panjang>` lalu `{"template": ..., "data": ...}` sepanjang itu; jawabannya baris `ok <panjang>` lalu dokumennya, atau `error <panjang>` lalu pesannya. Panjang di setiap permintaan menjaga agar isi satu permintaan tidak pernah terbaca sebagai permintaan berikutnya.
 
-**HTTP**: `ddreport -serve` juga menerima `POST /render?format=pdf` dengan body `{"template": ..., "data": ...}`. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran. Permintaan dari halaman situs lain di browser (header `Origin` yang berbeda) ditolak; panggil dari backend Anda, bukan langsung dari browser.
+**HTTP dan Docker** (PHP, Python, .NET, atau bahasa apa pun): `ddreport -serve` juga menerima `POST /render?format=pdf` dengan body `{"template": ..., "data": ...}`. Image Docker-nya ada di setiap rilis setelah 0.2.1:
+
+```sh
+docker run -p 8080:8080 -e DDREPORT_TOKEN=rahasia-panjang ghcr.io/gvjavx/ddreport
+```
+
+Dengan `DDREPORT_TOKEN`, setiap render harus mengirim `Authorization: Bearer <token>` (tanpa itu jawabannya `401`); designer di `/` tetap terbuka, dan preview-nya memakai token dari alamat halaman: `http://server:8080/#token=rahasia-panjang`. Tanpa token, siapa pun yang bisa menjangkau port itu bisa me-render, jadi `ddreport -serve` memberi peringatan bila alamatnya terbuka ke jaringan. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran. Permintaan dari halaman situs lain di browser (header `Origin` yang berbeda) ditolak; panggil dari backend Anda, bukan langsung dari browser.
+
+PHP (juga di shared hosting yang tidak boleh menjalankan program, selama server ddreport ada di mesin lain):
+
+```php
+$ch = curl_init('http://localhost:8080/render?format=pdf');
+curl_setopt_array($ch, [
+    CURLOPT_POST => true,
+    CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . getenv('DDREPORT_TOKEN')],
+    CURLOPT_POSTFIELDS => json_encode(['template' => $template, 'data' => $data]),
+    CURLOPT_RETURNTRANSFER => true,
+]);
+$pdf = curl_exec($ch);
+if (curl_getinfo($ch, CURLINFO_HTTP_CODE) !== 200) {
+    throw new RuntimeException('ddreport: ' . $pdf); // pesan kesalahan template ada di body
+}
+```
+
+Di Laravel: `Http::withToken(env('DDREPORT_TOKEN'))->post('http://localhost:8080/render?format=pdf', ['template' => $template, 'data' => $data])->throw()->body()`. Template boleh dibaca dengan `json_decode($json, true)`: `[]` yang ditulis PHP untuk objek kosong dibaca sebagai objek kosong.
+
+Python:
+
+```python
+import os, requests
+
+res = requests.post(
+    "http://localhost:8080/render",
+    params={"format": "pdf"},
+    headers={"Authorization": "Bearer " + os.environ["DDREPORT_TOKEN"]},
+    json={"template": template, "data": data},
+    timeout=60,
+)
+res.raise_for_status()  # pesan kesalahan template ada di res.text
+pdf = res.content
+```
+
+C# (.NET, `System.Net.Http`, `System.Net.Http.Headers`, `System.Text`, `System.Text.Json`):
+
+```csharp
+var http = new HttpClient { BaseAddress = new Uri("http://localhost:8080") };
+http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Environment.GetEnvironmentVariable("DDREPORT_TOKEN"));
+
+// template, data: objects, or JsonElement read with JsonDocument.Parse(...).RootElement
+var body = new StringContent(JsonSerializer.Serialize(new { template, data }), Encoding.UTF8, "application/json");
+var res = await http.PostAsync("/render?format=pdf", body);
+if (!res.IsSuccessStatusCode)
+    throw new Exception("ddreport: " + await res.Content.ReadAsStringAsync()); // pesan kesalahan template ada di body
+byte[] pdf = await res.Content.ReadAsByteArrayAsync();
+```
 
 ### Font
 

@@ -153,7 +153,10 @@ async function render(template, format) {
   let data
   try { data = JSON.parse($('data').value || 'null') } catch (err) { throw new Error(L('Sample data is not valid JSON: ') + err.message) }
   let res
-  try { res = await fetch('render?format=' + format, { method: 'POST', body: JSON.stringify({ template, data }) }) }
+  // a server with DDREPORT_TOKEN wants it: open the page as /#token=...
+  const token = new URLSearchParams(location.hash.slice(1)).get('token')
+  const headers = token ? { Authorization: 'Bearer ' + token } : {}
+  try { res = await fetch('render?format=' + format, { method: 'POST', headers, body: JSON.stringify({ template, data }) }) }
   catch { throw new Error(L(NO_SERVER)) }
   // a plain file server has no /render and answers with a page of its own
   if (res.status === 404 || res.status === 405 || res.status === 501) throw new Error(L(NO_SERVER))

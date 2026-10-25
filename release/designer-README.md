@@ -67,4 +67,8 @@ The colours are CSS variables on the element; override them in your own style sh
 #designer.ddr { --a: #e11d48; --a-soft: #ffe4e6; --bg: #fff; --surface: #fff; --line: #e5e7eb; border-radius: 0 }
 ```
 
+## The template format
+
+`ddreport-designer/template.schema.json` is the JSON Schema of the templates, for validation and completion in your editor or before you store a template; unknown properties are mistakes. [llms.txt](https://github.com/gvjavx/DdDesignReport/blob/main/llms.txt) explains the format to AI assistants, with a tested example.
+
 MIT licensed.

@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gvjavx/DdDesignReport/designer/template.schema.json",
+  "title": "DdDesignReport template",
+  "description": "A report template as the designer saves it and ddreport renders it to PDF, HTML, XLSX, XLS or CSV. All sizes are in points (1/72 inch); A4 is 595 x 842. Text may contain placeholders: {{field}}, {{customer.name}}, {{page}}, {{pages}}, {{now:dd/MM/yyyy}}, {{sum(price)}}, {{avg(f)}}, {{min(f)}}, {{max(f)}}, {{count()}}, {{qty * price:2}} (:N = N decimals with thousands separators), {{date:dd MMMM yyyy}}, {{if(paid, 'PAID', 'DUE')}}, {{upper(name)}}, {{lower(name)}}, {{round(x, 2)}}, {{terbilang(total)}} (number in Indonesian words), {{index}} (row number). Aggregates run over the group in group and detail bands, over all rows elsewhere.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "page": { "$ref": "#/$defs/page" },
+    "dataKey": { "type": "string", "description": "Key of the row list in the data; default \"rows\". The data may also be the row list itself." },
+    "sortBy": { "type": "string", "description": "Row fields to sort by, \"-\" for descending: \"category, -total\"." },
+    "groupBy": { "type": "string", "description": "Up to three row fields, \"region, city, store\"; rows with the same value form a group, printed between groupHeader/groupFooter (groupHeader2/3 for the deeper levels)." },
+    "groupPageBreak": { "type": "boolean", "description": "Every group starts on a new page." },
+    "thousands": { "type": "string", "description": "Thousands separator of {{x:N}}; default \",\". \"none\" for none." },
+    "decimal": { "type": "string", "description": "Decimal separator of {{x:N}}; default \".\". Indonesian: thousands \".\" and decimal \",\"." },
+    "locale": { "enum": ["", "en", "id"], "description": "\"id\" for Indonesian month and day names in dates." },
+    "csvSeparator": { "enum": ["", ",", ";", "\t"], "description": "CSV separator; default \",\". \";\" for Excel in Indonesian or European settings." },
+    "sheetPerGroup": { "type": "boolean", "description": "XLSX and XLS: a worksheet for each group of the first groupBy field." },
+    "bands": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The horizontal strips of the report.",
+      "properties": {
+        "header": { "$ref": "#/$defs/band", "description": "Top of every page." },
+        "columnHeader": { "$ref": "#/$defs/band", "description": "Under the header on every page: column titles." },
+        "groupHeader": { "$ref": "#/$defs/band", "description": "Before each group (once before all rows without groupBy); repeated at the top of a page its group continues on." },
+        "groupHeader2": { "$ref": "#/$defs/band" },
+        "groupHeader3": { "$ref": "#/$defs/band" },
+        "detail": { "$ref": "#/$defs/band", "description": "Once per data row." },
+        "groupFooter3": { "$ref": "#/$defs/band" },
+        "groupFooter2": { "$ref": "#/$defs/band" },
+        "groupFooter": { "$ref": "#/$defs/band", "description": "After each group: subtotals such as {{sum(total)}}." },
+        "summary": { "$ref": "#/$defs/band", "description": "Once after the last row: grand totals." },
+        "footer": { "$ref": "#/$defs/band", "description": "Bottom of every page: {{page}} / {{pages}}." }
+      }
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "string",
+      "pattern": "^(#[0-9a-fA-F]{6})?$|\\{\\{",
+      "description": "#rrggbb, empty for none, or an expression worked out per row: {{if(total < 0, '#dc2626', '#000000')}}."
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "number", "description": "Default 595 (A4)." },
+        "height": { "type": "number", "description": "Default 842 (A4)." },
+        "margin": { "type": "number", "description": "All four sides, unless set per side." },
+        "marginTop": { "type": "number" },
+        "marginRight": { "type": "number" },
+        "marginBottom": { "type": "number" },
+        "marginLeft": { "type": "number" },
+        "background": { "$ref": "#/$defs/color" },
+        "backgroundImage": { "type": "string", "description": "PNG, JPEG or GIF data URI stretched over the page: letterhead, watermark." }
+      }
+    },
+    "band": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "height": { "type": "number" },
+        "elements": { "type": "array", "items": { "$ref": "#/$defs/element" } },
+        "pages": { "enum": ["", "first", "last"], "description": "header, columnHeader, footer: only on the first page, or (footer) the last." },
+        "newPage": { "type": "boolean", "description": "groupHeader, detail, groupFooter, summary: start on a new page." }
+      }
+    },
+    "cellStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fill": { "$ref": "#/$defs/color" },
+        "color": { "$ref": "#/$defs/color" },
+        "align": { "$ref": "#/$defs/align" },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "colSpan": { "type": "integer", "description": "Merge with the cells to the right." },
+        "rowSpan": { "type": "integer", "description": "Merge with the cells below." }
+      }
+    },
+    "align": { "enum": ["", "left", "center", "right", "justify"] },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["text", "rect", "line", "image", "chart", "table", "barcode", "subreport"] },
+        "x": { "type": "number", "description": "From the band's left edge, in points." },
+        "y": { "type": "number", "description": "From the band's top edge, in points." },
+        "w": { "type": "number" },
+        "h": { "type": "number" },
+        "text": { "type": "string", "description": "text: the text with placeholders; <b>, <i> and <u> style parts of it. barcode: its content." },
+        "showIf": { "type": "string", "description": "Condition such as paid = 'yes' or total > 0; when false the element is not printed. Operators = != < > <= >=, and, or, not." },
+        "font": { "type": "string", "description": "Helvetica (default), Times, Courier, or a bundled font: Roboto, Open Sans, Lato, Montserrat, Lora, Playfair Display, Great Vibes." },
+        "fontSize": { "type": "number", "description": "Default 10." },
+        "lineHeight": { "type": "number", "description": "Multiple of the font size, default 1.2." },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "underline": { "type": "boolean" },
+        "grow": { "type": "boolean", "description": "text, table: wrap and let the band grow instead of clipping." },
+        "align": { "$ref": "#/$defs/align" },
+        "valign": { "enum": ["", "top", "middle", "bottom"] },
+        "color": { "$ref": "#/$defs/color", "description": "Text colour; for rect, line, barcode, chart and the lines of a table, the stroke colour." },
+        "fill": { "$ref": "#/$defs/color", "description": "Background." },
+        "border": { "type": "number", "description": "Line width in points." },
+        "src": { "type": "string", "description": "image: PNG, JPEG or GIF data URI, or a placeholder such as {{photo}} whose value is one." },
+        "slope": { "enum": ["", "straight", "down", "up"], "description": "line: down from top left to bottom right, up from bottom left to top right; otherwise flat or upright by its shape." },
+        "showText": { "type": "boolean", "description": "barcode: print its text under it." },
+        "chart": { "enum": ["bar", "hbar", "line", "pie", "donut"] },
+        "label": { "type": "string", "description": "chart: row field for the categories." },
+        "value": { "type": "string", "description": "chart: row field or expression (qty * price), summed per label." },
+        "format": { "enum": ["", "qr", "code128"], "description": "barcode: qr (default) or code128." },
+        "cells": { "type": "array", "items": { "type": "array", "items": { "type": "string" } }, "description": "table: cell texts, row by row; placeholders allowed." },
+        "cols": { "type": "array", "items": { "type": "number" }, "description": "table: relative column widths, [3,1,1]." },
+        "heights": { "type": "array", "items": { "type": "number" }, "description": "table: relative row heights." },
+        "aligns": { "type": "array", "items": { "$ref": "#/$defs/align" }, "description": "table: alignment per column." },
+        "padding": { "type": ["number", "null"], "description": "table: room around a cell's text in points; default 3 across and 2 down." },
+        "textColor": { "$ref": "#/$defs/color", "description": "table: body text colour." },
+        "header": { "type": "boolean", "description": "table: the first row is a bold header row, repeated on every page the table continues on." },
+        "headerFill": { "$ref": "#/$defs/color" },
+        "headerColor": { "$ref": "#/$defs/color" },
+        "footer": { "type": "boolean", "description": "table: the last row is a bold total row." },
+        "footerFill": { "$ref": "#/$defs/color" },
+        "footerColor": { "$ref": "#/$defs/color" },
+        "stripe": { "$ref": "#/$defs/color", "description": "table: background of every second body row." },
+        "grid": { "enum": ["", "all", "outer", "rows"], "description": "table: which lines the border draws." },
+        "headerLine": { "type": "number", "description": "table: heavier line under the header row, in points." },
+        "footerLine": { "type": "number", "description": "table: heavier line over the total row, in points." },
+        "frame": { "type": "number", "description": "table: heavier line around the table, in points." },
+        "cellStyle": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[0-9]+,[0-9]+$" },
+          "additionalProperties": { "$ref": "#/$defs/cellStyle" },
+          "description": "table: the look and merging of single cells, keyed \"row,column\" from 0."
+        },
+        "data": { "type": "string", "description": "table: a list in the data (items); the rows between header and total row repeat per item, where {{field}} is the item's and {{index}} its number. subreport: the list it prints for." },
+        "report": { "$ref": "#", "description": "subreport: the template printed for each item of data, inside the element's box (no footer band)." }
+      }
+    }
+  }
+}

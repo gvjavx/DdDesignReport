@@ -1,0 +1,71 @@
+# DdDesignReport
+
+> Report library: templates are JSON (made in a drag-and-drop designer, or written by hand or by an LLM), and one Go core renders them with data to PDF, HTML, XLSX, XLS or CSV, from Go, Java, Kotlin, Node.js, or any language over HTTP. MIT licensed.
+
+## Rendering
+
+- Go: `ddreport.Render(templateJSON, data, "pdf")` (`github.com/gvjavx/DdDesignReport`)
+- Node.js: `require('ddreport').render(template, data, 'pdf')` (npm `ddreport`)
+- Java/Kotlin: `DdReport.render(templateJson, dataJson, "pdf")` (Maven `io.github.gvjavx:ddreport`)
+- Any language: `ddreport -serve 127.0.0.1:8080`, or the Docker image `ghcr.io/gvjavx/ddreport`, then `POST /render?format=pdf` with body `{"template": ..., "data": ...}` and header `Authorization: Bearer <DDREPORT_TOKEN>` when the server has a token. Errors come back as status 400 with the message as the body.
+- Formats: `pdf`, `html`, `xlsx`, `xls`, `csv`.
+- Embed the designer in a web app: npm `ddreport-designer`, `createDesigner(element, { template, onChange })`.
+
+## Writing a template
+
+- JSON Schema: `designer/template.schema.json` in the repository, also served by `ddreport -serve` at `/template.schema.json` and shipped as `ddreport-designer/template.schema.json`. Validate against it: unknown properties are mistakes.
+- Sizes are in points (1/72 inch). A4 is `595 x 842`, Letter `612 x 792`. Element `x`, `y` are relative to their band, inside the page margins.
+- Bands, top to bottom: `header` and `columnHeader` (every page), `groupHeader` (before each group), `detail` (once per data row), `groupFooter` (after each group), `summary` (once, after the last row), `footer` (every page). Grouping needs `groupBy`; up to three levels with `groupHeader2`/`groupFooter2` and `groupHeader3`/`groupFooter3`.
+- Data rows are `data.rows` (or `dataKey`), or the data itself when it is a list. Other top-level fields are available everywhere: `{{customer.name}}`.
+- Element types: `text`, `table`, `image`, `rect`, `line`, `chart`, `barcode`, `subreport`.
+- Placeholders inside text and table cells: `{{field}}`, `{{qty * price:2}}` (`:N` = N decimals with separators), `{{sum(total)}}`, `{{avg(x)}}`, `{{min(x)}}`, `{{max(x)}}`, `{{count()}}`, `{{page}}`, `{{pages}}`, `{{now:dd/MM/yyyy}}`, `{{date:dd MMMM yyyy}}`, `{{if(paid, 'PAID', 'DUE')}}`, `{{upper(x)}}`, `{{round(x, 2)}}`, `{{terbilang(total)}}` (Indonesian words), `{{index}}` (row number). Aggregates cover the group in group and detail bands, all rows elsewhere. Field names with dashes go in brackets inside expressions: `{{[unit-price] * qty}}`.
+- A list inside a row (order items) is a table with `"data": "items"`: its first row (`"header": true`) and last row (`"footer": true`) print once, the rows between repeat per item.
+- Colours are `#rrggbb`, or an expression: `"color": "{{if(total < 0, '#dc2626', '#000000')}}"`.
+- `showIf` hides an element when its condition is false: `"showIf": "discount > 0"`.
+- `grow: true` on a text or table lets the band grow with its content instead of clipping it; long tables continue on the next page with their header row repeated.
+- Bold parts of a text: `Total <b>{{sum(total):2}}</b>`. Only `<b>`, `<i>`, `<u>` are markup.
+- Indonesian number style: `"thousands": ".", "decimal": ","`; Indonesian dates: `"locale": "id"`.
+
+## Example
+
+An invoice with its items, a total and a red balance when it is negative. This example is checked by the library's tests: it validates against the schema and renders.
+
+```json
+{
+  "template": {
+    "page": { "width": 595, "height": 842, "margin": 40 },
+    "thousands": ".", "decimal": ",", "locale": "id",
+    "bands": {
+      "header": { "height": 60, "elements": [
+        { "type": "text", "x": 0, "y": 0, "w": 300, "h": 24, "text": "INVOICE {{number}}", "fontSize": 18, "bold": true },
+        { "type": "text", "x": 0, "y": 28, "w": 300, "h": 14, "text": "{{customer.name}} · {{date:dd MMMM yyyy}}" },
+        { "type": "barcode", "x": 455, "y": 0, "w": 60, "h": 60, "text": "{{number}}" }
+      ] },
+      "summary": { "height": 110, "elements": [
+        { "type": "table", "x": 0, "y": 0, "w": 515, "h": 60, "data": "items", "header": true, "footer": true,
+          "border": 0.5, "grow": true, "headerFill": "#1e3a8a", "headerColor": "#ffffff", "stripe": "#f1f5f9",
+          "cols": [1, 6, 2, 3], "aligns": ["center", "left", "right", "right"],
+          "cells": [
+            ["No", "Item", "Qty", "Amount"],
+            ["{{index}}", "{{name}}", "{{qty}}", "{{qty * price:0}}"],
+            ["", "Total", "{{sum(qty)}}", "{{sum(qty * price):0}}"]
+          ] },
+        { "type": "text", "x": 315, "y": 70, "w": 200, "h": 14, "align": "right",
+          "text": "Balance: <b>{{paid - total:0}}</b>", "color": "{{if(paid < total, '#dc2626', '#16a34a')}}" }
+      ] },
+      "footer": { "height": 20, "elements": [
+        { "type": "text", "x": 0, "y": 4, "w": 515, "h": 12, "align": "right", "fontSize": 8, "text": "Page {{page}} of {{pages}}" }
+      ] }
+    }
+  },
+  "data": {
+    "number": "INV-001", "date": "2026-10-26", "customer": { "name": "Toko Maju" }, "total": 54000, "paid": 50000,
+    "items": [ { "name": "Kopi", "qty": 2, "price": 18000 }, { "name": "Gula", "qty": 3, "price": 6000 } ]
+  }
+}
+```
+
+## More
+
+- Full documentation (Indonesian): README.md in https://github.com/gvjavx/DdDesignReport
+- Ready-made templates with sample data: `designer/templates/*.json` (invoice, sales report, receipt, payslip, certificate, letter, stock list, labels, kuitansi, surat jalan, rapor, attendance list, profit and loss)

@@ -1,0 +1,6 @@
+.git
+node_modules
+dist
+examples/out
+java/target
+PLAN.md

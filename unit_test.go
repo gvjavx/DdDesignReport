@@ -900,3 +900,15 @@ func TestBundledFonts(t *testing.T) {
 		t.Error("a report without bundled fonts embeds one")
 	}
 }
+
+// A template from PHP, where json_decode($json, true) and json_encode write an empty {} as [].
+func TestTemplateWithEmptyListsForObjects(t *testing.T) {
+	tpl := `{"page":[],"bands":{"header":[],"detail":{"height":20,"elements":[{"type":"table","w":100,"h":14,"cells":[["{{name}}"]],"cellStyle":[],"cols":[]}]}}}`
+	out, err := Render([]byte(tpl), []any{map[string]any{"name": "Kopi"}}, "csv")
+	if err != nil || !strings.Contains(string(out), "Kopi") {
+		t.Errorf("Render = %q, %v", out, err)
+	}
+	if _, err := Render([]byte(`{"page":"A4"}`), nil, "csv"); err == nil || !strings.Contains(err.Error(), "template:") {
+		t.Errorf("a wrong type that is not an empty list: want the error, got %v", err)
+	}
+}

@@ -230,3 +230,28 @@ func TestHeavierTableLines(t *testing.T) {
 		t.Errorf("%d lines over the total row", total)
 	}
 }
+
+// A colour may be an expression: worked out per row, per item of a data table,
+// and in the spreadsheets too. One that does not come out as #rrggbb is not drawn.
+func TestColoursFromExpressions(t *testing.T) {
+	red := `{{if(amt < 0, '#dc2626', '#000000')}}`
+	tpl := []byte(`{"bands":{"detail":{"height":20,"elements":[
+	  {"type":"text","w":100,"h":14,"text":"{{amt}}","color":"` + red + `","fill":"{{if(amt < 0, '#fee2e2', '')}}"},
+	  {"type":"text","x":120,"w":100,"h":14,"text":"bad","color":"{{'red;}</style><script>'}}"}]}}}`)
+	h := string(render(t, tpl, rowsOf(5, -3), "html"))
+	if strings.Count(h, "color:#dc2626") != 1 || strings.Count(h, "background:#fee2e2") != 1 || strings.Contains(h, "<script>") {
+		t.Errorf("html: %s", h)
+	}
+	x := string(unzip(t, render(t, tpl, rowsOf(5, -3), "xlsx"), "xl/styles.xml"))
+	if !strings.Contains(x, `<color rgb="FFDC2626"/>`) || !strings.Contains(x, `<fgColor rgb="FFFEE2E2"/>`) {
+		t.Errorf("xlsx styles: %s", x)
+	}
+
+	items := []byte(`{"bands":{"summary":{"height":60,"elements":[{"type":"table","w":300,"h":40,"header":true,"data":"items",
+	  "textColor":"{{if(qty > 2, '#16a34a', '#000000')}}","cellStyle":{"1,0":{"fill":"{{if(name = 'Teh', '#fef9c3', '')}}"}},
+	  "cells":[["Item","Qty"],["{{name}}","{{qty}}"]]}]}}}`)
+	h = string(render(t, items, order, "html"))
+	if strings.Count(h, "color:#16a34a") != 2 || strings.Count(h, "#fef9c3") != 1 { // Gula's two cells; Teh's first cell
+		t.Errorf("data table html: %s", h)
+	}
+}

@@ -303,7 +303,12 @@ func (t *Template) fits() error {
 func newReport(template []byte, data any) (*report, error) {
 	var t Template
 	if err := json.Unmarshal(template, &t); err != nil {
-		return nil, fmt.Errorf("ddreport: template: %w", err)
+		// PHP's json_decode($json, true) turns an empty {} into [], which json_encode writes
+		// back as []: where the template has an object, an empty list is read as nothing
+		var te *json.UnmarshalTypeError
+		if t = (Template{}); !errors.As(err, &te) || te.Value != "array" || json.Unmarshal(emptyListsAsNull(template), &t) != nil {
+			return nil, fmt.Errorf("ddreport: template: %w", err)
+		}
 	}
 	if t.Page.Width <= 0 || t.Page.Height <= 0 {
 		t.Page.Width, t.Page.Height = 595, 842 // A4
@@ -354,6 +359,36 @@ func newReport(template []byte, data any) (*report, error) {
 	}
 	t.sort(r.rows)
 	return r, nil
+}
+
+// emptyListsAsNull rewrites a JSON document with every [] as null, which reads
+// as an empty list and as an empty object alike.
+func emptyListsAsNull(doc []byte) []byte {
+	var v any
+	d := json.NewDecoder(bytes.NewReader(doc))
+	d.UseNumber() // numbers stay as written
+	if d.Decode(&v) != nil {
+		return doc
+	}
+	var walk func(any) any
+	walk = func(v any) any {
+		switch x := v.(type) {
+		case []any:
+			if len(x) == 0 {
+				return nil
+			}
+			for i := range x {
+				x[i] = walk(x[i])
+			}
+		case map[string]any:
+			for k := range x {
+				x[k] = walk(x[k])
+			}
+		}
+		return v
+	}
+	out, _ := json.Marshal(walk(v))
+	return out
 }
 
 // sort orders the rows by SortBy: numbers as numbers, the rest as text, rows

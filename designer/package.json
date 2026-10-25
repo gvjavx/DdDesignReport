@@ -7,8 +7,9 @@
   "types": "designer.d.ts",
   "exports": {
     ".": { "types": "./designer.d.ts", "default": "./designer.js" },
-    "./templates/*": "./templates/*"
+    "./templates/*": "./templates/*",
+    "./template.schema.json": "./template.schema.json"
   },
-  "files": ["designer.js", "designer.d.ts", "index.html", "templates"],
+  "files": ["designer.js", "designer.d.ts", "index.html", "templates", "template.schema.json"],
   "license": "MIT"
 }

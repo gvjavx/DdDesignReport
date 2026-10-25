@@ -1,8 +1,8 @@
-// Package designer embeds the report designer and its ready-made templates so
-// `ddreport -serve` can host them.
+// Package designer embeds the report designer, its ready-made templates and the
+// template JSON Schema so `ddreport -serve` can host them.
 package designer
 
 import "embed"
 
-//go:embed designer.js index.html templates
+//go:embed designer.js index.html templates template.schema.json
 var Files embed.FS

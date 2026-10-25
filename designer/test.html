@@ -509,6 +509,25 @@ const tests = {
     box.checked = true; box.dispatchEvent(new Event('input', { bubbles: true }))
     check('barcode text', t.els('header')[2].showText === true)
   },
+  'colours from data'() {
+    const t = open()
+    t.click('add:text')
+    t.prop('colour from data', "if(total < 0, '#dc2626', '#000000')")
+    t.prop('fill from data', "{{if(stock < 5, '#fee2e2', '')}}")
+    let e = t.els('header')[0]
+    check('a colour rule is saved as an expression, with or without braces', e.color === "{{if(total < 0, '#dc2626', '#000000')}}" && e.fill === "{{if(stock < 5, '#fee2e2', '')}}", JSON.stringify(e))
+    const field = t.qa('.ddr-props label').find(l => l.firstChild.textContent === 'colour from data').querySelector('input')
+    check('the field shows it without braces', field.value === "if(total < 0, '#dc2626', '#000000')", field.value)
+    t.prop('colour from data', '')
+    check('emptying it leaves the default colour', !('color' in t.els('header')[0]), JSON.stringify(t.els('header')[0]))
+    t.click('add:table')
+    t.prop('colour from data', "if(qty > 2, '#16a34a', '')")
+    e = t.els('header')[1]
+    check("a table's rule is its text colour, not its line colour", e.textColor === "{{if(qty > 2, '#16a34a', '')}}" && !e.color?.includes('{{'), JSON.stringify(e))
+    const simple = open(undefined, { simple: true })
+    simple.click('add:text')
+    check('easy mode leaves it out', !simple.qa('.ddr-props label').some(l => l.firstChild.textContent === 'colour from data'))
+  },
   'table rows and columns next to the clicked cell'() {
     const t = open()
     t.set('[data-id=rows]', 2); t.set('[data-id=cols]', 2)

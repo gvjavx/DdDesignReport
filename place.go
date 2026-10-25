@@ -32,6 +32,7 @@ func (r *report) place(b Band, sc scope) ([]Element, float64) {
 		if !sc.shows(e) {
 			continue
 		}
+		e.Color, e.Fill = sc.paint(e.Color), sc.paint(e.Fill)
 		switch {
 		case e.Type == "table" || e.Type == "subreport":
 			var cells []Element

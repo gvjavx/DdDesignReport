@@ -528,6 +528,16 @@ func (s scope) resolve(text string) string {
 	})
 }
 
+// paint fills in a colour written as a placeholder, such as
+// {{if(total < 0, '#dc2626', '#000000')}}. What does not come out as #rrggbb
+// is ignored where the colour is used, as a mistyped colour is.
+func (s scope) paint(c string) string {
+	if !strings.Contains(c, "{{") {
+		return c
+	}
+	return strings.TrimSpace(s.resolve(c))
+}
+
 // cell is resolve for spreadsheets: a text that is exactly one numeric
 // placeholder stays a number so it can be summed. A field such as a code
 // ("007") stays text unless its placeholder asks for decimals.
@@ -537,13 +547,13 @@ func (s scope) cell(e Element) cell {
 	}
 	text := e.plain()
 	bold := e.Bold || strings.HasPrefix(e.Text, "<b>") && strings.HasSuffix(e.Text, "</b>")
-	fill := e.bg
-	if fill == "" && hexColor.MatchString(e.Fill) {
-		fill = e.Fill
+	fill, color := e.bg, s.paint(e.Color)
+	if f := s.paint(e.Fill); fill == "" && hexColor.MatchString(f) {
+		fill = f
 	}
 	ink := ""
-	if hexColor.MatchString(e.Color) && e.Color != "#000000" {
-		ink = e.Color
+	if hexColor.MatchString(color) && color != "#000000" {
+		ink = color
 	}
 	align := ""
 	if e.Align == "center" || e.Align == "right" {

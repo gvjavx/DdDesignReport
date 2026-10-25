@@ -23,7 +23,7 @@ func TestRender(t *testing.T) {
 }
 
 func TestHandler(t *testing.T) {
-	srv := httptest.NewServer(handler())
+	srv := httptest.NewServer(handler(""))
 	defer srv.Close()
 	post := func(path, body string) *http.Response {
 		t.Helper()
@@ -63,7 +63,7 @@ func TestHandler(t *testing.T) {
 	}
 
 	// the designer is embedded in the binary
-	for _, path := range []string{"/", "/designer.js"} {
+	for _, path := range []string{"/", "/designer.js", "/template.schema.json"} {
 		res, err := http.Get(srv.URL + path)
 		if err != nil {
 			t.Fatal(err)
@@ -75,6 +75,36 @@ func TestHandler(t *testing.T) {
 	}
 	if res, _ := http.Get(srv.URL + "/render"); res.StatusCode == 200 {
 		t.Error("GET /render: rendering must need a POST")
+	}
+}
+
+func TestHandlerToken(t *testing.T) {
+	srv := httptest.NewServer(handler("s3cret"))
+	defer srv.Close()
+	for auth, want := range map[string]int{"": 401, "Bearer wrong": 401, "s3cret": 401, "Bearer s3cret": 200} {
+		req, _ := http.NewRequest("POST", srv.URL+"/render?format=csv", strings.NewReader(request))
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != want {
+			t.Errorf("Authorization %q: status %d, want %d", auth, res.StatusCode, want)
+		}
+	}
+	if res, err := http.Get(srv.URL + "/"); err != nil || res.StatusCode != 200 {
+		t.Errorf("the designer page needs no token: %v", err)
+	}
+}
+
+func TestExposed(t *testing.T) {
+	for addr, want := range map[string]bool{"127.0.0.1:8080": false, "localhost:8080": false, "[::1]:80": false, ":8080": true, "0.0.0.0:8080": true, "10.0.0.5:80": true, "nonsense": true} {
+		if got := exposed(addr); got != want {
+			t.Errorf("exposed(%q) = %v, want %v", addr, got, want)
+		}
 	}
 }
 
@@ -99,7 +129,7 @@ func TestFont(t *testing.T) {
 
 // One request must not be able to take the server down.
 func TestHandlerSurvivesHostileTemplates(t *testing.T) {
-	srv := httptest.NewServer(handler())
+	srv := httptest.NewServer(handler(""))
 	defer srv.Close()
 	deep := "{\"template\":{\"bands\":{\"detail\":{\"height\":10,\"elements\":[{\"type\":\"text\",\"w\":50,\"h\":10,\"text\":\"{{" + strings.Repeat("(", 3_000_000) + "1" + strings.Repeat(")", 3_000_000) + "}}\"}]}}},\"data\":[{}]}"
 	res, err := http.Post(srv.URL+"/render?format=pdf", "application/json", strings.NewReader(deep))

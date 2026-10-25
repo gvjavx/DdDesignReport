@@ -110,17 +110,26 @@ func (r *report) grid(e Element, sc scope, measure, once bool) ([]Element, float
 	}
 
 	style := func(tr, c int) CellStyle { return e.CellStyle[strconv.Itoa(tr)+","+strconv.Itoa(c)] }
+	// in is the scope a row's placeholders and colours are filled in with
+	in := func(row tableRow) scope {
+		if row.sc != nil {
+			return *row.sc
+		}
+		return sc
+	}
 	// look is a row's background, text colour and weight
 	look := func(row tableRow) (fill, ink string, bold bool) {
 		switch {
 		case row.head:
-			return e.HeaderFill, e.HeaderColor, true
+			fill, ink, bold = e.HeaderFill, e.HeaderColor, true
 		case row.band == 2:
-			return e.FooterFill, e.FooterColor, true
+			fill, ink, bold = e.FooterFill, e.FooterColor, true
 		case row.odd:
-			return e.Stripe, e.TextColor, e.Bold
+			fill, ink, bold = e.Stripe, e.TextColor, e.Bold
+		default:
+			ink, bold = e.TextColor, e.Bold
 		}
-		return "", e.TextColor, e.Bold
+		return in(row).paint(fill), in(row).paint(ink), bold
 	}
 	// span is how many columns and printed rows a cell covers, kept inside the
 	// table and inside its part of it (and, for a data table, inside its item)
@@ -166,7 +175,7 @@ func (r *report) grid(e Element, sc scope, measure, once bool) ([]Element, float
 			t.Align = e.Aligns[c]
 		}
 		if st.Color != "" {
-			t.Color = st.Color
+			t.Color = in(row).paint(st.Color)
 		}
 		if st.Align != "" {
 			t.Align = st.Align
@@ -255,8 +264,8 @@ func (r *report) grid(e Element, sc scope, measure, once bool) ([]Element, float
 			cs, rs := span(o, c)
 			x0, x1, y0, y1 := colX[c], colX[c+cs], rowY[o], rowY[o+rs]
 			fill, _, _ := look(row)
-			if st := style(row.tr, c); hexColor.MatchString(st.Fill) {
-				fill = st.Fill
+			if f := in(row).paint(style(row.tr, c).Fill); hexColor.MatchString(f) {
+				fill = f
 			}
 			if hexColor.MatchString(fill) {
 				add(o, Element{Type: "rect", X: x0, Y: y0, W: x1 - x0, H: y1 - y0, Fill: fill})

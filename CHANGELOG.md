@@ -1,5 +1,23 @@
 # Riwayat versi
 
+## Belum dirilis
+
+**Server dan Docker**
+- `DDREPORT_TOKEN`: `ddreport -serve` meminta `Authorization: Bearer <token>` untuk setiap render. Designer standalone memakai token dari alamatnya (`/#token=...`).
+- `ddreport -serve` memberi peringatan bila alamatnya terbuka ke jaringan tanpa token.
+- Image Docker `ghcr.io/gvjavx/ddreport` (amd64 dan arm64, sekitar 17 MB) di setiap rilis: render server untuk PHP, Python, .NET, atau bahasa apa pun lewat HTTP. README berisi contoh PHP, Laravel, Python, dan C#.
+
+**Designer**
+- **colour from data** dan **fill from data** di panel properti: warna yang dihitung per baris, misalnya `if(total < 0, '#dc2626', '#000000')`. Untuk tabel, warna teks isinya. Disembunyikan di mode mudah.
+
+**Template**
+- JSON Schema template: `designer/template.schema.json`, juga di paket npm (`ddreport-designer/template.schema.json`) dan di `/template.schema.json` pada `ddreport -serve`. Test memastikan schema selalu sama dengan mesin cetak dan menerima semua template siap pakai.
+- `llms.txt`: cara menulis template untuk asisten AI, dengan contoh yang dicek oleh test.
+
+**Mesin cetak**
+- Warna sesuai data: `color`, `fill`, warna tabel, dan warna `cellStyle` boleh berupa rumus, misalnya `{{if(total < 0, '#dc2626', '#000000')}}`, dihitung per baris atau per item, juga di XLSX dan XLS.
+- Template dari PHP (`json_decode($json, true)` lalu `json_encode`) yang menulis objek kosong sebagai `[]` tidak lagi ditolak.
+
 ## 0.2.1 · 22 Okt 2026
 
 **Keamanan**: binary `ddreport` sekarang dibangun dengan Go 1.26.10. Binary 0.2.0 dibangun dengan Go 1.25.0 dan membawa 59 celah pustaka standar Go yang sudah diketahui (antara lain di `net/http`, `crypto/tls`, `crypto/x509`, dan `html/template`); yang paling berisiko adalah mode `-serve`. Perbarui ke 0.2.1, terutama bila memakai `-serve`. Tidak ada perubahan perilaku.

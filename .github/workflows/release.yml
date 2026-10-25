@@ -1,8 +1,8 @@
 name: release
 
 # A version tag builds the ddreport binary for every system, attaches the
-# binaries to a GitHub Release, and publishes the npm packages and the Maven
-# artifacts:
+# binaries to a GitHub Release, publishes the npm packages and the Maven
+# artifacts, and pushes the image ghcr.io/gvjavx/ddreport:
 #   git tag v0.1.0 && git push origin v0.1.0
 # Each registry is skipped while its secrets are not set, and a version that is
 # out already is not published again, so a run can be repeated (Actions > release
@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: write # the GitHub Release
+  packages: write # the image on ghcr.io
   id-token: write # npm provenance: the packages say which build made them
 
 jobs:
@@ -103,6 +104,7 @@ jobs:
 
       # also when only npm failed (a package npm refuses), so one registry does not hold up the other
       - name: Maven Central
+        id: maven
         if: (success() || steps.npm.outcome == 'failure') && env.HAS_MAVEN == 'true'
         env:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
@@ -114,3 +116,14 @@ jobs:
           else
             mvn -B -f java/pom.xml -Prelease deploy
           fi
+
+      # the render server for any language: amd64 and arm64, built from the tag's source
+      - name: Image on ghcr.io
+        if: success() || steps.npm.outcome == 'failure' || steps.maven.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker buildx create --use
+          docker buildx build --platform linux/amd64,linux/arm64 --push \
+            -t "ghcr.io/gvjavx/ddreport:${TAG#v}" -t ghcr.io/gvjavx/ddreport:latest .

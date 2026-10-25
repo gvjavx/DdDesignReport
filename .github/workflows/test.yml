@@ -50,6 +50,22 @@ jobs:
           javac -encoding UTF-8 -d out java/io/ddreport/DdReport.java java/DdReportTest.java
           java -Dfile.encoding=UTF-8 -cp out DdReportTest
 
+  # the image renders, and asks for its token
+  docker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Image renders behind its token
+        run: |
+          docker build -t ddreport .
+          docker run -d --name ddr -p 8080:8080 -e DDREPORT_TOKEN=t0ken ddreport
+          body='{"template":{"bands":{"detail":{"height":20,"elements":[{"type":"text","w":100,"h":14,"text":"{{name}}"}]}}},"data":[{"name":"Kopi"}]}'
+          for i in 1 2 3 4 5 6 7 8 9 10; do curl -sf -o /dev/null http://127.0.0.1:8080/ && break; sleep 1; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST --data "$body" 'http://127.0.0.1:8080/render?format=csv')" = 401
+          curl -sf -H 'Authorization: Bearer t0ken' --data "$body" 'http://127.0.0.1:8080/render?format=csv' | grep -q Kopi
+          curl -sf -H 'Authorization: Bearer t0ken' --data "$body" 'http://127.0.0.1:8080/render?format=pdf' | head -c 5 | grep -q '%PDF-'
+          docker logs ddr
+
   # the designer in the three browser engines: Chromium (Chrome, Edge), Firefox and WebKit (Safari)
   designer:
     runs-on: ubuntu-24.04 # pinned: ubuntu-latest moves to a new release on its own schedule

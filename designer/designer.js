@@ -37,8 +37,8 @@ const NEW = {
 // what the properties panel edits per type; fonts, colours and alignment live in the ribbon
 const BASE = ['x', 'y', 'w', 'h']
 const FIELDS = {
-  text: [...BASE, 'text', 'showIf'],
-  table: [...BASE, 'data', 'rows', 'columns', 'cols', 'heights', 'padding', 'border', 'grid', 'headerLine', 'footerLine', 'frame', 'color', 'textColor', 'stripe', 'header', 'headerFill', 'headerColor', 'footer', 'footerFill', 'footerColor', 'showIf'],
+  text: [...BASE, 'text', 'colorRule', 'fillRule', 'showIf'],
+  table: [...BASE, 'data', 'rows', 'columns', 'cols', 'heights', 'padding', 'border', 'grid', 'headerLine', 'footerLine', 'frame', 'color', 'textColor', 'stripe', 'header', 'headerFill', 'headerColor', 'footer', 'footerFill', 'footerColor', 'colorRule', 'showIf'],
   image: [...BASE, 'src', 'dataSrc', 'showIf'],
   rect: [...BASE, 'border', 'color', 'showIf'],
   line: [...BASE, 'slope', 'border', 'color', 'showIf'],
@@ -63,11 +63,14 @@ const LABEL = {
   x: 'from left', y: 'from top', w: 'width', h: 'height',
   cols: 'column widths', color: 'line colour', grid: 'lines', textColor: 'text colour', stripe: 'banded rows',
   header: 'header row', headerFill: 'header fill', headerColor: 'header text', footer: 'total row', footerFill: 'total row fill', footerColor: 'total row text',
-  showIf: 'show when', dataSrc: 'picture from data', slope: 'direction', showText: 'show text', newPage: 'new page',
+  showIf: 'show when', dataSrc: 'picture from data', colorRule: 'colour from data', fillRule: 'fill from data', slope: 'direction', showText: 'show text', newPage: 'new page',
   data: 'rows from data', heights: 'row heights', padding: 'cell padding', headerLine: 'header line', footerLine: 'total line', frame: 'frame',
 }
-const PLACEHOLDER = { label: 'row field', value: 'field or qty * price', cols: '2,1,1', heights: '1,1,1', padding: '3', data: 'items', showIf: "paid = 'yes'", dataSrc: '{{photo}}' }
+const PLACEHOLDER = { label: 'row field', value: 'field or qty * price', cols: '2,1,1', heights: '1,1,1', padding: '3', data: 'items', showIf: "paid = 'yes'", dataSrc: '{{photo}}',
+  colorRule: "if(total < 0, '#dc2626', '#000000')", fillRule: "if(stock < 5, '#fee2e2', '')" }
 const TITLE = {
+  colorRule: 'A colour worked out for each row: if(condition, colour when true, colour when false). Empty: the colour chosen in the ribbon.',
+  fillRule: 'A colour worked out for each row: if(condition, colour when true, colour when false). Empty: the colour chosen in the ribbon.',
   data: 'A list in the data, such as items: the rows between the header and the total row repeat for each of its items. {{field}} is a field of the item, {{index}} its number.',
 }
 const FIELD_TOKENS = ['{{page}}', '{{pages}}', '{{index}}', '{{now:dd/MM/yyyy}}', '{{field:2}}', '{{field:dd MMMM yyyy}}', '{{qty * price:2}}', '{{sum(field):2}}', '{{avg(field):2}}', '{{min(field)}}', '{{max(field)}}', '{{count()}}', "{{if(field > 0, 'yes', 'no')}}", '{{terbilang(field)}}']
@@ -116,7 +119,8 @@ const ID = {
   'Sub-report': 'Sub-laporan', 'Edit sub-report…': 'Ubah sub-laporan…', 'list in the data': 'daftar di data', Done: 'Selesai',
   'A report of its own for each item of a list in the data: header, column header, groups, detail and summary. Its footer is not used.':
     'Laporan tersendiri untuk setiap item daftar di data: kepala, judul kolom, grup, detail, dan ringkasan. Kaki halamannya tidak dipakai.',
-  'show when': 'tampil jika', 'picture from data': 'gambar dari data', direction: 'arah', straight: 'lurus', down: 'turun', up: 'naik', 'show text': 'tampilkan teks',
+  'show when': 'tampil jika', 'picture from data': 'gambar dari data', 'colour from data': 'warna dari data', 'fill from data': 'isi dari data',
+  'A colour worked out for each row: if(condition, colour when true, colour when false). Empty: the colour chosen in the ribbon.': 'Warna yang dihitung per baris: if(kondisi, warna jika ya, warna jika tidak). Kosong: warna yang dipilih di ribbon.', direction: 'arah', straight: 'lurus', down: 'turun', up: 'naik', 'show text': 'tampilkan teks',
   'new page': 'halaman baru', all: 'semua', first: 'pertama', last: 'terakhir', 'every page': 'setiap halaman', 'first page': 'halaman pertama', 'last page': 'halaman terakhir',
   'Justify': 'Rata kanan-kiri', 'Vertical alignment': 'Perataan vertikal', top: 'atas', middle: 'tengah', bottom: 'bawah',
   'Sort by': 'Urutkan', 'row field, -field for descending': 'field baris, -field untuk menurun', 'Dates in': 'Tanggal dalam', English: 'Inggris', Indonesian: 'Indonesia',
@@ -137,7 +141,17 @@ const ID = {
 
 // simple: true hides what a first report does not need, and names every button
 const SIMPLE = ['Arrange', 'Insert.Report', 'Grouping', 'Margins', 'Layout.Data', 'Show', 'cut', 'valign', 'lineHeight',
-  'x', 'y', 'showIf', 'cols', 'heights', 'padding', 'grid', 'headerLine', 'footerLine', 'frame', 'dataSrc']
+  'x', 'y', 'showIf', 'cols', 'heights', 'padding', 'grid', 'headerLine', 'footerLine', 'frame', 'dataSrc', 'colorRule', 'fillRule']
+// the expression a colour is worked out with, as the properties panel edits it; a table's text colour is textColor
+const colorRule = k => ({
+  get: e => { const v = String(e[propOf(e, k)] ?? ''); return v.includes('{{') ? v.replace(/^\s*\{\{|\}\}\s*$/g, '').trim() : '' },
+  set: (e, v) => {
+    const p = propOf(e, k)
+    v = v.trim()
+    if (v) e[p] = v.includes('{{') ? v : `{{${v}}}`
+    else if (String(e[p] ?? '').includes('{{')) delete e[p]
+  },
+})
 // only a picture inside the template is drawn: a link elsewhere would be fetched by whoever opens the template
 const isPicture = v => /^data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=\s]*$/.test(v)
 
@@ -1822,6 +1836,10 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
         if (e.slope && Math.min(e.w, e.h) < 10) e.h = e.w = Math.max(e.w, e.h, 60)
       },
     },
+    // a colour from the data is an expression in the colour, written without its braces like showIf;
+    // emptying it leaves the colour chosen in the ribbon (or the default)
+    colorRule: colorRule('color'),
+    fillRule: colorRule('fill'),
     // a picture from the data is a placeholder in src, such as {{photo}}
     dataSrc: { get: e => e.src?.startsWith('data:') ? '' : e.src || '', set: (e, v) => { e.src = v } },
     // relative row heights, like the column widths: "2,1,1" makes the first row twice as tall

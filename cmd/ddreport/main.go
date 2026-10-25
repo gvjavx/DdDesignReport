@@ -3,7 +3,8 @@
 // wrappers call this binary.
 //
 // With -serve it hosts the designer instead, with POST /render?format=...
-// taking the same JSON body, which is what the designer's preview uses.
+// taking the same JSON body, which is what the designer's preview uses. When
+// DDREPORT_TOKEN is set, POST /render needs "Authorization: Bearer <token>".
 //
 // With -stdio it stays running and renders one request after another, so a
 // server pays for starting it once. A request is a line "<format> <length>" and
@@ -17,11 +18,13 @@ package main
 
 import (
 	"bufio"
+	"crypto/subtle"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -49,7 +52,8 @@ func render(in io.Reader, format string) ([]byte, error) {
 }
 
 // handler serves the designer on / and renders on POST /render?format=...
-func handler() http.Handler {
+// A token, when not empty, is what every render must send as its bearer token.
+func handler(token string) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServerFS(designer.Files))
 	mux.Handle("/fonts/", http.FileServerFS(ddreport.BundledFonts)) // so the designer draws the bundled fonts
@@ -64,6 +68,11 @@ func handler() http.Handler {
 				http.Error(w, "ddreport: requests from other sites are refused", http.StatusForbidden)
 				return
 			}
+		}
+		if token != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) != 1 {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "ddreport: a valid token is needed (Authorization: Bearer <DDREPORT_TOKEN>)", http.StatusUnauthorized)
+			return
 		}
 		select {
 		case busy <- struct{}{}:
@@ -82,6 +91,16 @@ func handler() http.Handler {
 		w.Write(out)
 	})
 	return mux
+}
+
+// exposed says whether an address to listen on is reachable from other machines.
+func exposed(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return host != "localhost" && (ip == nil || !ip.IsLoopback())
 }
 
 // font reads the TrueType file an environment variable points to, if any.
@@ -117,9 +136,17 @@ func main() {
 		return
 	}
 	if *serve != "" {
-		fmt.Fprintln(os.Stderr, "designer on http://"+*serve)
+		token := os.Getenv("DDREPORT_TOKEN")
+		if token == "" && exposed(*serve) {
+			fmt.Fprintln(os.Stderr, "warning: anyone who can reach "+*serve+" can render; set DDREPORT_TOKEN to require a token")
+		}
+		if token != "" {
+			fmt.Fprintln(os.Stderr, "designer on http://"+*serve+"/#token=<DDREPORT_TOKEN>")
+		} else {
+			fmt.Fprintln(os.Stderr, "designer on http://"+*serve)
+		}
 		// time limits, so a stalled or malicious client cannot tie the server up for good
-		srv := &http.Server{Addr: *serve, Handler: handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: time.Minute, WriteTimeout: 5 * time.Minute, IdleTimeout: 2 * time.Minute}
+		srv := &http.Server{Addr: *serve, Handler: handler(token), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: time.Minute, WriteTimeout: 5 * time.Minute, IdleTimeout: 2 * time.Minute}
 		log.Fatal(srv.ListenAndServe())
 	}
 
