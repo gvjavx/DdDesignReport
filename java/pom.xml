@@ -12,7 +12,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.github.gvjavx</groupId>
   <artifactId>ddreport</artifactId>
-  <version>0.2.1</version>
+  <version>0.3.0</version>
   <packaging>jar</packaging>
   <name>ddreport</name>
   <description>Render DdDesignReport templates to PDF, HTML, XLSX, XLS or CSV from Java and Kotlin</description>
@@ -27,7 +27,7 @@
   <developers>
     <developer>
       <name>Naufal Hilmi Abdurrahman</name>
-      <url>https://github.com/gvjavx</url>
+      <url>https://aufal-tech.vercel.app/</url>
     </developer>
   </developers>
   <scm>

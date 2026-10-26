@@ -191,14 +191,14 @@ Java, Kotlin, dan Node.js memanggil binary `ddreport`. Paketnya membawa binary u
 **Java** (Maven Central, `io.github.gvjavx:ddreport`): tambahkan wrapper-nya dan binary untuk sistem tempat aplikasi berjalan, dengan classifier `linux-x64`, `linux-arm64`, `windows-x64`, `windows-arm64`, `darwin-x64`, atau `darwin-arm64`.
 
 ```xml
-<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.2.1</version></dependency>
-<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.2.1</version><classifier>linux-x64</classifier></dependency>
+<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.3.0</version></dependency>
+<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.3.0</version><classifier>linux-x64</classifier></dependency>
 ```
 
 ```kotlin
 // Gradle
-implementation("io.github.gvjavx:ddreport:0.2.1")
-runtimeOnly("io.github.gvjavx:ddreport:0.2.1:linux-x64")
+implementation("io.github.gvjavx:ddreport:0.3.0")
+runtimeOnly("io.github.gvjavx:ddreport:0.3.0:linux-x64")
 ```
 
 Package Java-nya tetap `io.ddreport` (`import io.ddreport.DdReport`).
@@ -240,7 +240,7 @@ Laporan menunggu giliran jika semua proses sedang bekerja. Proses yang berhenti 
 
 Keduanya memakai `ddreport -stdio`: binary terus berjalan dan membaca permintaan satu per satu, masing-masing sebuah baris `<format> <panjang>` lalu `{"template": ..., "data": ...}` sepanjang itu; jawabannya baris `ok <panjang>` lalu dokumennya, atau `error <panjang>` lalu pesannya. Panjang di setiap permintaan menjaga agar isi satu permintaan tidak pernah terbaca sebagai permintaan berikutnya.
 
-**HTTP dan Docker** (PHP, Python, .NET, atau bahasa apa pun): `ddreport -serve` juga menerima `POST /render?format=pdf` dengan body `{"template": ..., "data": ...}`. Image Docker-nya ada di setiap rilis setelah 0.2.1:
+**HTTP dan Docker** (PHP, Python, .NET, atau bahasa apa pun): `ddreport -serve` juga menerima `POST /render?format=pdf` dengan body `{"template": ..., "data": ...}`. Image Docker-nya ada di setiap rilis mulai 0.3.0:
 
 ```sh
 docker run -p 8080:8080 -e DDREPORT_TOKEN=rahasia-panjang ghcr.io/gvjavx/ddreport
@@ -322,7 +322,7 @@ Untuk binary (Java, Kotlin, Node.js, `-serve`): set `DDREPORT_FONT` dan `DDREPOR
 
 ## Rilis
 
-Tag versi menjalankan `.github/workflows/release.yml`: binary untuk setiap sistem dibangun dan dilampirkan ke GitHub Release, paketnya dicoba, lalu diterbitkan ke npm (`ddreport`, `@ddreport/<sistem>`, `ddreport-designer`) dan Maven Central (`io.github.gvjavx:ddreport`).
+Tag versi menjalankan `.github/workflows/release.yml`: binary untuk setiap sistem dibangun dan dilampirkan ke GitHub Release, paketnya dicoba, lalu diterbitkan ke npm (`ddreport`, `@ddreport/<sistem>`, `ddreport-designer`) dan Maven Central (`io.github.gvjavx:ddreport`). Langkah terakhirnya mengirim image Docker `ghcr.io/gvjavx/ddreport`. GitHub membuat paket ghcr baru sebagai privat, jadi setelah rilis pertama yang membawanya, ubah sekali ke publik di halaman paketnya (*Package settings*, *Change visibility*).
 
 ```sh
 git tag vX.Y.Z && git push origin vX.Y.Z
@@ -346,3 +346,7 @@ java -cp out DdReportTest             # wrapper Java
 Designer: sajikan folder `designer/` dengan web server (`npx serve designer`) lalu buka `/test.html`; halaman itu menjalankan pemeriksaan otomatis pada designer.
 
 `.github/workflows/test.yml` menjalankan semua test Go, Node.js, dan Java di Linux dan Windows, serta test designer di Chromium, Firefox, dan WebKit, di setiap push. CI juga memeriksa kode Go dengan `govulncheck` dan gagal bila ada celah keamanan yang sudah diketahui; jalankan sendiri dengan `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`.
+
+## Pembuat
+
+DdDesignReport dibuat oleh Naufal Hilmi Abdurrahman. Proyek lain dan jasa pembuatan website serta aplikasi (web, Android, desktop, AI): [aufal-tech.vercel.app](https://aufal-tech.vercel.app/).

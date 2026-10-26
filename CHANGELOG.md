@@ -1,6 +1,6 @@
 # Riwayat versi
 
-## Belum dirilis
+## 0.3.0 · 26 Okt 2026
 
 **Server dan Docker**
 - `DDREPORT_TOKEN`: `ddreport -serve` meminta `Authorization: Bearer <token>` untuk setiap render. Designer standalone memakai token dari alamatnya (`/#token=...`).

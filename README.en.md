@@ -58,7 +58,7 @@ try (DdReport.Renderer renderer = new DdReport.Renderer()) {
 }
 ```
 
-**Any language over HTTP** (PHP, Python, .NET, ...): run the render server, from the binary or as a Docker image (in every release after 0.2.1):
+**Any language over HTTP** (PHP, Python, .NET, ...): run the render server, from the binary or as a Docker image (in every release from 0.3.0):
 
 ```sh
 docker run -p 8080:8080 -e DDREPORT_TOKEN=a-long-secret ghcr.io/gvjavx/ddreport
@@ -88,3 +88,7 @@ The answer is the document, `400` with the error message, or `401` without the r
 go test ./...                 # core, binary, templates, schema, regression tests
 node designer/run-tests.mjs   # the designer in Chromium, Firefox and WebKit (needs Playwright)
 ```
+
+## Author
+
+DdDesignReport is made by Naufal Hilmi Abdurrahman. Other projects, and websites and apps built to order (web, Android, desktop, AI): [aufal-tech.vercel.app](https://aufal-tech.vercel.app/).

@@ -29,7 +29,7 @@ const targets = [
   ['darwin', 'arm64', 'darwin', 'arm64', 'darwin-arm64'],
 ]
 const repository = { type: 'git', url: 'git+https://github.com/gvjavx/DdDesignReport.git' }
-const common = { version, license: 'MIT', repository, homepage: 'https://github.com/gvjavx/DdDesignReport#readme', author: 'Naufal Hilmi Abdurrahman' }
+const common = { version, license: 'MIT', repository, homepage: 'https://github.com/gvjavx/DdDesignReport#readme', author: { name: 'Naufal Hilmi Abdurrahman', url: 'https://aufal-tech.vercel.app/' } }
 const write = (file, body) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, body) }
 const json = (file, obj) => write(file, JSON.stringify(obj, null, 2) + '\n')
 
