@@ -92,7 +92,9 @@ for (const name of names) {
     for (const [what, , detail] of bad) console.log(`  ✗ ${what}${detail ? ' — ' + detail : ''}`)
     failed ||= bad.length > 0
   }
-  await browser.close()
+  // WebKit on the CI runner sometimes never finishes closing after every check has run;
+  // process.exit below ends it anyway
+  await Promise.race([browser.close(), new Promise(resolve => setTimeout(resolve, 10000))])
 }
 server.close()
 process.exit(failed ? 1 : 0)
