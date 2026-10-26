@@ -224,7 +224,8 @@ func TestLLMsExample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, block, _ := strings.Cut(string(raw), "```json\n")
+	// A Windows checkout may turn the newlines into CRLF
+	_, block, _ := strings.Cut(strings.ReplaceAll(string(raw), "\r", ""), "```json\n")
 	block, _, _ = strings.Cut(block, "```")
 	var file struct{ Template, Data json.RawMessage }
 	if err := json.Unmarshal([]byte(block), &file); err != nil {
