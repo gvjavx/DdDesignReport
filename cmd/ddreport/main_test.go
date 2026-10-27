@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,7 +27,7 @@ func TestRender(t *testing.T) {
 }
 
 func TestHandler(t *testing.T) {
-	srv := httptest.NewServer(handler(""))
+	srv := httptest.NewServer(handler("", t.TempDir()))
 	defer srv.Close()
 	post := func(path, body string) *http.Response {
 		t.Helper()
@@ -79,7 +83,7 @@ func TestHandler(t *testing.T) {
 }
 
 func TestHandlerToken(t *testing.T) {
-	srv := httptest.NewServer(handler("s3cret"))
+	srv := httptest.NewServer(handler("s3cret", t.TempDir()))
 	defer srv.Close()
 	for auth, want := range map[string]int{"": 401, "Bearer wrong": 401, "s3cret": 401, "Bearer s3cret": 200} {
 		req, _ := http.NewRequest("POST", srv.URL+"/render?format=csv", strings.NewReader(request))
@@ -129,7 +133,7 @@ func TestFont(t *testing.T) {
 
 // One request must not be able to take the server down.
 func TestHandlerSurvivesHostileTemplates(t *testing.T) {
-	srv := httptest.NewServer(handler(""))
+	srv := httptest.NewServer(handler("", t.TempDir()))
 	defer srv.Close()
 	deep := "{\"template\":{\"bands\":{\"detail\":{\"height\":10,\"elements\":[{\"type\":\"text\",\"w\":50,\"h\":10,\"text\":\"{{" + strings.Repeat("(", 3_000_000) + "1" + strings.Repeat(")", 3_000_000) + "}}\"}]}}},\"data\":[{}]}"
 	res, err := http.Post(srv.URL+"/render?format=pdf", "application/json", strings.NewReader(deep))
@@ -167,5 +171,206 @@ func TestServeStdio(t *testing.T) {
 		if err := serveStdio(strings.NewReader(broken), &out); err == nil {
 			t.Errorf("%q: want error", broken)
 		}
+	}
+}
+
+func TestMine(t *testing.T) {
+	dir := t.TempDir()
+	srv := httptest.NewServer(handler("s3cret", dir))
+	defer srv.Close()
+	do := func(method, path, body string, auth bool) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
+		if auth {
+			req.Header.Set("Authorization", "Bearer s3cret")
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(b)
+	}
+	if code, list := do("GET", "/mine", "", true); code != 200 || strings.TrimSpace(list) != "[]" {
+		t.Errorf("empty: %d %s", code, list)
+	}
+	if code, _ := do("PUT", "/mine/a1", `{"name":"Faktur","template":{}}`, false); code != 401 {
+		t.Errorf("without the token: %d, want 401", code)
+	}
+	for path, body := range map[string]string{"/mine/..%2Fx": `{"name":"x","template":{}}`, "/mine/A": `{"name":"x","template":{}}`, "/mine/b": `{"template":{}}`, "/mine/c": `{"name":"x"}`, "/mine/d": "{"} {
+		if code, _ := do("PUT", path, body, true); code != 400 {
+			t.Errorf("PUT %s %s: %d, want 400", path, body, code)
+		}
+	}
+	if code, _ := do("PUT", "/mine/a1", `{"id":"other","name":"Faktur","template":{"bands":{}}}`, true); code != 204 {
+		t.Errorf("save: %d", code)
+	}
+	if code, _ := do("PUT", "/mine/a1", `{"name":"Faktur baru","template":{}}`, true); code != 204 {
+		t.Errorf("update: %d", code)
+	}
+	if _, list := do("GET", "/mine", "", true); !strings.Contains(list, `"name":"Faktur baru"`) || !strings.Contains(list, `"id":"a1"`) || strings.Count(list, `"id"`) != 1 {
+		t.Errorf("list: %s", list)
+	}
+	if tmp, _ := filepath.Glob(filepath.Join(dir, "*.tmp")); len(tmp) != 0 { // no half-written file left
+		t.Errorf("left behind: %v", tmp)
+	}
+	if code, _ := do("DELETE", "/mine/a1", "", true); code != 204 {
+		t.Errorf("delete: %d", code)
+	}
+	if _, list := do("GET", "/mine", "", true); strings.TrimSpace(list) != "[]" {
+		t.Errorf("after delete: %s", list)
+	}
+}
+
+func TestFonts(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "Mine-Regular.ttf"), []byte("own font"), 0o644)
+	t.Setenv("DDREPORT_FONTS", dir)
+	srv := httptest.NewServer(handler("", t.TempDir()))
+	defer srv.Close()
+	get := func(path string) (int, string) {
+		res, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(b)
+	}
+	if code, body := get("/fonts/Mine-Regular.ttf"); code != 200 || body != "own font" {
+		t.Errorf("a DDREPORT_FONTS file: %d %q", code, body)
+	}
+	if code, _ := get("/fonts/Roboto-Bold.ttf"); code != 200 {
+		t.Errorf("a bundled file: %d", code)
+	}
+	if code, list := get("/fonts.json"); code != 200 || !strings.Contains(list, `"Great Vibes":["Regular"]`) || !strings.Contains(list, `"Roboto":[`) {
+		t.Errorf("fonts.json: %d %s", code, list)
+	}
+}
+
+func TestMineHistory(t *testing.T) {
+	dir := t.TempDir()
+	srv := httptest.NewServer(handler("", dir))
+	defer srv.Close()
+	do := func(method, path, body string) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(b)
+	}
+	if code, list := do("GET", "/mine/a/history", ""); code != 200 || strings.TrimSpace(list) != "[]" {
+		t.Errorf("no history yet: %d %s", code, list)
+	}
+	for i := range 25 {
+		if code, _ := do("PUT", "/mine/a", fmt.Sprintf(`{"name":"v%d","template":{},"updated":%d}`, i, i)); code != 204 {
+			t.Fatalf("save %d: %d", i, code)
+		}
+	}
+	var list []struct{ Version, Name string }
+	_, body := do("GET", "/mine/a/history", "")
+	json.Unmarshal([]byte(body), &list)
+	if len(list) != 20 || list[0].Name != "v23" || list[19].Name != "v4" {
+		t.Fatalf("the last 20 earlier versions, newest first: %s", body)
+	}
+	if code, old := do("GET", "/mine/a/history/"+list[0].Version, ""); code != 200 || !strings.Contains(old, `"name":"v23"`) {
+		t.Errorf("an earlier version: %d %s", code, old)
+	}
+	if code, _ := do("GET", "/mine/a/history/..%2F..%2Fa", ""); code != 400 {
+		t.Errorf("a version that is not one: %d", code)
+	}
+	if _, now := do("GET", "/mine", ""); !strings.Contains(now, `"name":"v24"`) || strings.Count(now, `"id"`) != 1 {
+		t.Errorf("the list has the template once, as it is now: %s", now)
+	}
+	do("DELETE", "/mine/a", "")
+	if _, err := os.Stat(filepath.Join(dir, "history", "a")); !os.IsNotExist(err) {
+		t.Error("deleting a template keeps its history")
+	}
+}
+
+func TestJRXMLOverHTTP(t *testing.T) {
+	srv := httptest.NewServer(handler("", t.TempDir()))
+	defer srv.Close()
+	res, err := http.Post(srv.URL+"/render?format=jrxml", "application/json", strings.NewReader(request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jr, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 || !strings.Contains(string(jr), "<jasperReport ") || !strings.HasPrefix(res.Header.Get("Content-Type"), "application/xml") {
+		t.Fatalf("export: %d %s", res.StatusCode, jr)
+	}
+	res, err = http.Post(srv.URL+"/import/jrxml", "application/xml", bytes.NewReader(jr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back struct {
+		Template map[string]any
+		Notes    []string
+	}
+	json.NewDecoder(res.Body).Decode(&back)
+	res.Body.Close()
+	if res.StatusCode != 200 || back.Template["bands"] == nil || back.Notes == nil {
+		t.Errorf("import: %d %v", res.StatusCode, back)
+	}
+	if res, _ := http.Post(srv.URL+"/import/jrxml", "application/xml", strings.NewReader("<html/>")); res.StatusCode != 400 {
+		t.Errorf("not a report: %d", res.StatusCode)
+	}
+}
+
+// Without a token, a request by a name other than localhost or an IP address is
+// refused: a site whose name points at this machine (DNS rebinding) sends its own.
+func TestHostWithoutToken(t *testing.T) {
+	for token, want := range map[string]int{"": 403, "s3cret": 200} {
+		srv := httptest.NewServer(handler(token, t.TempDir()))
+		for _, path := range []string{"/mine", "/render?format=csv"} {
+			method, body := "GET", ""
+			if path != "/mine" {
+				method, body = "POST", request
+			}
+			req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
+			req.Host = "evil.example:8080"
+			req.Header.Set("Origin", "http://evil.example:8080")
+			if token != "" {
+				req.Header.Set("Authorization", "Bearer "+token)
+			}
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res.Body.Close()
+			if res.StatusCode != want {
+				t.Errorf("token %q, %s: %d, want %d", token, path, res.StatusCode, want)
+			}
+		}
+		srv.Close()
+	}
+	for host, want := range map[string]bool{"localhost:8080": true, "127.0.0.1:8080": true, "[::1]:8080": true, "192.168.1.5": true, "evil.example": false, "localhost.evil.example:80": false} {
+		if localName(host) != want {
+			t.Errorf("localName(%q) = %v", host, !want)
+		}
+	}
+}
+
+func TestFontsInFontsFolder(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "fonts"), 0o755)
+	os.WriteFile(filepath.Join(dir, "fonts", "Sub-Regular.ttf"), []byte("in fonts/"), 0o644)
+	t.Setenv("DDREPORT_FONTS", dir)
+	srv := httptest.NewServer(handler("", t.TempDir()))
+	defer srv.Close()
+	res, err := http.Get(srv.URL + "/fonts/Sub-Regular.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 || string(b) != "in fonts/" {
+		t.Errorf("a font in fonts/: %d %q", res.StatusCode, b)
 	}
 }
