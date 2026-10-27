@@ -2,7 +2,7 @@
 // its full description is in the README (bands, elements, placeholders).
 
 export interface Element {
-  type: 'text' | 'table' | 'image' | 'rect' | 'line' | 'chart' | 'barcode' | 'subreport' | (string & {})
+  type: 'text' | 'table' | 'image' | 'rect' | 'line' | 'chart' | 'barcode' | 'subreport' | 'crosstab' | (string & {})
   x: number
   y: number
   w: number
@@ -45,8 +45,10 @@ export interface DesignerOptions {
   preview?: (template: Template) => Promise<string> | string
   /** 'en' (default) or 'id' */
   lang?: 'en' | 'id'
-  /** 'light' (default), 'dark', or 'auto' to follow the system */
-  theme?: 'light' | 'dark' | 'auto'
+  /** 'light' (default), 'dark', 'auto' to follow the system, or 'inherit' for the page's own theme (Bootstrap's --bs-* variables, its dark mode too) */
+  theme?: 'light' | 'dark' | 'auto' | 'inherit'
+  /** called whenever what a toolbar shows changes: for a toolbar of your own */
+  onState?: (state: DesignerState) => void
   /** URL of the bundled fonts, e.g. '/fonts/' as `ddreport -serve` has them */
   fontBase?: string
   /** more font names, registered with the backend */
@@ -58,7 +60,7 @@ export interface DesignerOptions {
   /** fewer tools, each button with its name: for a first report */
   simple?: boolean
   /**
-   * What to leave out, by name: a tab ('Layout'), a ribbon group ('Arrange', or 'Layout.Data' for
+   * What to leave out, by name: the whole ribbon ('ribbon', for a toolbar of your own), a tab ('Layout'), a ribbon group ('Arrange', or 'Layout.Data' for
    * one tab's), a command ('delete', 'preview'), an element to insert ('chart', 'subreport'),
    * or a setting in the ribbon or the properties panel ('sortBy', 'showIf'). A hidden command
    * does not run from its keyboard shortcut either.
@@ -66,6 +68,21 @@ export interface DesignerOptions {
   hide?: string[]
   /** your own words for any text of the interface, keyed by its English text */
   messages?: Record<string, string>
+}
+
+export interface DesignerState {
+  /** how many elements are selected, and the type when it is one */
+  selected: number
+  type: string | null
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  align: 'left' | 'center' | 'right' | 'justify' | null
+  undo: boolean
+  redo: boolean
+  paste: boolean
+  /** 1 is 100% */
+  zoom: number
 }
 
 export interface Designer {
@@ -77,6 +94,15 @@ export interface Designer {
   setFields(fields: string[]): void
   /** changes the sample data the charts are drawn from */
   setData(data: unknown): void
+  /**
+   * does what a ribbon button does, for a toolbar of your own: 'bold', 'align:center', 'add:table',
+   * 'undo', 'delete', 'zoom:fit'... A hidden command does nothing; an unknown one throws.
+   */
+  run(command: string): void
+  /** the commands run takes (without their arguments), less the hidden ones */
+  commands(): string[]
+  /** what onState last said */
+  getState(): DesignerState
   /** empties the element and stops listening to the page; call it when the designer goes away */
   destroy(): void
 }

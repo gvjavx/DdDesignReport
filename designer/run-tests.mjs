@@ -70,6 +70,28 @@ async function touch(browser, name) {
   }
   await page.locator('.ddr-x').tap({ timeout: 3000 }).catch(() => check('the selected element still has its red cross', false))
   check('tap the red cross: the element goes', await els() === 0)
+  // my templates: save, open, rename, update and delete one of the user's own
+  page.on('dialog', d => d.accept(d.type() === 'prompt' ? 'Renamed' : undefined))
+  await page.tap('.ddr-hint [data-cmd="add:text"]')
+  await page.tap('#mytemplates')
+  await page.fill('#mine-name', 'Mine')
+  await page.tap('#mine-add button')
+  const mine = () => page.evaluate(() => JSON.parse(localStorage.getItem('ddreport-mine')))
+  check('my templates: saved with its element', (await mine())?.[0]?.name === 'Mine' && JSON.stringify((await mine())[0].template).includes('"type":"text"'))
+  await page.tap('#mine li button:text("Rename")')
+  check('my templates: renamed', (await mine())[0].name === 'Renamed')
+  await page.tap('#mine button:text("Close")')
+  await page.tap('#new')
+  check('my templates: New empties the page', await els() === 0)
+  await page.tap('#mytemplates')
+  await page.tap('#mine li button:text("Open")')
+  check('my templates: opened', await els() === 1)
+  await page.tap('#new')
+  await page.tap('#mytemplates')
+  await page.tap('#mine li button:text("Update")')
+  check('my templates: updated', !JSON.stringify((await mine())[0].template).includes('"type":"text"'))
+  await page.tap('#mine li button:text("Delete")')
+  check('my templates: deleted', (await mine()).length === 0 && await page.locator('#mine-empty').isVisible())
   await context.close()
   return checks
 }

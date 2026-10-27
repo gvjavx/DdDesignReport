@@ -619,8 +619,12 @@ const tests = {
     check('two levels: their bands in print order', shown().join() === 'header,columnHeader,groupHeader,groupHeader2,detail,groupFooter2,groupFooter,summary,footer', shown().join())
     t.set('[data-tpl=groupBy]', 'a,b,c')
     check('three levels', shown().includes('groupHeader3') && shown().includes('groupFooter3'))
+    t.set('[data-tpl=groupBy]', 'a,b,c,d,e,f')
+    check('six levels, in print order', shown().join() === 'header,columnHeader,groupHeader,groupHeader2,groupHeader3,groupHeader4,groupHeader5,groupHeader6,detail,groupFooter6,groupFooter5,groupFooter4,groupFooter3,groupFooter2,groupFooter,summary,footer', shown().join())
     t.set('[data-tpl=sheetPerGroup]', true)
     check('a sheet per group', t.tpl.sheetPerGroup === true)
+    t.set('[data-tpl=pdfA]', true)
+    check('PDF/A', t.tpl.pdfA === true)
     t.click('add:table')
     check('the header line shows with a header row', !t.qa('.ddr-props label').some(l => l.firstChild.textContent === 'header line'))
     const header = t.qa('.ddr-props label').find(l => l.firstChild.textContent === 'header row').querySelector('input')
@@ -740,6 +744,52 @@ const tests = {
     t.q('.ddr-el').focus()
     t.key('Delete')
     check('a hidden command does not run from its shortcut', t.els('header').length === 1)
+  },
+  'a toolbar of its own: run, commands, state, no ribbon'() {
+    const states = []
+    const t = open(undefined, { hide: ['ribbon', 'delete'], onState: st => states.push(st) })
+    check('no ribbon', getComputedStyle(t.q('.ddr-tabs')).display === 'none' && t.qa('.ddr-panel').every(p => getComputedStyle(p).display === 'none'))
+    check('commands lists what can run, not what is hidden', t.d.commands().includes('bold') && t.d.commands().includes('add') && !t.d.commands().includes('delete'))
+    t.d.run('add:text')
+    check('run adds, as the ribbon does', t.els('header').length === 1)
+    check('the state says what is selected', t.d.getState().selected === 1 && t.d.getState().type === 'text' && t.d.getState().undo)
+    t.d.run('bold')
+    check('run formats, and onState hears it', t.els('header')[0].bold === true && states.at(-1).bold === true)
+    t.d.run('align:center')
+    check('align with its argument', t.els('header')[0].align === 'center' && t.d.getState().align === 'center')
+    t.d.run('delete')
+    check('a hidden command does not run', t.els('header').length === 1)
+    let threw = false
+    try { t.d.run('nothing') } catch { threw = true }
+    check('an unknown command says so', threw)
+    t.d.run('undo')
+    check('undo from outside', !t.els('header')[0].align || t.els('header')[0].align === 'left')
+  },
+  'crosstab: insert, settings, what it shows'() {
+    const t = open()
+    t.click('add:crosstab')
+    const e = () => t.els('header')[0]
+    check('inserted with its defaults', e().type === 'crosstab' && e().measure === 'count()' && e().border === 1)
+    t.prop('rows by', 'region')
+    t.prop('columns by', 'month')
+    t.prop('value', 'sum(total):2')
+    check('the settings are kept', e().rowField === 'region' && e().columnField === 'month' && e().measure === 'sum(total):2')
+    check('the page shows what it counts', t.q('.ddr-el').textContent.includes('region × month') && t.q('.ddr-el').textContent.includes('sum(total):2'))
+    t.click('bold')
+    check('the ribbon formats it as a table', e().bold === true)
+  },
+  'theme inherit takes the page theme (Bootstrap variables)'() {
+    host.style.setProperty('--bs-primary', 'rgb(255, 0, 0)')
+    host.style.setProperty('--bs-border-radius', '0px')
+    host.style.setProperty('--bs-body-font-family', 'Georgia')
+    const t = open(undefined, { theme: 'inherit' })
+    const cs = getComputedStyle(t.root)
+    check('the accent', cs.getPropertyValue('--a').trim() === 'rgb(255, 0, 0)', cs.getPropertyValue('--a'))
+    check('the corners', getComputedStyle(t.q('.ddr-b')).borderTopLeftRadius === '0px')
+    check('the font', cs.fontFamily.includes('Georgia'))
+    for (const v of ['--bs-primary', '--bs-border-radius', '--bs-body-font-family']) host.style.removeProperty(v)
+    const plain = open(undefined, { theme: 'inherit' })
+    check('without Bootstrap, the usual look', getComputedStyle(plain.root).getPropertyValue('--a').trim() === '#2563eb')
   },
   'messages replace any text'() {
     const t = open(undefined, { lang: 'id', messages: { Insert: 'Tambah', 'Text box': 'Tulisan' } })

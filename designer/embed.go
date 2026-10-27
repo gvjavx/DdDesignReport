@@ -4,5 +4,5 @@ package designer
 
 import "embed"
 
-//go:embed designer.js index.html templates template.schema.json
+//go:embed designer.js index.html bootstrap.html templates template.schema.json
 var Files embed.FS

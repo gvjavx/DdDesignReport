@@ -4,16 +4,20 @@
 //   const designer = createDesigner(element, { template, onChange, preview, lang, theme })
 // The template it edits is the JSON the ddreport backend renders. 1px on screen = 1pt on paper.
 // preview is optional: async template => HTML string (ask your backend to render it as "html").
-// lang is 'en' (default) or 'id'. theme is 'light' (default), 'dark' or 'auto' (follows the system).
+// lang is 'en' (default) or 'id'. theme is 'light' (default), 'dark', 'auto' (follows the system) or
+// 'inherit' (the page's theme: Bootstrap's --bs-* variables). For a toolbar of the host's own, hide: ['ribbon'],
+// then designer.run('bold') and onState(state) to show what is pressed.
 // fontBase is the URL the bundled fonts are served from (`ddreport -serve` has them at 'fonts/');
 // without it the page shows them only where they are installed. fonts adds names from ddreport.Families.
 // fields lists the data's field names for the Field menu; designer.setFields(list) changes it later.
 // data is sample data (fields plus rows, or just rows) that charts are drawn from; designer.setData(data) changes it.
 
-// the bands in print order; the second and third group levels show when Group by names that many fields
-const BANDS = ['header', 'columnHeader', 'groupHeader', 'groupHeader2', 'groupHeader3', 'detail', 'groupFooter3', 'groupFooter2', 'groupFooter', 'summary', 'footer']
+// the bands in print order; the group levels after the first show when Group by names that many fields
+const DEPTH = 6
+const LEVELS = Array.from({ length: DEPTH - 1 }, (_, i) => i + 2) // 2..6
+const BANDS = ['header', 'columnHeader', 'groupHeader', ...LEVELS.map(n => 'groupHeader' + n), 'detail', ...LEVELS.toReversed().map(n => 'groupFooter' + n), 'groupFooter', 'summary', 'footer']
 const HEIGHT = { header: 60, summary: 30, footer: 30 } // a new band's height; the others 20
-const LEVEL = { groupHeader2: 2, groupFooter2: 2, groupHeader3: 3, groupFooter3: 3 }
+const LEVEL = Object.fromEntries(LEVELS.flatMap(n => [['groupHeader' + n, n], ['groupFooter' + n, n]]))
 const SIDES = ['marginTop', 'marginRight', 'marginBottom', 'marginLeft']
 const PAPER = { A4: [595, 842], A5: [420, 595], Letter: [612, 792], Legal: [612, 1008], F4: [595, 935] }
 const FONTS = {
@@ -33,6 +37,7 @@ const NEW = {
   chart: { w: 240, h: 140, chart: 'bar', label: '', value: '', color: '#4e79a7' },
   barcode: { w: 70, h: 70, text: '{{code}}', format: 'qr' },
   subreport: { w: 400, h: 80, data: 'items' },
+  crosstab: { w: 360, h: 48, border: 1, fontSize: 9, text: '', rowField: '', columnField: '', measure: 'count()', totalLabel: 'Total' },
 }
 // what the properties panel edits per type; fonts, colours and alignment live in the ribbon
 const BASE = ['x', 'y', 'w', 'h']
@@ -45,6 +50,7 @@ const FIELDS = {
   chart: [...BASE, 'chart', 'label', 'value', 'color', 'showIf'],
   barcode: [...BASE, 'format', 'text', 'showText', 'color', 'showIf'],
   subreport: [...BASE, 'data', 'showIf'],
+  crosstab: [...BASE, 'rowField', 'columnField', 'measure', 'text', 'totalLabel', 'data', 'border', 'grid', 'color', 'textColor', 'stripe', 'headerFill', 'headerColor', 'footerFill', 'footerColor', 'showIf'],
 }
 // which ribbon properties apply to which type
 const STYLE = {
@@ -52,8 +58,9 @@ const STYLE = {
   table: ['font', 'fontSize', 'lineHeight', 'bold', 'italic', 'underline', 'align', 'valign', 'color', 'fill', 'grow'],
   rect: ['fill'],
 }
+STYLE.crosstab = STYLE.table
 // a table's text colour is textColor: its color is the colour of its lines
-const propOf = (e, k) => e.type === 'table' && k === 'color' ? 'textColor' : k
+const propOf = (e, k) => (e.type === 'table' || e.type === 'crosstab') && k === 'color' ? 'textColor' : k
 const DEFAULT = { font: 'Helvetica', fontSize: 10, lineHeight: 1.2, valign: 'top', color: '#000000', fill: '#ffffff', grow: false }
 const NUMERIC = new Set(['x', 'y', 'w', 'h', 'border', 'rows', 'columns', 'height', 'headerLine', 'footerLine', 'frame'])
 const SELECT = { chart: ['bar', 'hbar', 'line', 'pie', 'donut'], format: ['qr', 'code128'], grid: ['all', 'outer', 'rows'], slope: ['straight', 'down', 'up'] }
@@ -65,13 +72,17 @@ const LABEL = {
   header: 'header row', headerFill: 'header fill', headerColor: 'header text', footer: 'total row', footerFill: 'total row fill', footerColor: 'total row text',
   showIf: 'show when', dataSrc: 'picture from data', colorRule: 'colour from data', fillRule: 'fill from data', slope: 'direction', showText: 'show text', newPage: 'new page',
   data: 'rows from data', heights: 'row heights', padding: 'cell padding', headerLine: 'header line', footerLine: 'total line', frame: 'frame',
+  rowField: 'rows by', columnField: 'columns by', measure: 'value', totalLabel: 'total label',
 }
-const PLACEHOLDER = { label: 'row field', value: 'field or qty * price', cols: '2,1,1', heights: '1,1,1', padding: '3', data: 'items', showIf: "paid = 'yes'", dataSrc: '{{photo}}',
+const PLACEHOLDER = { rowField: 'region', columnField: 'month', measure: 'sum(total):2', totalLabel: 'Total', label: 'row field', value: 'field or qty * price', cols: '2,1,1', heights: '1,1,1', padding: '3', data: 'items', showIf: "paid = 'yes'", dataSrc: '{{photo}}',
   colorRule: "if(total < 0, '#dc2626', '#000000')", fillRule: "if(stock < 5, '#fee2e2', '')" }
 const TITLE = {
   colorRule: 'A colour worked out for each row: if(condition, colour when true, colour when false). Empty: the colour chosen in the ribbon.',
   fillRule: 'A colour worked out for each row: if(condition, colour when true, colour when false). Empty: the colour chosen in the ribbon.',
   data: 'A list in the data, such as items: the rows between the header and the total row repeat for each of its items. {{field}} is a field of the item, {{index}} its number.',
+  measure: 'What each cell shows, over the rows with its row and column values: sum(qty * price):2, count(), avg(price), min(date), max(date).',
+  rowField: 'A row for each value of this field, in the order they come (Sort by decides it).',
+  columnField: 'A column for each value of this field, in the order they come (Sort by decides it).',
 }
 const FIELD_TOKENS = ['{{page}}', '{{pages}}', '{{index}}', '{{now:dd/MM/yyyy}}', '{{field:2}}', '{{field:dd MMMM yyyy}}', '{{qty * price:2}}', '{{sum(field):2}}', '{{avg(field):2}}', '{{min(field)}}', '{{max(field)}}', '{{count()}}', "{{if(field > 0, 'yes', 'no')}}", '{{terbilang(field)}}']
 
@@ -112,8 +123,9 @@ const ID = {
   lines: 'garis', 'text colour': 'warna teks', 'banded rows': 'baris selang-seling', 'header row': 'baris judul', 'header fill': 'isi judul', 'header text': 'teks judul',
   'total row': 'baris total', 'total row fill': 'isi baris total', 'total row text': 'teks baris total', Clear: 'Kosongkan',
   header: 'kepala', columnHeader: 'judul kolom', groupHeader: 'kepala grup', detail: 'detail', groupFooter: 'kaki grup', summary: 'ringkasan', footer: 'kaki halaman',
-  groupHeader2: 'kepala grup 2', groupFooter2: 'kaki grup 2', groupHeader3: 'kepala grup 3', groupFooter3: 'kaki grup 3',
-  'row field, or up to three: region, city': 'field baris, atau sampai tiga: region, city', 'A sheet per group': 'Sheet per grup',
+  ...Object.fromEntries(LEVELS.flatMap(n => [['groupHeader' + n, 'kepala grup ' + n], ['groupFooter' + n, 'kaki grup ' + n]])),
+  'row field, or up to six: region, city': 'field baris, atau sampai enam: region, city',
+  'PDF/A for archiving: every font in the file (Helvetica, Times and Courier print as Roboto and Lora)': 'PDF/A untuk arsip: semua font ada di dalam file (Helvetica, Times, dan Courier dicetak dengan Roboto dan Lora)', 'A sheet per group': 'Sheet per grup',
   'Excel (xlsx, xls): a worksheet for each group of the first Group by field': 'Excel (xlsx, xls): satu sheet untuk setiap grup dari field Group by pertama',
   'header line': 'garis judul', 'total line': 'garis total', frame: 'bingkai',
   'Sub-report': 'Sub-laporan', 'Edit sub-report…': 'Ubah sub-laporan…', 'list in the data': 'daftar di data', Done: 'Selesai',
@@ -136,7 +148,11 @@ const ID = {
   'Start here': 'Mulai di sini',
   'Click to put one on the page. Drag it to move it, double-click it to type.': 'Klik untuk menaruhnya di halaman. Geser untuk memindah, klik ganda untuk mengetik.',
   'from left': 'dari kiri', 'from top': 'dari atas', width: 'lebar', height: 'tinggi',
-  table: 'tabel', image: 'gambar', rect: 'kotak', line: 'garis', barcode: 'barcode', subreport: 'sub-laporan',
+  table: 'tabel', image: 'gambar', rect: 'kotak', line: 'garis', barcode: 'barcode', subreport: 'sub-laporan', crosstab: 'tabel silang',
+  Crosstab: 'Tabel silang', 'rows by': 'baris per', 'columns by': 'kolom per', 'total label': 'label total',
+  'What each cell shows, over the rows with its row and column values: sum(qty * price):2, count(), avg(price), min(date), max(date).': 'Isi tiap sel, dihitung dari baris dengan nilai baris dan kolomnya: sum(qty * price):2, count(), avg(price), min(date), max(date).',
+  'A row for each value of this field, in the order they come (Sort by decides it).': 'Satu baris untuk setiap nilai field ini, sesuai urutan datanya (diatur Sort by).',
+  'A column for each value of this field, in the order they come (Sort by decides it).': 'Satu kolom untuk setiap nilai field ini, sesuai urutan datanya (diatur Sort by).',
 }
 
 // simple: true hides what a first report does not need, and names every button
@@ -186,6 +202,7 @@ const ICONS = {
   chart: 'M4 20h16M7 20v-7M12 20V7M17 20v-10',
   barcode: 'M4 5v14M7 5v14M11 5v14M14 5v14M17 5v14M20 5v14',
   subreport: 'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5',
+  crosstab: 'M4 5h16v14H4zM4 10h16M9 5v14M4 5l5 5M14 10v9M4 15h16',
   preview: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
   zoomOut: 'M5 12h14',
   zoomIn: 'M5 12h14M12 5v14',
@@ -194,9 +211,10 @@ const ICONS = {
 }
 
 const CSS = `
-.ddr{--a:#2563eb;--a-soft:#e7eefd;--a-text:#fff;--bg:#f6f7f9;--surface:#fff;--text:#1f2937;--muted:#6b7280;--line:#e2e5ea;--stage:#eceef2;--hover:#eef2f7;
-  container-type:inline-size;display:flex;flex-direction:column;min-height:560px;font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden;color-scheme:light}
+.ddr{--r:6px;--font:system-ui,-apple-system,"Segoe UI",sans-serif;--a:#2563eb;--a-soft:#e7eefd;--a-text:#fff;--bg:#f6f7f9;--surface:#fff;--text:#1f2937;--muted:#6b7280;--line:#e2e5ea;--stage:#eceef2;--hover:#eef2f7;
+  container-type:inline-size;display:flex;flex-direction:column;min-height:560px;font:13px/1.4 var(--font);color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:calc(var(--r) + 4px);overflow:hidden;color-scheme:light}
 .ddr[data-theme=dark]{--a:#7aa2ff;--a-soft:#1e2a44;--a-text:#0b1220;--bg:#161a22;--surface:#1d222c;--text:#e5e9f0;--muted:#98a2b3;--line:#303745;--stage:#11141a;--hover:#272e3b;color-scheme:dark}
+.ddr[data-theme=inherit]{--a:var(--bs-primary,#2563eb);--a-text:var(--bs-white,#fff);--bg:var(--bs-tertiary-bg,#f6f7f9);--surface:var(--bs-body-bg,#fff);--text:var(--bs-body-color,#1f2937);--muted:var(--bs-secondary-color,#6b7280);--line:var(--bs-border-color,#e2e5ea);--stage:var(--bs-secondary-bg,#eceef2);--hover:var(--bs-secondary-bg,#eef2f7);--a-soft:color-mix(in srgb,var(--a) 15%,var(--surface));--r:var(--bs-border-radius,6px);--font:var(--bs-body-font-family,system-ui,sans-serif);color-scheme:normal}
 @media (prefers-color-scheme:dark){.ddr[data-theme=auto]{--a:#7aa2ff;--a-soft:#1e2a44;--a-text:#0b1220;--bg:#161a22;--surface:#1d222c;--text:#e5e9f0;--muted:#98a2b3;--line:#303745;--stage:#11141a;--hover:#272e3b;color-scheme:dark}}
 .ddr *{box-sizing:border-box}
 .ddr [hidden]{display:none!important}
@@ -208,13 +226,13 @@ const CSS = `
 .ddr[data-simple] .ddr-panel .ddr-swatch span{margin:0}
 .ddr[data-simple] .ddr-panel .ddr-swatch::after{content:attr(data-label);font:400 10.5px/1.1 system-ui,sans-serif}
 .ddr button,.ddr select,.ddr input,.ddr textarea{font:inherit;color:inherit}
-.ddr :is(select,input:not([type=checkbox],[type=color],[type=range]),textarea){height:30px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.ddr :is(select,input:not([type=checkbox],[type=color],[type=range]),textarea){height:30px;padding:0 8px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
 .ddr textarea{height:76px;padding:6px 8px;resize:vertical}
 .ddr :is(button,select,input,textarea,summary,[tabindex]):focus-visible{outline:2px solid var(--a);outline-offset:1px}
 .ddr-i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
 .ddr-tabs{display:flex;gap:2px;padding:6px 8px 0;background:var(--surface);border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
-.ddr-tabs button{border:0;background:none;padding:7px 14px 8px;border-bottom:2px solid transparent;margin-bottom:-1px;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap;border-radius:6px 6px 0 0}
+.ddr-tabs button{border:0;background:none;padding:7px 14px 8px;border-bottom:2px solid transparent;margin-bottom:-1px;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap;border-radius:var(--r) var(--r) 0 0}
 .ddr-tabs button:hover{color:var(--text);background:var(--hover)}
 .ddr-tabs button[aria-selected=true]{color:var(--a);border-color:var(--a)}
 .ddr-panel{display:flex;gap:0;padding:8px 6px;background:var(--surface);border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:thin;min-height:70px}
@@ -223,7 +241,7 @@ const CSS = `
 .ddr-group:last-child{border-right:0}
 .ddr-group>div{display:flex;gap:3px;align-items:center}
 .ddr-group>span{font-size:11px;color:var(--muted);text-align:center;white-space:nowrap}
-.ddr-b{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:32px;height:32px;padding:0 7px;border:1px solid transparent;border-radius:6px;background:none;cursor:pointer;white-space:nowrap}
+.ddr-b{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:32px;height:32px;padding:0 7px;border:1px solid transparent;border-radius:var(--r);background:none;cursor:pointer;white-space:nowrap}
 .ddr-b:hover:not(:disabled){background:var(--hover)}
 .ddr-b[aria-pressed=true]{background:var(--a-soft);color:var(--a);border-color:var(--a)}
 .ddr-b:disabled{opacity:.35;cursor:default}
@@ -233,7 +251,7 @@ const CSS = `
 .ddr-letter{font:600 15px Georgia,"Times New Roman",serif}
 .ddr-group input[type=number]{width:58px}
 .ddr-group input[type=text]{width:92px}
-.ddr-swatch{position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;font-weight:700;cursor:pointer}
+.ddr-swatch{position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:var(--r);font-weight:700;cursor:pointer}
 .ddr-swatch:hover{background:var(--hover)}
 .ddr-swatch input{position:absolute;left:6px;right:6px;bottom:3px;width:20px;height:6px;padding:0;border:0;background:none;cursor:pointer}
 .ddr-swatch input::-webkit-color-swatch-wrapper{padding:0}
@@ -267,7 +285,7 @@ const CSS = `
 .ddr-el[data-type=line]::after{content:'';position:absolute;inset:-5px}
 .ddr-el[data-type=image]{background:#eef2f7 center/100% 100% no-repeat}
 .ddr-el:is([data-type=chart],[data-type=barcode]){background:#fff}
-.ddr-el:is([data-type=subreport],[data-unknown]){background:#eef4fb;color:#334155;font:10px/1.3 system-ui,sans-serif;padding:4px}
+.ddr-el:is([data-type=subreport],[data-type=crosstab],[data-unknown]){background:#eef4fb;color:#334155;font:10px/1.3 system-ui,sans-serif;padding:4px}
 .ddr-el[data-type=table]{display:grid}
 .ddr-cell{overflow:hidden;padding:2px 3px;min-width:0}
 .ddr-tgrip{position:absolute;z-index:2;display:none}
@@ -298,15 +316,15 @@ const CSS = `
 .ddr-props{display:flex;flex-direction:column;gap:6px;padding:12px}
 .ddr-props label{display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--muted)}
 .ddr-props :is(input:not([type=checkbox]),select,textarea){flex:none;width:122px;color:var(--text)}
-.ddr-props input[type=color]{height:30px;padding:2px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.ddr-props input[type=color]{height:30px;padding:2px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
 .ddr-props input[type=file]{height:auto;padding:4px;font-size:11px}
 .ddr-props p{margin:0 0 4px;color:var(--muted)}
 .ddr-props span{display:flex;gap:4px;flex:none}
 .ddr-props span input{width:92px!important}
 .ddr-tablebar{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:4px}
-.ddr-tablebar button{min-height:28px;padding:2px 4px;font-size:11.5px;border:1px solid var(--line);border-radius:6px;background:var(--surface);cursor:pointer}
+.ddr-tablebar button{min-height:28px;padding:2px 4px;font-size:11.5px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);cursor:pointer}
 .ddr-tablebar button:hover{background:var(--hover)}
-.ddr-props span button{width:26px;border:1px solid var(--line);border-radius:6px;background:var(--surface);cursor:pointer}
+.ddr-props span button{width:26px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);cursor:pointer}
 
 .ddr-status{display:flex;align-items:center;gap:8px;padding:4px 8px 4px 12px;background:var(--surface);border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
 .ddr-status [data-id=status]{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -320,12 +338,12 @@ const CSS = `
 .ddr-subdialog[open]{display:flex;flex-direction:column}
 .ddr-subdialog form{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--surface)}
 .ddr-subdialog form span{flex:1}
-.ddr-subdialog form button,.ddr-subedit{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer}
+.ddr-subdialog form button,.ddr-subedit{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--text);cursor:pointer}
 .ddr-subdialog .ddr-primary{background:var(--a);border-color:var(--a);color:var(--a-text);font-weight:600}
 .ddr-subdialog>div{flex:1;min-height:0;border:0;border-radius:0}
 .ddr-preview form{display:flex;align-items:center;gap:12px}
 .ddr-preview [role=status]{color:var(--muted)}
-.ddr-sheet{position:relative;display:grid;place-items:center;width:min(92vw,900px);height:80vh;margin-top:8px;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#e5e7eb}
+.ddr-sheet{position:relative;display:grid;place-items:center;width:min(92vw,900px);height:80vh;margin-top:8px;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:#e5e7eb}
 .ddr-sheet p{margin:0;padding:16px;max-width:60ch;color:#475569;text-align:center;white-space:pre-wrap}
 .ddr-sheet p.err{color:#dc2626}
 .ddr-sheet iframe{position:absolute;inset:0;width:100%;height:100%;border:0;visibility:hidden}
@@ -800,7 +818,7 @@ function codeSketch(e, text) {
   return svg
 }
 
-export function createDesigner(root, { template, onChange, preview, lang = 'en', theme = 'light', fonts = [], fontBase, fields = [], data, simple = false, hide = [], messages = {} } = {}) {
+export function createDesigner(root, { template, onChange, onState, preview, lang = 'en', theme = 'light', fonts = [], fontBase, fields = [], data, simple = false, hide = [], messages = {} } = {}) {
   let tpl, sel = [], editing = null, cancelled = false, clip = [], zoom = 1, snap = true, activeCol = 0, activeRow = 0
   let history = [], at = -1
   const images = [] // data URIs, kept out of the undo snapshots
@@ -811,7 +829,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
   const hidden = new Set([...(simple ? SIMPLE : []), ...hide])
   const off = [] // undoes what reaches outside the designer, for destroy()
   const listen = (target, type, fn) => { target.addEventListener(type, fn); off.push(() => target.removeEventListener(type, fn)) }
-  const fontList = { ...FONTS, ...Object.fromEntries(fonts.map(f => [f, `'${f}',sans-serif`])) }
+  const fontList = { ...FONTS, ...Object.fromEntries(fonts.filter(f => !FONTS[f]).map(f => [f, `'${f}',sans-serif`])) }
   // Great Vibes comes with a regular face only
   const faces = fontBase ? BUNDLED.flatMap(f => FACES.slice(0, f === 'Great Vibes' ? 1 : 4).map(([face, weight, style]) =>
     `@font-face{font-family:'${f}';font-weight:${weight};font-style:${style};src:url("${fontBase}${f.replaceAll(' ', '')}-${face}.ttf")}`)).join('') : ''
@@ -850,7 +868,7 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       group('Text', insert('text', 'text', 'Text box')) +
       group('Table', `<input data-id="rows" type="number" min="1" max="50" value="2" title="${L('Rows')}" aria-label="${L('Table rows')}">×<input data-id="cols" type="number" min="1" max="20" value="3" title="${L('Columns')}" aria-label="${L('Table columns')}">` + insert('table', 'table', 'Table')) +
       group('Illustrations', tile('picture', 'image', 'Picture', 'Insert a picture from this device') + insert('rect', 'rect', 'Rectangle') + insert('line', 'line', 'Line') + insert('chart', 'chart', 'Chart') + insert('barcode', 'barcode', 'Barcode')) +
-      group('Report', insert('subreport', 'subreport', 'Sub-report')) +
+      group('Report', insert('subreport', 'subreport', 'Sub-report') + insert('crosstab', 'crosstab', 'Crosstab')) +
       group('Data', `<select data-id="field" title="${L('Insert a field into the selected text')}" aria-label="${L('Insert field')}"></select>`),
     Layout:
       group('Page',
@@ -862,13 +880,14 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
         swatch('', '▰', 'Page colour').replace('data-prop=""', 'data-page="background"') + ib('noBackground', 'noFill', 'No page colour') +
         tile('backgroundImage', 'image', 'Picture', 'Use a picture as the page background') + ib('noBackgroundImage', 'delete', 'Remove the background picture')) +
       group('Grouping', `<label>${L('Sort by')}<input data-tpl="sortBy" type="text" placeholder="${L('row field, -field for descending')}" title="${L('row field, -field for descending')}"></label>` +
-        `<label>${L('Group by')}<input data-tpl="groupBy" type="text" placeholder="${L('row field, or up to three: region, city')}" title="${L('row field, or up to three: region, city')}"></label><label><input data-tpl="groupPageBreak" type="checkbox">${L('New page per group')}</label>` +
+        `<label>${L('Group by')}<input data-tpl="groupBy" type="text" placeholder="${L('row field, or up to six: region, city')}" title="${L('row field, or up to six: region, city')}"></label><label><input data-tpl="groupPageBreak" type="checkbox">${L('New page per group')}</label>` +
         `<label title="${L('Excel (xlsx, xls): a worksheet for each group of the first Group by field')}"><input data-tpl="sheetPerGroup" type="checkbox">${L('A sheet per group')}</label>`) +
       group('Data', `<label>${L('Rows key')}<input data-tpl="dataKey" type="text"></label><label title="${L('Thousands separator')}">1<input data-tpl="thousands" type="text" style="width:34px" placeholder="," aria-label="${L('Thousands separator')}">000</label>` +
         `<label title="${L('No thousands separator')}"><input data-id="nothousands" type="checkbox">${L('No thousands separator')}</label>` +
         `<label title="${L('Decimal sign')}">0<input data-tpl="decimal" type="text" style="width:34px" placeholder="." aria-label="${L('Decimal sign')}">00</label>` +
         `<label>${L('Dates in')}<select data-tpl="locale"><option value="">${L('English')}</option><option value="id">${L('Indonesian')}</option></select></label>` +
-        `<label>${L('CSV separator')}<select data-tpl="csvSeparator"><option value="">,</option><option value=";">;</option><option value="&#9;">${L('Tab')}</option></select></label>`),
+        `<label>${L('CSV separator')}<select data-tpl="csvSeparator"><option value="">,</option><option value=";">;</option><option value="&#9;">${L('Tab')}</option></select></label>` +
+        `<label title="${L('PDF/A for archiving: every font in the file (Helvetica, Times and Courier print as Roboto and Lora)')}"><input data-tpl="pdfA" type="checkbox">PDF/A</label>`),
     View:
       group('Show', `<label><input data-id="ruler" type="checkbox" checked>${L('Ruler')}</label><label title="${L('Snap to the edges of other elements while dragging (hold Alt to turn off)')}"><input data-id="snap" type="checkbox" checked>${L('Snap')}</label>`),
   }
@@ -1561,6 +1580,24 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     const paper = Object.keys(PAPER).find(k => PAPER[k][0] === short && PAPER[k][1] === long) ?? L('Custom')
     $('[data-id=status]').textContent = `${paper} · ${p.width} × ${p.height} pt` + (sel.length === 1 ? ` · ${L(sel[0].type)} ${sel[0].w} × ${sel[0].h}` : sel.length ? ` · ${sel.length} ${L('selected')}` : '')
     $('[data-id=side]').textContent = L('Properties') + (sel.length === 1 ? ' · ' + L(sel[0].type) : '')
+    onState?.(state())
+  }
+
+  // what a toolbar of the host's own shows: as the ribbon has it
+  function state() {
+    const on = cmd => $(`[data-cmd="${cmd}"]`)
+    return {
+      selected: sel.length,
+      type: sel.length === 1 ? sel[0].type : null,
+      bold: on('bold').getAttribute('aria-pressed') === 'true',
+      italic: on('italic').getAttribute('aria-pressed') === 'true',
+      underline: on('underline').getAttribute('aria-pressed') === 'true',
+      align: $$('[data-cmd^="align:"]').find(b => b.getAttribute('aria-pressed') === 'true')?.dataset.cmd.slice(6) ?? null,
+      undo: !on('undo').disabled,
+      redo: !on('redo').disabled,
+      paste: !on('paste').disabled,
+      zoom,
+    }
   }
 
   function draw() {
@@ -1755,6 +1792,8 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
       const bands = Object.entries(e.report?.bands ?? {}).filter(([, b]) => b?.elements?.length).map(([k, b]) => `${L(k)} (${b.elements.length})`)
       n.textContent = `${L('Sub-report')}: ${e.data || '?'}\n${bands.join(' · ') || L('Edit sub-report…')}`
       n.ondblclick = () => editSubreport(e)
+    } else if (e.type === 'crosstab') { // what it counts: rows × columns, and the value in its cells
+      n.textContent = `${L('Crosstab')}: ${e.rowField || '?'} × ${e.columnField || '?'}\n${e.measure || 'count()'}`
     } else { // a type this designer does not know: keep it, show what it is
       n.dataset.unknown = 1
       n.textContent = e.type
@@ -1991,6 +2030,8 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     row(label, box)
   }
 
+  // 'ribbon' leaves out all of it, for a host with a toolbar of its own (see run)
+  if (hidden.has('ribbon')) for (const el of $$('.ddr-tabs, .ddr-panel')) el.style.display = 'none'
   // leave out what the host hid; a name matches a tab, a group (Tab.Group for one tab's), a command or a setting
   for (const name of hidden) {
     const [a, b] = name.split('.').map(s => globalThis.CSS.escape(s))
@@ -2013,6 +2054,10 @@ export function createDesigner(root, { template, onChange, preview, lang = 'en',
     setTemplate: t => load(t),
     setFields: list => { fields = Array.isArray(list) ? list.map(String) : []; fillFields() },
     setData: d => { data = d; draw() },
+    // run does what a ribbon button does, for a toolbar of the host's own: 'bold', 'align:center', 'add:table', 'zoom:fit'
+    run: cmd => { const name = String(cmd).split(':')[0]; if (!Object.hasOwn(commands, name)) throw new Error('ddreport: no command ' + name); run(String(cmd)); sync() },
+    commands: () => Object.keys(commands).filter(c => !hidden.has(c)),
+    getState: () => state(),
     // destroy empties the element and lets go of the document, for a page that removes the designer
     destroy: () => {
       for (const undo of off.splice(0)) undo()

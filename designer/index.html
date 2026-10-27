@@ -38,6 +38,21 @@
   #datapanel p { margin: 0 0 6px; color: var(--muted) }
   textarea { display: block; width: min(100%, 760px); height: 150px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: 12px/1.5 ui-monospace, Consolas, monospace }
   #designer { flex: 1; min-height: 0; border: 0; border-radius: 0 }
+  #mine { width: min(92vw, 560px); padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text) }
+  #mine::backdrop { background: #0006 }
+  #mine > * { margin: 0; padding: 12px 14px }
+  #mine .head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); font-weight: 700 }
+  #mine ul { list-style: none; max-height: 50vh; overflow: auto }
+  #mine li { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line) }
+  #mine li b { flex: 1; min-width: 140px; overflow-wrap: anywhere }
+  #mine li small { display: block; color: var(--muted); font-weight: 400 }
+  #mine li button { height: 28px; padding: 0 9px }
+  #mine-empty { color: var(--muted) }
+  #mine li ul { flex-basis: 100%; margin: 0; padding: 0 0 0 14px; list-style: none }
+  #mine li li { border: 0; padding: 2px 0; color: var(--muted) }
+  #mine li li span { flex: 1 }
+  #mine-add { display: flex; gap: 6px; border-top: 1px solid var(--line) }
+  #mine-add input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; font: inherit; color: inherit; border: 1px solid var(--line); border-radius: 7px; background: var(--bg) }
   @media (max-width: 640px) {
     header { padding: 6px 8px }
     .brand span { display: none }
@@ -53,9 +68,10 @@
   </div>
   <button id="new" type="button" data-t>New</button>
   <select id="templates" aria-label="Start from a ready-made template"><option value="" data-t>Templates…</option></select>
+  <button id="mytemplates" type="button" data-t>My templates</button>
   <button id="open" type="button" data-t>Open…</button>
   <button id="save" type="button" class="primary" data-t>Save template</button>
-  <input id="file" type="file" accept=".json,application/json" hidden>
+  <input id="file" type="file" accept=".json,.jrxml,application/json" hidden>
   <div class="seg" role="group" aria-label="Export">
     <span data-t>Export</span>
     <button type="button" data-export="pdf">PDF</button>
@@ -63,6 +79,7 @@
     <button type="button" data-export="xlsx">XLSX</button>
     <button type="button" data-export="xls">XLS</button>
     <button type="button" data-export="csv">CSV</button>
+    <button type="button" data-export="jrxml" title="JasperReports">JRXML</button>
   </div>
   <button id="datatoggle" type="button" aria-expanded="false" aria-controls="datapanel" data-t>Sample data</button>
   <label class="switch" title="Fewer tools, each with its name"><input id="simple" type="checkbox"> <span data-t>Simple mode</span></label>
@@ -77,6 +94,12 @@
     <textarea id="data" spellcheck="false"></textarea>
   </div>
 </details>
+<dialog id="mine" aria-labelledby="mine-title">
+  <form method="dialog" class="head"><span id="mine-title" data-t>My templates</span><button data-t>Close</button></form>
+  <ul id="mine-list"></ul>
+  <p id="mine-empty" data-t>No templates of your own yet. Design a report, then save it here with a name.</p>
+  <form id="mine-add"><input id="mine-name" required maxlength="100" aria-label="Name"><button class="primary" data-t>Save as new</button></form>
+</dialog>
 <output id="msg" role="status"></output>
 <div id="designer"></div>
 <script type="module">
@@ -91,9 +114,15 @@ const ID = {
   'Sample data for preview and export (JSON)': 'Data contoh untuk pratinjau dan ekspor (JSON)', 'Sample data': 'Data contoh',
   'The fields here are what the {{placeholders}} in the report are filled with.': 'Field di sini adalah isi untuk {{placeholder}} di laporan.',
   'Sample data is not valid JSON: ': 'Data contoh bukan JSON yang sah: ',
-  'Could not load the template: ': 'Template tidak bisa dimuat: ', 'Not a valid template: ': 'Bukan template yang sah: ', 'Export failed: ': 'Ekspor gagal: ',
+  'Could not load the template: ': 'Template tidak bisa dimuat: ', 'Not a valid template: ': 'Bukan template yang sah: ', 'Opened. Not everything came over: ': 'Terbuka. Tidak semuanya ikut: ', 'Export failed: ': 'Ekspor gagal: ',
   'Replaced. Ctrl+Z or the Undo button brings the previous report back.': 'Diganti. Ctrl+Z atau tombol Urungkan mengembalikan laporan sebelumnya.',
   'Could not save in this browser (storage is full or blocked). Use "Save template" to keep your work.': 'Tidak bisa menyimpan di browser ini (penyimpanan penuh atau diblokir). Pakai "Simpan template" agar pekerjaan tidak hilang.',
+  'My templates': 'Template saya', 'Close': 'Tutup', 'Save as new': 'Simpan sebagai baru', 'Name of the new template': 'Nama template baru',
+  'No templates of your own yet. Design a report, then save it here with a name.': 'Belum ada template sendiri. Rancang laporan, lalu simpan di sini dengan nama.',
+  'Open': 'Buka', 'Update': 'Perbarui', 'Rename': 'Ganti nama', 'Delete': 'Hapus', 'History': 'Riwayat', 'No earlier versions yet.': 'Belum ada versi sebelumnya.',
+  'An earlier version is open. Update saves it as the current one.': 'Versi sebelumnya terbuka. Perbarui menyimpannya sebagai versi sekarang.', 'Saved: ': 'Tersimpan: ', 'Updated: ': 'Diperbarui: ', 'Deleted: ': 'Dihapus: ',
+  'Could not save: ': 'Tidak bisa menyimpan: ', 'Could not load my templates: ': 'Template saya tidak bisa dimuat: ',
+  'Replace it with the report now in the designer?': 'Ganti dengan laporan yang sekarang ada di designer?', 'Delete this template for good?': 'Hapus template ini selamanya?', 'New name:': 'Nama baru:',
   'Simple mode': 'Mode mudah', 'Fewer tools, each with its name': 'Lebih sedikit alat, masing-masing dengan namanya',
 }
 const L = s => (lang === 'id' && ID[s]) || s
@@ -148,15 +177,18 @@ function fieldNames() {
   return [...names]
 }
 
+// a server with DDREPORT_TOKEN wants it: open the page as /#token=...
+function auth() {
+  const token = new URLSearchParams(location.hash.slice(1)).get('token')
+  return token ? { Authorization: 'Bearer ' + token } : {}
+}
+
 // rendering works when this page is served by `ddreport -serve`
 async function render(template, format) {
   let data
   try { data = JSON.parse($('data').value || 'null') } catch (err) { throw new Error(L('Sample data is not valid JSON: ') + err.message) }
   let res
-  // a server with DDREPORT_TOKEN wants it: open the page as /#token=...
-  const token = new URLSearchParams(location.hash.slice(1)).get('token')
-  const headers = token ? { Authorization: 'Bearer ' + token } : {}
-  try { res = await fetch('render?format=' + format, { method: 'POST', headers, body: JSON.stringify({ template, data }) }) }
+  try { res = await fetch('render?format=' + format, { method: 'POST', headers: auth(), body: JSON.stringify({ template, data }) }) }
   catch { throw new Error(L(NO_SERVER)) }
   // a plain file server has no /render and answers with a page of its own
   if (res.status === 404 || res.status === 405 || res.status === 501) throw new Error(L(NO_SERVER))
@@ -176,6 +208,14 @@ function download(blob, name) {
 const SIMPLE = 'ddreport-simple'
 $('simple').checked = stored(SIMPLE) !== 'off'
 $('simple').parentNode.title = L($('simple').parentNode.title)
+// every font the server can print (DDREPORT_FONTS adds more), drawn on the page from its fonts/
+const families = await fetch('fonts.json').then(r => r.ok ? r.json() : {}).catch(() => ({}))
+const WEIGHT = { Regular: '400;font-style:normal', Bold: '700;font-style:normal', Italic: '400;font-style:italic', BoldItalic: '700;font-style:italic' }
+document.head.append(Object.assign(document.createElement('style'), {
+  textContent: Object.entries(families).flatMap(([name, faces]) => faces.map(face =>
+    `@font-face{font-family:'${name}';font-weight:${WEIGHT[face]};src:url("fonts/${name.replaceAll(' ', '')}-${face}.ttf")}`)).join(''),
+}))
+const fonts = Object.keys(families).sort()
 let designer
 function make() {
   const template = designer?.getTemplate() ?? saved ?? undefined
@@ -185,6 +225,7 @@ function make() {
     theme: 'auto',
     simple: $('simple').checked,
     fontBase: 'fonts/', // served by ddreport -serve
+    fonts,
     fields: fieldNames(),
     data: sample(),
     template,
@@ -202,9 +243,121 @@ const replace = t => {
 
 $('new').onclick = () => replace()
 
+// a template with its sample data replaces the report
+function use(template, data) {
+  replace(template)
+  if (data === undefined) return
+  $('data').value = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
+  store(DATA, $('data').value)
+  designer.setFields(fieldNames())
+  designer.setData(sample())
+}
+
+// my templates: the user's own, beside the ready-made ones. `ddreport -serve` keeps them
+// in its -templates folder; a page without that server keeps them in this browser.
+const MINE = 'ddreport-mine'
+const newId = () => Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
+let mine = [], onServer = false
+function local() {
+  let list
+  try { list = JSON.parse(stored(MINE)) } catch {}
+  // the same id every time, so moving them to the server again after a failure makes no copies
+  return Array.isArray(list) ? list.map((m, i) => ({ id: `${(m.updated || 0).toString(36)}-${i}`, ...m })) : []
+}
+async function call(method, path = '', body) {
+  const res = await fetch('mine' + path, { method, headers: auth(), body })
+  if (!res.ok) throw Object.assign(new Error(await res.text()), { status: res.status })
+  return res
+}
+// the list as it is now: on the server, others may have changed it
+async function loadMine() {
+  try {
+    mine = await (await call('GET')).json()
+    onServer = true
+    // the ones saved in this browser before the server kept them move to it once
+    const moved = local()
+    for (const m of moved) await call('PUT', '/' + m.id, JSON.stringify(m))
+    if (moved.length) {
+      try { localStorage.removeItem(MINE) } catch {}
+      const ids = new Set(moved.map(m => m.id)) // one moved before a failure is on the server already
+      mine = [...mine.filter(m => !ids.has(m.id)), ...moved]
+    }
+  } catch (err) {
+    // no answer, or a plain file server without /mine: this browser keeps them
+    if (!err.status || [404, 405, 501].includes(err.status)) { if (!onServer) mine = local(); return }
+    onServer = true // the server is there but refused (a wrong token, say): saving there fails and says so
+    say(L('Could not load my templates: ') + err.message)
+  }
+}
+// keep saves the list as it is after a change (entry, or its removal), on the server or in this browser
+async function keep(next, entry, method, done) {
+  try {
+    if (onServer) await call(method, '/' + entry.id, method === 'PUT' ? JSON.stringify(entry) : undefined)
+    else if (!store(MINE, JSON.stringify(next))) return showMine()
+    mine = next
+    say(done)
+  } catch (err) { say(L('Could not save: ') + err.message) }
+  showMine()
+}
+const snapshot = () => ({ template: designer.getTemplate(), data: $('data').value, updated: Date.now() })
+function showMine() {
+  const when = new Intl.DateTimeFormat(lang, { dateStyle: 'medium', timeStyle: 'short' })
+  const button = (text, run) => Object.assign(document.createElement('button'), { type: 'button', textContent: L(text), onclick: run })
+  // the list with entry changed to changed
+  const swap = (m, changed) => [mine.map(x => x === m ? changed : x), changed, 'PUT']
+  $('mine-list').replaceChildren(...mine.map(m => {
+    const li = document.createElement('li'), b = document.createElement('b'), small = document.createElement('small')
+    small.textContent = when.format(m.updated)
+    b.append(String(m.name), small)
+    li.append(b,
+      button('Open', () => { $('mine').close(); use(m.template, m.data) }),
+      button('Update', () => { if (confirm(m.name + '\n' + L('Replace it with the report now in the designer?'))) keep(...swap(m, { ...m, ...snapshot() }), L('Updated: ') + m.name) }),
+      button('Rename', () => {
+        const name = prompt(L('New name:'), m.name)?.trim()
+        if (name) keep(...swap(m, { ...m, name }), L('Saved: ') + name)
+      }),
+      button('Delete', () => { if (confirm(m.name + '\n' + L('Delete this template for good?'))) keep(mine.filter(x => x !== m), m, 'DELETE', L('Deleted: ') + m.name) }))
+    // the server keeps the versions each save replaced: open one, then Update makes it the current one again
+    if (onServer) li.append(button('History', async () => {
+      if (li.querySelector('ul')) return li.querySelector('ul').remove()
+      const ul = document.createElement('ul')
+      try {
+        const versions = await (await call('GET', `/${m.id}/history`)).json()
+        if (!versions.length) ul.append(Object.assign(document.createElement('li'), { textContent: L('No earlier versions yet.') }))
+        for (const v of versions) {
+          const row = document.createElement('li'), label = document.createElement('span')
+          label.textContent = `${v.updated ? when.format(v.updated) : ''} · ${v.name}`
+          row.append(label, button('Open', async () => {
+            try {
+              const old = await (await call('GET', `/${m.id}/history/${v.version}`)).json()
+              $('mine').close()
+              use(old.template, old.data)
+              say(L('An earlier version is open. Update saves it as the current one.'))
+            } catch (err) { say(L('Could not load my templates: ') + err.message) }
+          }))
+          ul.append(row)
+        }
+      } catch (err) { say(L('Could not load my templates: ') + err.message) }
+      li.append(ul)
+    }))
+    return li
+  }))
+  $('mine-empty').hidden = mine.length > 0
+}
+$('mine-name').placeholder = L('Name of the new template')
+$('mytemplates').onclick = async () => { $('mine').showModal(); showMine(); await loadMine(); showMine() }
+$('mine-add').onsubmit = async e => {
+  e.preventDefault()
+  const name = $('mine-name').value.trim()
+  if (!name) return
+  const entry = { id: newId(), name, ...snapshot() }
+  await keep([...mine, entry], entry, 'PUT', L('Saved: ') + name)
+  if (mine.includes(entry)) $('mine-name').value = ''
+}
+
 // ready-made templates, each with its own sample data
 fetch('templates/index.json').then(r => r.json()).then(list => {
-  $('templates').append(...list.map(t => Object.assign(new Option(t.name, t.id), { title: t.description })))
+  $('templates').append(...list.map(t => Object.assign(new Option(t.name, t.id), { title: t.description + (t.author ? ' · ' + t.author : '') })))
 }).catch(() => { $('templates').hidden = true })
 $('templates').onchange = async () => {
   const id = $('templates').value
@@ -212,18 +365,25 @@ $('templates').onchange = async () => {
   if (!id) return
   try {
     const { template, data } = await (await fetch(`templates/${id}.json`)).json()
-    replace(template)
-    $('data').value = JSON.stringify(data, null, 2)
-    store(DATA, $('data').value)
-    designer.setFields(fieldNames())
-    designer.setData(sample())
+    use(template, data)
   } catch (err) { say(L('Could not load the template: ') + err.message) }
 }
 $('open').onclick = () => $('file').click()
 $('file').onchange = async () => {
-  try { replace(JSON.parse(await $('file').files[0].text())) }
-  catch (err) { say(L('Not a valid template: ') + err.message) }
+  const file = $('file').files[0]
   $('file').value = ''
+  try {
+    if (!/\.jrxml$/i.test(file.name)) return replace(JSON.parse(await file.text()))
+    // a JasperReports report: the server reads it, and says what did not come over
+    let res
+    try { res = await fetch('import/jrxml', { method: 'POST', headers: auth(), body: await file.text() }) }
+    catch { throw new Error(L(NO_SERVER)) }
+    if (res.status === 404 || res.status === 405 || res.status === 501) throw new Error(L(NO_SERVER))
+    if (!res.ok) throw new Error(await res.text())
+    const { template, notes } = await res.json()
+    replace(template)
+    if (notes.length) say(L('Opened. Not everything came over: ') + notes.join(' · '))
+  } catch (err) { say(L('Not a valid template: ') + err.message) }
 }
 $('save').onclick = () => download(new Blob([JSON.stringify(designer.getTemplate(), null, 2)], { type: 'application/json' }), 'report.json')
 for (const button of document.querySelectorAll('[data-export]')) {
