@@ -1,5 +1,44 @@
 # Riwayat versi
 
+## Belum dirilis
+
+**Designer**
+- **My templates** di aplikasi standalone: simpan, buka, perbarui, ganti nama, dan hapus template sendiri beserta data contohnya, di samping template siap pakai. `ddreport -serve` menyimpannya di folder `-templates` (default `ddreport-templates`, di Docker `/data`), satu file JSON per template, dengan 20 versi sebelumnya yang bisa dibuka lewat tombol **History**. Tanpa server, template disimpan di browser, dan dipindah ke server saat server tersedia.
+- `theme: 'inherit'`: designer memakai warna, font, dan sudut dari variabel Bootstrap (`--bs-*`), termasuk dark mode Bootstrap. Variabel CSS baru `--r` (sudut) dan `--font` (font antarmuka).
+- Toolbar sendiri: `hide: ['ribbon']`, `designer.run(perintah)`, `designer.commands()`, `designer.getState()`, dan opsi `onState`. Contoh halaman Bootstrap lengkap: `designer/bootstrap.html`, juga di `/bootstrap.html` pada `ddreport -serve`.
+- Insert > **Crosstab**, centang **PDF/A** di tab Layout, dan band grup sampai tingkat enam.
+- Aplikasi standalone: semua font di `DDREPORT_FONTS` muncul di menu font dan tergambar di kanvas; **Open…** menerima `.jrxml`, dan **Export > JRXML**.
+
+**Mesin cetak**
+- Elemen **crosstab** (tabel silang / pivot): satu baris per nilai `rowField`, satu kolom per nilai `columnField`, setiap sel `measure` (`sum(total):0`, `count()`, `avg(x):2`, ...), lalu total baris, kolom, dan keseluruhan. Bekerja di semua format, per grup, dan dari daftar di data.
+- Grouping sampai enam tingkat (sebelumnya tiga): `groupHeader4`–`groupHeader6` dan `groupFooter4`–`groupFooter6`, juga di schema dan sub-laporan.
+- Arab, Ibrani, dan Thai di PDF: huruf Arab disambung (termasuk lam-alif dan huruf Persia), teks kanan-ke-kiri disusun dari kanan dengan angka dan kata Latin tetap kiri-ke-kanan, dan HTML diberi `dir="auto"`.
+- Laporan besar: benchmark `go test -bench Large` (10 000 dan 100 000 baris, semua format, hasilnya di README). Memori sekitar 30% lebih kecil untuk PDF dan 40% untuk HTML, teks tanpa placeholder tidak lagi diproses, dan laporan tanpa `{{pages}}` atau band "halaman terakhir" disusun sekali, bukan dua kali.
+
+**Excel dan JasperReports**
+- XLSX dan XLS membawa sel yang digabung ke bawah (`rowSpan`), juga bersama gabungan ke kanan. Sel tabel setinggi beberapa baris tidak lagi menarik baris di sebelahnya ke satu baris.
+- XLSX membawa gambar dan barcode/QR sebagai gambar, di baris dan kolom yang sejajar dengannya; baris itu setinggi gambarnya. Gambar dari data (`{{photo}}`) ikut per baris.
+- Ekspor ke `.jrxml` JasperReports 6 (`ddreport -format jrxml`, `ToJRXML`, format `"jrxml"` di semua wrapper): teks, tabel, gambar, kotak, garis, barcode/QR, grup, agregat, nomor halaman, serta format angka dan tanggal, dengan ekspresi Groovy. Yang tidak punya padanan dicatat di awal file.
+- Impor `.jrxml` menjadi template (`ddreport -from-jrxml`, `FromJRXML`, `POST /import/jrxml`), dengan catatan tentang apa yang tidak ikut.
+
+**PDF**
+- PDF/A-2b: `"pdfA": true` di template. Semua font disematkan (Helvetica, Times, dan Courier dicetak dengan Roboto dan Lora), warna sRGB, metadata XMP, dan ID dokumen.
+- Tanda tangan digital: `DDREPORT_SIGN_CERT` / `DDREPORT_SIGN_KEY` (PEM, RSA atau ECDSA) dan `DDREPORT_SIGN_REASON` menandatangani setiap PDF, juga dari `-serve`, Docker, Java, dan Node.js; `ddreport.SignPDF` dari Go. Tanda tangan tidak terlihat, `adbe.pkcs7.detached` SHA-256.
+
+**Font**
+- `node fontpack/download.mjs`: paket 100 font tambahan dari Google Fonts (lisensi OFL atau Apache) untuk `DDREPORT_FONTS`, termasuk Amiri dan Noto Naskh Arabic untuk Arab dan Sarabun untuk Thai.
+- Font dari `AddFonts` dan `DDREPORT_FONTS` baru dibaca saat laporan memakainya; dengan paket 100 font, satu render lewat binary sekitar dua kali lebih cepat. File yang tidak bisa dibaca tetap menghentikan start dengan pesan error. `Family.Faces()` menyebut face yang ada tanpa membaca file; kode yang membaca `Families[x].Regular` langsung mendapat `nil` sampai font itu dipakai.
+- `/fonts/` pada `-serve` juga menyajikan font dari folder `fonts/` di dalam `DDREPORT_FONTS`, dan `GET /fonts.json` mendaftar semua font.
+
+**Server dan keamanan**
+- Tanpa `DDREPORT_TOKEN`, `ddreport -serve` hanya melayani `localhost` dan alamat IP: situs yang mengarahkan namanya ke mesin Anda (DNS rebinding) tidak bisa memakai server itu atau My templates. Untuk nama domain, isi `DDREPORT_TOKEN`.
+- Endpoint baru: `GET /mine`, `PUT` / `DELETE /mine/{id}`, `GET /mine/{id}/history[/{versi}]`, `POST /import/jrxml`, `GET /fonts.json`. Semuanya kecuali `/fonts.json` memakai token yang sama dengan `/render`.
+- Flag baru: `-templates folder` dan `-from-jrxml`.
+
+**Template**
+- Galeri template komunitas: template baru lewat pull request, dengan `author` dan `url` di `designer/templates/index.json`; test memeriksa setiap template di semua format. Galeri website menampilkan pembuatnya dan cara mengirim template.
+- Field template baru di JSON Schema: `pdfA`, band grup tingkat 4–6, dan elemen `crosstab` (`rowField`, `columnField`, `measure`, `totalLabel`).
+
 ## 0.3.0 · 26 Okt 2026
 
 **Server dan Docker**

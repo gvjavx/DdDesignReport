@@ -64,8 +64,34 @@ onBeforeUnmount(() => d.destroy())
 The colours are CSS variables on the element; override them in your own style sheet:
 
 ```css
-#designer.ddr { --a: #e11d48; --a-soft: #ffe4e6; --bg: #fff; --surface: #fff; --line: #e5e7eb; border-radius: 0 }
+#designer.ddr { --a: #e11d48; --a-soft: #ffe4e6; --bg: #fff; --surface: #fff; --line: #e5e7eb; --r: 0; --font: Inter, sans-serif }
 ```
+
+`--r` is the corner radius and `--font` the font of the interface. Every part has a class you can style: `.ddr-tabs` and `.ddr-panel` (the ribbon), `.ddr-b` (its buttons), `.ddr-stage` (around the page), `.ddr-page`, `.ddr-band`, `.ddr-el`, `.ddr-side` and `.ddr-props` (properties), `.ddr-status` (the bar at the bottom). Prefix your rules with `.ddr` (`.ddr .ddr-b { ... }`) so they win over the designer's own.
+
+### Bootstrap, and other frameworks
+
+`theme: 'inherit'` takes the page's theme from Bootstrap's variables: `--bs-primary`, `--bs-body-bg`, `--bs-body-color`, `--bs-border-color`, `--bs-border-radius`, `--bs-body-font-family` and the others. Bootstrap's dark mode (`data-bs-theme="dark"`) follows by itself. With another framework, define those `--bs-*` variables from its own (Tailwind, DaisyUI, Bulma...), or set the designer's variables above.
+
+### A toolbar of your own
+
+Leave the ribbon out with `hide: ['ribbon']`, and drive the designer from your own buttons, menus or keyboard:
+
+```js
+const designer = createDesigner(el, {
+  theme: 'inherit',
+  hide: ['ribbon'],
+  onState: s => {                      // what your toolbar shows
+    boldButton.classList.toggle('active', s.bold)
+    deleteButton.disabled = !s.selected
+  },
+})
+boldButton.onclick = () => designer.run('bold')
+designer.run('add:table')              // 'align:center', 'undo', 'delete', 'zoom:fit', ...
+designer.commands()                    // every command run takes
+```
+
+A whole page made of Bootstrap components is in [`designer/bootstrap.html`](https://github.com/gvjavx/DdDesignReport/blob/main/designer/bootstrap.html); `ddreport -serve` shows it at `/bootstrap.html`.
 
 ## The template format
 

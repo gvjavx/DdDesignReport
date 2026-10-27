@@ -2,7 +2,7 @@
 
 # DdDesignReport
 
-Library reporting dengan designer drag and drop. Template didesain di browser, disimpan sebagai JSON, lalu di-render oleh satu core (Go) menjadi **PDF, HTML, XLSX, XLS, atau CSV** dari backend Go, Java, Kotlin, atau Node.js.
+Library reporting dengan designer drag and drop. Template didesain di browser, disimpan sebagai JSON, lalu di-render oleh satu core (Go) menjadi **PDF, HTML, XLSX, XLS, atau CSV** dari backend Go, Java, Kotlin, Node.js, atau bahasa apa pun lewat HTTP. Template juga bisa dibawa ke dan dari JasperReports (`.jrxml`).
 
 Yang baru di setiap versi: [CHANGELOG.md](CHANGELOG.md). English: [README.en.md](README.en.md).
 
@@ -56,14 +56,16 @@ Paketnya membawa tipe TypeScript dan 13 template siap pakai: `import invoice fro
 | `simple: true` | Mode mudah untuk pemula: alat yang jarang dipakai disembunyikan, setiap tombol diberi nama, band grup baru muncul setelah Group by diisi |
 | `hide: ['Layout', 'chart', 'showIf']` | Sembunyikan per nama: tab (`Layout`), grup ribbon (`Arrange`, atau `Layout.Data` untuk grup di satu tab saja), perintah (`delete`, `preview`), elemen (`chart`, `subreport`), atau pengaturan (`sortBy`, `showIf`). Perintah yang disembunyikan juga tidak jalan lewat pintasan |
 | `messages: { 'Text box': 'Label' }` | Ganti teks antarmuka mana pun, dengan teks Inggrisnya sebagai kunci (daftar lengkapnya `ID` di `designer.js`) |
-| CSS `#designer.ddr { --a: #e11d48 }` | Warna: `--a` (aksen), `--a-soft`, `--bg`, `--surface`, `--text`, `--muted`, `--line`, `--stage`, `--hover` |
+| CSS `#designer.ddr { --a: #e11d48 }` | Warna: `--a` (aksen), `--a-soft`, `--bg`, `--surface`, `--text`, `--muted`, `--line`, `--stage`, `--hover`; sudut `--r` dan font `--font`. Setiap bagian punya class (`.ddr-tabs`, `.ddr-b`, `.ddr-page`, `.ddr-side`, `.ddr-status`, ...) yang bisa ditimpa dengan `.ddr .ddr-b { ... }` |
+| `theme: 'inherit'` | Ikut tema halaman: warna, font, dan sudut dari variabel Bootstrap (`--bs-primary`, `--bs-body-bg`, ...), termasuk dark mode Bootstrap. Framework lain cukup mendefinisikan variabel `--bs-*` itu |
+| `hide: ['ribbon']`, `designer.run('bold')`, `onState` | Toolbar sendiri: ribbon disembunyikan, tombol Anda (Bootstrap atau apa pun) menjalankan perintah designer, dan `onState` memberi tahu tombol mana yang aktif. Daftar perintah: `designer.commands()`. Contoh lengkap dengan komponen Bootstrap: `designer/bootstrap.html` (di `ddreport -serve`: `/bootstrap.html`) |
 
 Designer punya ribbon seperti pengolah kata:
 
 | Tab | Isi |
 | --- | --- |
 | **Home** | Undo/redo, cut/copy/paste/duplicate, font, ukuran, bold/italic/underline, warna teks, highlight, rata kiri/tengah/kanan/kanan-kiri, rata atas/tengah/bawah, spasi baris, wrap, perataan dan distribusi elemen, urutan depan/belakang |
-| **Insert** | Text box, tabel (baris × kolom), gambar, kotak, garis, chart, barcode/QR, field data (nama field diambil dari data contoh) |
+| **Insert** | Text box, tabel (baris × kolom), gambar, kotak, garis, chart, barcode/QR, sub-laporan, crosstab, field data (nama field diambil dari data contoh) |
 | **Layout** | Ukuran kertas (A4, A5, Letter, Legal, F4), orientasi, margin per sisi, warna dan gambar latar halaman, urutan data, grouping, pemisah angka, bahasa tanggal, pemisah CSV |
 | **View** | Zoom, penggaris, snap, preview |
 
@@ -77,11 +79,23 @@ Pintasan: `Ctrl+Z` / `Ctrl+Y` (mengetik di satu kolom properti dihitung satu lan
 
 Aplikasi standalone juga punya tombol ekspor PDF, HTML, XLSX, XLS, dan CSV, antarmuka Indonesia lewat `?lang=id`, dan **Mode mudah** yang aktif sejak awal (hapus centangnya untuk semua alat). `Esc` saat mengetik membatalkan; **New** dan **Templates…** bisa dibatalkan dengan `Ctrl+Z`.
 
+**My templates** menyimpan template Anda sendiri di samping yang siap pakai: simpan laporan yang sedang dirancang dengan nama, lalu buka, perbarui, ganti nama, atau hapus. Tiap template ikut membawa data contohnya. `ddreport -serve` menyimpannya sebagai satu file JSON per template di folder `ddreport-templates` (ubah dengan `-templates folder`), jadi semua yang membuka server itu melihat daftar yang sama. Setiap kali template ditimpa, versi sebelumnya disimpan (20 terakhir): tombol **History** membuka versi lama, lalu **Update** menjadikannya versi sekarang lagi. Lewat HTTP: `GET /mine`, `PUT /mine/{id}`, `DELETE /mine/{id}`, `GET /mine/{id}/history`, `GET /mine/{id}/history/{versi}`, dengan token yang sama seperti `/render` bila `DDREPORT_TOKEN` diisi. Di image Docker foldernya `/data`: `docker run -v ddreport:/data ...` agar tidak hilang. Halaman yang dibuka tanpa server menyimpannya di browser.
+
 **Preview** (tombol mata di bilah status, atau tab View) membuka hasil cetak HTML dengan data contoh: tiap halaman tampil sebagai lembar terpisah, dipaskan ke lebar jendela, dengan jumlah halamannya. Preview dan ekspor butuh halaman dibuka dari `ddreport -serve`; jika tidak, designer mengatakannya.
 
 ## Template siap pakai
 
 Tiga belas template ada di `designer/templates/` (faktur, laporan penjualan, struk kasir, slip gaji, sertifikat, surat resmi, daftar stok, label produk, kuitansi, surat jalan, rapor siswa, daftar hadir, laporan laba rugi). Tiap file berisi `template` dan `data` contohnya. Di aplikasi standalone pilih lewat **Templates…**; `go test` mencetak semuanya ke setiap format.
+
+## Menyumbang template
+
+Galeri template di website terbuka untuk siapa saja. Untuk menambahkan template Anda:
+
+1. Rancang di designer, lalu **Save template**. Buat file `designer/templates/<id>.json` berisi `name`, `description`, `template`, dan `data` contoh (lihat template yang sudah ada); `id` hanya huruf kecil, angka, dan tanda hubung.
+2. Tambahkan entrinya di `designer/templates/index.json` dengan `author` (nama Anda) dan, bila mau, `url` (`https://`, misalnya profil GitHub Anda).
+3. Kirim pull request. `go test ./...` mencetak template itu ke setiap format dengan data contohnya dan menolak placeholder yang tidak terisi, jadi CI langsung memeriksanya. Setelah digabung, template muncul di galeri website dan di menu **Templates…** aplikasi standalone.
+
+Data contoh harus buatan, bukan data pelanggan sungguhan. Template yang disumbangkan berlisensi MIT seperti sisa repo.
 
 ## Template
 
@@ -115,7 +129,7 @@ Angka yang dikirim sebagai teks (`"18000"`, seperti dari BigDecimal atau kolom n
 
 **Urutan**: `sortBy` mengurutkan baris, misalnya `"kategori, -total"` (`-` untuk menurun). Angka diurutkan sebagai angka.
 
-**Grouping**: isi `groupBy` dengan nama field. Baris dengan nilai yang sama dikumpulkan menjadi satu grup, urut sesuai kemunculan pertama (atau sesuai `sortBy`). Sampai tiga tingkat: `"region, city, store"`; tingkat kedua memakai band `groupHeader2` / `groupFooter2`, tingkat ketiga `groupHeader3` / `groupFooter3`, dan agregat di tiap band menghitung grup tingkatnya. Judul semua grup yang sedang berjalan diulang di atas halaman baru. Di designer, band tingkat 2 dan 3 muncul begitu Group by berisi dua atau tiga field.
+**Grouping**: isi `groupBy` dengan nama field. Baris dengan nilai yang sama dikumpulkan menjadi satu grup, urut sesuai kemunculan pertama (atau sesuai `sortBy`). Sampai enam tingkat: `"region, city, store"`; tingkat kedua memakai band `groupHeader2` / `groupFooter2`, tingkat ketiga `groupHeader3` / `groupFooter3`, dan seterusnya sampai `groupHeader6` / `groupFooter6`, dan agregat di tiap band menghitung grup tingkatnya. Judul semua grup yang sedang berjalan diulang di atas halaman baru. Di designer, band tingkat berikutnya muncul begitu Group by berisi field sebanyak itu.
 
 **Sheet per grup**: `"sheetPerGroup": true` membuat XLSX dan XLS berisi satu sheet untuk setiap grup tingkat pertama, dinamai sesuai grupnya (dengan aturan nama sheet Excel: maksimal 31 huruf, tanpa `[]:*?/\`, tidak kembar). Tiap sheet berisi judul kolom, baris, dan totalnya sendiri. `groupPageBreak` memulai setiap grup di halaman baru.
 
@@ -168,13 +182,43 @@ Di designer: klik sebuah sel, lalu bagian **Sel** di panel kanan mengatur warna,
 
 **Barcode**: elemen `barcode` dengan `format` `qr` (default) atau `code128`. Isinya ada di `text` dan boleh memuat placeholder, misalnya `https://example.com/verify/{{id}}`. `"showText": true` mencetak teksnya di bawah kode. QR code diberi ruang kosong dua modul di sekelilingnya (di dalam kotaknya) agar mudah dipindai di samping elemen lain.
 
-**Sub-laporan**: elemen `subreport` dengan `data` (nama daftar, misalnya `lines`) dan `report` (template dengan band sendiri: `header`, `columnHeader`, `groupHeader`... sampai tiga tingkat, `detail`, `summary`; `footer` tidak dipakai, dan `sortBy` / `groupBy` boleh diisi). Laporan itu dicetak untuk setiap item di dalam kotak elemen, dan band induknya ikut memanjang. Di band `detail` setiap baris mendapat sub-laporannya sendiri, misalnya setiap pesanan dengan rincian per jenisnya. Field induk tetap bisa dipakai di dalamnya (`{{number}}`), `{{index}}` adalah nomor item. Sub-laporan yang lebih panjang dari satu halaman berlanjut tanpa memotong band, dengan header dan judul kolomnya diulang. Di designer: tab Insert > **Sub-report**, lalu **Edit sub-report…** (atau klik ganda) membuka designer untuk band-bandnya, selebar kotaknya.
+**Crosstab (tabel silang)**: elemen `crosstab` dengan `rowField` (satu baris per nilai, misalnya `region`), `columnField` (satu kolom per nilai, misalnya `month`), dan `measure` (isi tiap sel, dihitung dari baris yang punya nilai baris dan kolom itu: `"sum(qty * price):0"`, `"avg(price):2"`, atau `"count()"`, default). Kolom dan baris `Total` (ubah dengan `totalLabel`) serta total keseluruhan ditambahkan otomatis, dan `text` mengisi sel kiri atas. Urutan baris dan kolom mengikuti data, jadi `sortBy` mengaturnya. Di band grup crosstab menghitung baris grup itu, di tempat lain semua baris, atau daftar di `data`. Hasilnya tabel biasa: garis, warna header dan total (`headerFill`, `footerFill`, ...), `stripe`, ganti halaman, dan ekspor XLSX/XLS/CSV berlaku sama. Setiap baris setinggi sepertiga kotak di designer, dan band-nya memanjang. Di designer: tab Insert > **Crosstab**.
 
-**CSV, XLSX, dan XLS**: elemen teks dan sel tabel di band `detail` menjadi kolom. Teks di band lain (judul kolom, subtotal, total) masuk ke kolom yang sejajar dengannya. Di XLSX dan XLS, teks bold tetap bold, `{{f:2}}` menjadi format angka, teks rata tengah atau kanan tetap begitu, sel tabel bergaris tetap bergaris, sel yang digabung ke kanan (`colSpan`) tetap tergabung, dan lebar kolom mengikuti desain. Gabungan ke bawah (`rowSpan`) tidak ikut, dan sel hanya digabung bila kolom yang ditutupnya jelas, agar tidak ada nilai yang tersembunyi; CSV tidak mengenal gabungan. `xls` ditulis sebagai XML Spreadsheet 2003; Excel menampilkan satu peringatan format saat membukanya. CSV diawali BOM UTF-8 agar Excel membaca huruf seperti `é` dengan benar; `"csvSeparator": ";"` untuk Excel berbahasa Indonesia atau Eropa yang memakai `;`. Di CSV, teks yang berawalan seperti formula (`=`, `@`, `+`, `-`) diberi tanda kutip tunggal di depan agar tidak dijalankan spreadsheet.
+**Sub-laporan**: elemen `subreport` dengan `data` (nama daftar, misalnya `lines`) dan `report` (template dengan band sendiri: `header`, `columnHeader`, `groupHeader`... sampai enam tingkat, `detail`, `summary`; `footer` tidak dipakai, dan `sortBy` / `groupBy` boleh diisi). Laporan itu dicetak untuk setiap item di dalam kotak elemen, dan band induknya ikut memanjang. Di band `detail` setiap baris mendapat sub-laporannya sendiri, misalnya setiap pesanan dengan rincian per jenisnya. Field induk tetap bisa dipakai di dalamnya (`{{number}}`), `{{index}}` adalah nomor item. Sub-laporan yang lebih panjang dari satu halaman berlanjut tanpa memotong band, dengan header dan judul kolomnya diulang. Di designer: tab Insert > **Sub-report**, lalu **Edit sub-report…** (atau klik ganda) membuka designer untuk band-bandnya, selebar kotaknya.
+
+**CSV, XLSX, dan XLS**: elemen teks dan sel tabel di band `detail` menjadi kolom. Teks di band lain (judul kolom, subtotal, total) masuk ke kolom yang sejajar dengannya. Di XLSX dan XLS, teks bold tetap bold, `{{f:2}}` menjadi format angka, teks rata tengah atau kanan tetap begitu, sel tabel bergaris tetap bergaris, sel yang digabung ke kanan (`colSpan`) atau ke bawah (`rowSpan`) tetap tergabung, dan lebar kolom mengikuti desain. Sel hanya digabung bila kolom dan baris yang ditutupnya jelas, agar tidak ada nilai yang tersembunyi; CSV tidak mengenal gabungan. Di XLSX, gambar dan barcode/QR ikut sebagai gambar di baris dan kolom yang sejajar dengannya, dan baris itu setinggi gambarnya. Chart hanya ada di PDF dan HTML, dan XLS (format 2003) tidak bisa membawa gambar. `xls` ditulis sebagai XML Spreadsheet 2003; Excel menampilkan satu peringatan format saat membukanya. CSV diawali BOM UTF-8 agar Excel membaca huruf seperti `é` dengan benar; `"csvSeparator": ";"` untuk Excel berbahasa Indonesia atau Eropa yang memakai `;`. Di CSV, teks yang berawalan seperti formula (`=`, `@`, `+`, `-`) diberi tanda kutip tunggal di depan agar tidak dijalankan spreadsheet.
 
 ```json
 { "number": "INV-001", "customer": { "name": "Budi" }, "rows": [{ "name": "Kopi", "qty": 2 }] }
 ```
+
+## PDF/A dan tanda tangan digital
+
+**PDF/A** (untuk arsip jangka panjang): `"pdfA": true` di template, atau centang **PDF/A** di tab Layout. PDF-nya menjadi PDF/A-2b: semua font ada di dalam file (Helvetica, Times, dan Courier dicetak dengan Roboto dan Lora yang dibundel, karena font bawaan PDF tidak disematkan), warna dalam profil sRGB, serta metadata XMP dan ID dokumen yang diminta standar itu. Periksa hasilnya dengan validator seperti [veraPDF](https://verapdf.org) sebelum dipakai untuk arsip resmi.
+
+**Tanda tangan digital**: setiap PDF ditandatangani bila `DDREPORT_SIGN_CERT` dan `DDREPORT_SIGN_KEY` menunjuk sertifikat dan kunci privat (PEM; RSA atau ECDSA). `DDREPORT_SIGN_REASON` mengisi alasannya. Berlaku untuk CLI, `-serve`, Docker, dan wrapper Java/Node.js. Dari Go: `ddreport.SignPDF(pdf, cert, key, reason)`.
+
+```sh
+openssl pkcs12 -in identitas.p12 -nodes -out identitas.pem       # dari .p12 / .pfx
+DDREPORT_SIGN_CERT=identitas.pem DDREPORT_SIGN_KEY=identitas.pem DDREPORT_SIGN_REASON="Faktur asli" ./ddreport -serve 127.0.0.1:8080
+```
+
+Tanda tangannya tidak terlihat di halaman (`adbe.pkcs7.detached`, SHA-256), ditambahkan sebagai pembaruan inkremental sehingga PDF/A tetap PDF/A; Adobe Reader menampilkannya di panel tanda tangan. Agar pembaca mempercayainya, sertifikat harus dari penerbit yang dipercaya pembaca itu (misalnya sertifikat elektronik dari PSrE untuk Indonesia).
+
+## JasperReports
+
+Template bisa dibawa ke dan dari JasperReports (format `.jrxml` versi 6, yang dibuka Jaspersoft Studio 6 dan 7):
+
+```sh
+ddreport -format jrxml < template.json > report.jrxml      # ke JasperReports
+ddreport -from-jrxml < report.jrxml > template.json        # dari JasperReports; catatan ke stderr
+```
+
+Dari kode: `ddreport.ToJRXML(template)` dan `ddreport.FromJRXML(jrxml)` di Go, format `"jrxml"` di `render` Java/Node.js dan di `POST /render?format=jrxml`, serta `POST /import/jrxml` (balasannya `{"template": ..., "notes": [...]}`). Di aplikasi standalone: **Export > JRXML**, dan **Open…** menerima file `.jrxml`.
+
+**Ke JasperReports**: ekspresi ditulis dalam Groovy (`language="groovy"`, jadi Groovy perlu ada di classpath JasperReports). Field baris menjadi `<field>` bertipe `java.lang.Object` dengan path-nya sebagai field description, jadi `JsonDataSource` atas `rows` langsung mengisinya; nilai data di luar baris (`{{title}}`) menjadi parameter. Agregat menjadi variabel yang di-reset per grup, `{{page}}` / `{{pages}}` menjadi nomor halaman, format `:2` dan tanggal ikut, begitu juga teks, tabel (sel per sel), gambar, kotak, garis, barcode/QR (komponen `jr:QRCode` dan `jr:Code128`), grup, urutan, dan opsi band. Chart, sub-laporan, `terbilang`, dan baris berulang tabel dari data tidak punya padanan langsung: semuanya dicatat di komentar di awal file.
+
+**Dari JasperReports**: band, grup (pada field, sampai enam), urutan, static text, text field, kotak, elips (menjadi kotak), garis, frame (isinya dan garisnya), barcode, dan gambar Base64 ikut, dengan font, warna, perataan, dan garis. Ekspresi text field ikut bila terdiri dari teks, field (`$F{}`, `$P{}`), nomor halaman, nomor baris, variabel Sum/Average/Lowest/Highest/Count, dan aritmetika; `pattern` menjadi format angka atau tanggal. Java lain disimpan apa adanya di dalam [kurung] dan dicatat, begitu juga chart, sub-laporan, crosstab, list, dan gambar dari file.
 
 ## Backend
 
@@ -246,7 +290,7 @@ Keduanya memakai `ddreport -stdio`: binary terus berjalan dan membaca permintaan
 docker run -p 8080:8080 -e DDREPORT_TOKEN=rahasia-panjang ghcr.io/gvjavx/ddreport
 ```
 
-Dengan `DDREPORT_TOKEN`, setiap render harus mengirim `Authorization: Bearer <token>` (tanpa itu jawabannya `401`); designer di `/` tetap terbuka, dan preview-nya memakai token dari alamat halaman: `http://server:8080/#token=rahasia-panjang`. Tanpa token, siapa pun yang bisa menjangkau port itu bisa me-render, jadi `ddreport -serve` memberi peringatan bila alamatnya terbuka ke jaringan. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran. Permintaan dari halaman situs lain di browser (header `Origin` yang berbeda) ditolak; panggil dari backend Anda, bukan langsung dari browser.
+Dengan `DDREPORT_TOKEN`, setiap render harus mengirim `Authorization: Bearer <token>` (tanpa itu jawabannya `401`); designer di `/` tetap terbuka, dan preview-nya memakai token dari alamat halaman: `http://server:8080/#token=rahasia-panjang`. Tanpa token, siapa pun yang bisa menjangkau port itu bisa me-render, jadi `ddreport -serve` memberi peringatan bila alamatnya terbuka ke jaringan. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran. Permintaan dari halaman situs lain di browser (header `Origin` yang berbeda) ditolak; panggil dari backend Anda, bukan langsung dari browser. Tanpa token, server hanya melayani alamat `localhost` atau alamat IP (misalnya `http://192.168.1.5:8080`), agar situs lain yang mengarahkan namanya ke mesin Anda (DNS rebinding) tidak bisa membaca atau menghapus My templates; untuk memakai nama domain, isi `DDREPORT_TOKEN`.
 
 PHP (juga di shared hosting yang tidak boleh menjalankan program, selama server ddreport ada di mesin lain):
 
@@ -307,7 +351,16 @@ ddreport.AddFonts(os.DirFS("fonts-saya"))                       // atau:
 ddreport.Families["Inter"] = &ddreport.Family{Regular: regular, Bold: bold}
 ```
 
-Untuk binary (Java, Kotlin, Node.js, `-serve`): set `DDREPORT_FONTS` ke folder berisi file-file itu. Agar namanya muncul di designer, berikan opsi `fonts: ['Inter']`.
+Untuk binary (Java, Kotlin, Node.js, `-serve`): set `DDREPORT_FONTS` ke folder berisi file-file itu. Agar namanya muncul di designer, berikan opsi `fonts: ['Inter']`. Aplikasi standalone (`-serve`) melakukannya sendiri: semua font di `DDREPORT_FONTS` muncul di menu font dan tergambar di kanvas.
+
+**Paket 100 font tambahan.** Sans, serif, display, tulisan tangan, dan monospace dari Google Fonts (lisensi SIL OFL atau Apache), misalnya Inter, Poppins, Merriweather, Oswald, Dancing Script, dan Roboto Mono. Paket ini tidak ikut di binary (sekitar 39 MB). Unduh sekali, lalu arahkan `DDREPORT_FONTS` ke foldernya:
+
+```sh
+node fontpack/download.mjs ddreport-fonts           # daftarnya ada di skrip itu
+DDREPORT_FONTS=ddreport-fonts ./ddreport -serve 127.0.0.1:8080
+```
+
+Font hanya dibaca saat sebuah laporan memakainya, jadi folder berisi 100 font tidak memperlambat laporan yang tidak memakainya.
 
 ### Font non-Latin di PDF
 
@@ -320,6 +373,8 @@ ddreport.FontBold, _ = os.ReadFile("NotoSans-Bold.ttf") // opsional
 
 Untuk binary (Java, Kotlin, Node.js, `-serve`): set `DDREPORT_FONT` dan `DDREPORT_FONT_BOLD` ke path file `.ttf`.
 
+**Arab, Ibrani, dan Thai.** Di PDF, huruf Arab disambung sesuai posisinya (awal, tengah, akhir, sendiri, termasuk lam-alif), teks Arab dan Ibrani disusun dari kanan ke kiri dengan angka dan huruf Latin di dalamnya tetap dari kiri ke kanan, dan tanda vokal Thai duduk di atas atau di bawah hurufnya. Pakai font yang memuat bentuk sambung Arab, misalnya **Amiri** atau **Noto Naskh Arabic** dari paket 100 font, dan **Sarabun** untuk Thai; atur perataan teks Arab ke kanan. HTML diserahkan ke browser, yang menyusun teksnya sendiri. Penyusunan teks lain yang lebih rumit (Devanagari, aksara Jawa) belum didukung di PDF.
+
 ## Rilis
 
 Tag versi menjalankan `.github/workflows/release.yml`: binary untuk setiap sistem dibangun dan dilampirkan ke GitHub Release, paketnya dicoba, lalu diterbitkan ke npm (`ddreport`, `@ddreport/<sistem>`, `ddreport-designer`) dan Maven Central (`io.github.gvjavx:ddreport`). Langkah terakhirnya mengirim image Docker `ghcr.io/gvjavx/ddreport`. GitHub membuat paket ghcr baru sebagai privat, jadi setelah rilis pertama yang membawanya, ubah sekali ke publik di halaman paketnya (*Package settings*, *Change visibility*).
@@ -329,6 +384,22 @@ git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
 npm memakai *trusted publishing*: setiap paket di npmjs.com mencantumkan `gvjavx/DdDesignReport` dan `release.yml` sebagai trusted publisher, sehingga CI menerbitkan tanpa token. Secret `NPM_TOKEN` hanya dibutuhkan untuk versi pertama paket npm yang baru, karena trusted publisher baru bisa dipasang setelah paketnya ada; pasang sementara, lalu hapus lagi setelah trusted publisher-nya terpasang. Untuk Maven dibutuhkan secret `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD` (user token Central Portal), `MAVEN_GPG_PRIVATE_KEY`, dan `MAVEN_GPG_PASSPHRASE`. Registry yang secret-nya belum ada dilewati; versi yang sudah terbit tidak diterbitkan lagi. `node release/build.mjs 0.1.0` membangun semuanya di `dist/` secara lokal.
+
+## Performa
+
+Laporan penjualan siap pakai (berkelompok per kategori, dengan subtotal dan dua chart) dengan data buatan, di laptop Intel Core i7-7500U (2 inti, 2017). Waktunya naik lurus dengan jumlah baris.
+
+| Baris | PDF | HTML | XLSX | XLS | CSV |
+| --- | --- | --- | --- | --- | --- |
+| 10 000 (±250 halaman) | ±1 dtk | ±0,8 dtk | 0,2 dtk | 0,2 dtk | 0,2 dtk |
+| 100 000 (±2 500 halaman) | ±12 dtk, memori puncak ±1 GB | ±7 dtk | 2,2 dtk, ±220 MB | 1,8 dtk | 1,6 dtk |
+
+Untuk PDF dan HTML, seluruh halaman disusun di memori sebelum ditulis, jadi laporan ratusan ribu baris butuh memori sebanding; pecah per periode atau per kelompok bila perlu, atau pakai XLSX/CSV untuk ekspor data mentah. Ukur sendiri:
+
+```sh
+go test -run '^$' -bench Large -benchmem                       # 10 000 baris, semua format
+DDREPORT_BENCH_BIG=1 go test -run '^$' -bench Large -benchmem  # juga 100 000 baris
+```
 
 ## Test
 
