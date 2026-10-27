@@ -4,3 +4,5 @@ java/target/
 /ddreport.exe
 node_modules/
 dist/
+ddreport-fonts/
+ddreport-templates/
