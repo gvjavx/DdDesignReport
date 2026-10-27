@@ -1,6 +1,6 @@
 # Riwayat versi
 
-## Belum dirilis
+## 0.4.0 · 28 Okt 2026
 
 **Designer**
 - **My templates** di aplikasi standalone: simpan, buka, perbarui, ganti nama, dan hapus template sendiri beserta data contohnya, di samping template siap pakai. `ddreport -serve` menyimpannya di folder `-templates` (default `ddreport-templates`, di Docker `/data`), satu file JSON per template, dengan 20 versi sebelumnya yang bisa dibuka lewat tombol **History**. Tanpa server, template disimpan di browser, dan dipindah ke server saat server tersedia.
