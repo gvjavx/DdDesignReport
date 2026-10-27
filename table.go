@@ -275,7 +275,7 @@ func (r *report) grid(e Element, sc scope, measure, once bool) ([]Element, float
 			if hexColor.MatchString(fill) {
 				t.bg = fill // for the spreadsheets, which have no rectangles
 			}
-			t.sides, t.span = edges(x0, x1, y0, y1), cs
+			t.sides, t.span, t.rspan = edges(x0, x1, y0, y1), cs, rs
 			add(o, t)
 			if e.Border <= 0 {
 				continue
@@ -341,6 +341,9 @@ func (r *report) flat(b Band, sc scope, once bool) Band {
 	for _, e := range b.Elements {
 		var parts []Element
 		var h float64
+		if e.Type == "crosstab" {
+			e = r.crosstab(e, sc)
+		}
 		switch e.Type {
 		case "subreport":
 			parts, h = r.subFlat(e, sc, once)

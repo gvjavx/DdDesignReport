@@ -514,18 +514,28 @@ func (s scope) format(v any, spec string) (string, bool) {
 // resolve fills in the placeholders of a text. Something in braces that is
 // not an expression is left as it is.
 func (s scope) resolve(text string) string {
-	return placeholder.ReplaceAllStringFunc(text, func(p string) string {
-		m := placeholder.FindStringSubmatch(p)
-		v, ok := s.eval(m[1])
-		if !ok {
-			return p
+	if !strings.Contains(text, "{{") { // most labels: nothing to fill in
+		return text
+	}
+	// one pass over the placeholders: a long report fills in many thousands
+	var b strings.Builder
+	last := 0
+	for _, m := range placeholder.FindAllStringSubmatchIndex(text, -1) {
+		out, format := text[m[0]:m[1]], ""
+		if m[4] >= 0 {
+			format = text[m[4]:m[5]]
 		}
-		out, ok := s.format(v, m[2])
-		if !ok {
-			return p
+		if v, ok := s.eval(text[m[2]:m[3]]); ok {
+			if f, ok := s.format(v, format); ok {
+				out = f
+			}
 		}
-		return out
-	})
+		b.WriteString(text[last:m[0]])
+		b.WriteString(out)
+		last = m[1]
+	}
+	b.WriteString(text[last:])
+	return b.String()
 }
 
 // paint fills in a colour written as a placeholder, such as

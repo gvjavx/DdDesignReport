@@ -85,3 +85,26 @@ func TestSheetPerGroup(t *testing.T) {
 		t.Error("csv lost rows")
 	}
 }
+
+// six levels, each with its own header and footer, nested in GroupBy order
+func TestSixGroupLevels(t *testing.T) {
+	bands := []string{}
+	for i := 1; i <= 6; i++ {
+		n := ""
+		if i > 1 {
+			n = fmt.Sprint(i)
+		}
+		bands = append(bands, fmt.Sprintf(`"groupHeader%s":{"height":12,"elements":[{"type":"text","w":200,"h":12,"text":"H%d {{f%d}}"}]}`, n, i, i),
+			fmt.Sprintf(`"groupFooter%s":{"height":12,"elements":[{"type":"text","w":200,"h":12,"text":"F%d {{count(v)}}"}]}`, n, i))
+	}
+	tpl := `{"groupBy":"f1,f2,f3,f4,f5,f6","bands":{` + strings.Join(bands, ",") +
+		`,"detail":{"height":12,"elements":[{"type":"text","w":100,"h":12,"text":"{{v}}"}]}}}`
+	rows := []any{
+		map[string]any{"f1": "a", "f2": "b", "f3": "c", "f4": "d", "f5": "e", "f6": "x", "v": 1},
+		map[string]any{"f1": "a", "f2": "b", "f3": "c", "f4": "d", "f5": "e", "f6": "y", "v": 2},
+	}
+	want := "H1 a | H2 b | H3 c | H4 d | H5 e | H6 x | 1 | F6 1 | H6 y | 2 | F6 1 | F5 2 | F4 2 | F3 2 | F2 2 | F1 2"
+	if got := texts(t, tpl, rows); got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}

@@ -25,12 +25,16 @@ import (
 // its rows are as tall as they need, and a data table has a row per item.
 func (r *report) place(b Band, sc scope) ([]Element, float64) {
 	type grower struct{ top, bottom, grow, shift float64 }
-	var els []Element
-	var anchor []float64 // the top of the table an element belongs to, which moves it; NaN for the rest
+	// sized for the band up front: an Element is large, and a long report places bands many thousand times
+	els := make([]Element, 0, len(b.Elements))
+	anchor := make([]float64, 0, len(b.Elements)) // the top of the table an element belongs to, which moves it; NaN for the rest
 	var growers []grower
 	for _, e := range b.Elements {
 		if !sc.shows(e) {
 			continue
+		}
+		if e.Type == "crosstab" {
+			e = r.crosstab(e, sc)
 		}
 		e.Color, e.Fill = sc.paint(e.Color), sc.paint(e.Fill)
 		switch {
@@ -103,7 +107,7 @@ func (r *report) place(b Band, sc scope) ([]Element, float64) {
 	}
 	all := len(growers)
 
-	var out []Element
+	out := make([]Element, 0, len(els))
 	for i, e := range els {
 		bottom := e.Y + e.H
 		switch {

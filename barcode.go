@@ -1,22 +1,10 @@
 package ddreport
 
-import (
-	"github.com/boombuler/barcode"
-	"github.com/boombuler/barcode/code128"
-	"github.com/boombuler/barcode/qr"
-)
-
 // bars turns a barcode element into one "code" element whose Points list the
 // dark runs (x, y, w, h): a QR code, or Code 128 for scanners that read lines.
 // Text that cannot be encoded (empty, or not ASCII for Code 128) draws nothing.
 func bars(e Element) []Element {
-	var code barcode.Barcode
-	var err error
-	if e.Format == "code128" {
-		code, err = code128.Encode(e.Text)
-	} else {
-		code, err = qr.Encode(e.Text, qr.M, qr.Auto)
-	}
+	code, err := encode(e)
 	if err != nil || e.Text == "" {
 		return nil
 	}

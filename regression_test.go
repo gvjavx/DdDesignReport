@@ -1,7 +1,9 @@
 package ddreport
 
 import (
+	"bytes"
 	"fmt"
+	"image/png"
 	"reflect"
 	"regexp"
 	"strings"
@@ -116,10 +118,10 @@ func TestTabularKeepsEveryTextApart(t *testing.T) {
 	    {"type":"text","x":106,"y":8,"w":100,"h":14,"text":"{{sum(qty * price)}}","align":"right"},
 	    {"type":"text","x":0,"y":26,"w":100,"h":10,"text":"Cash"},
 	    {"type":"text","x":106,"y":26,"w":100,"h":10,"text":"{{cash}}","align":"right"}]}}}`
-	cells, widths, _ := load(t, receipt, map[string]any{"cash": 100, "rows": []any{
+	cells, widths, _, _ := load(t, receipt, map[string]any{"cash": 100, "rows": []any{
 		map[string]any{"name": "Nasi", "qty": 2, "price": 22},
 		map[string]any{"name": "Teh", "qty": 1, "price": 5},
-	}}).table()
+	}}).table(false)
 	want := [][]any{
 		{"Nasi", "2 x 22", 44.0}, // reading order: name, then the second line left to right
 		{"Teh", "1 x 5", 5.0},
@@ -383,5 +385,79 @@ func TestRowNumbers(t *testing.T) {
 	items := []byte(`{"bands":{"detail":{"height":12,"elements":[{"type":"table","data":"items","w":200,"h":12,"cells":[["{{index}} {{name}}"]]}]}}}`)
 	if html := string(render(t, items, []map[string]any{{"items": []map[string]any{{"name": "x"}, {"name": "y"}}}}, "html")); !strings.Contains(html, ">2 y<") {
 		t.Errorf("data table: want its items numbered: %s", html)
+	}
+}
+
+// A header cell over two rows stays merged down in Excel, beside one merged
+// across; the cells under them stay in their columns.
+func TestSpreadsheetMergeDown(t *testing.T) {
+	tpl := []byte(`{"bands":{
+	  "columnHeader":{"height":32,"elements":[{"type":"table","w":300,"h":32,"border":1,
+	    "cells":[["Name","Sales",""],["","Q1","Q2"]],"cellStyle":{"0,0":{"rowSpan":2},"0,1":{"colSpan":2}}}]},
+	  "detail":{"height":16,"elements":[{"type":"table","w":300,"h":16,"border":1,"cells":[["{{name}}","{{q1}}","{{q2}}"]]}]}}}`)
+	data := []map[string]any{{"name": "Kopi", "q1": 2, "q2": 3}}
+	sheet := string(unzip(t, render(t, tpl, data, "xlsx"), "xl/worksheets/sheet1.xml"))
+	if !strings.Contains(sheet, `<mergeCells count="2"><mergeCell ref="A1:A2"/><mergeCell ref="B1:C1"/></mergeCells>`) {
+		t.Errorf("xlsx: want Name over A1:A2 and Sales over B1:C1: %s", sheet)
+	}
+	if !regexp.MustCompile(`<row><c s="\d+"/><c s="\d+" t="inlineStr"><is><t xml:space="preserve">Q1</t>`).MatchString(sheet) {
+		t.Errorf("xlsx: the row under the merge has the styled covered cell, then Q1: %s", sheet)
+	}
+	xls := string(render(t, tpl, data, "xls"))
+	if !regexp.MustCompile(`ss:MergeDown="1"><Data ss:Type="String">Name</Data></Cell><Cell ss:StyleID="s\d+" ss:MergeAcross="1"><Data ss:Type="String">Sales</Data>`).MatchString(xls) {
+		t.Errorf("xls: want Name merged down and Sales across: %s", xls)
+	}
+	// in the row under it, the covered cell is left out and Q1 says it is in column 2
+	if !regexp.MustCompile(`<Row><Cell ss:StyleID="s\d+" ss:Index="2"><Data ss:Type="String">Q1</Data>`).MatchString(xls) {
+		t.Errorf("xls: want the row under the merge to skip the covered cell: %s", xls)
+	}
+	if csv := string(render(t, tpl, data, "csv")); csv != "Name,Sales,\n,Q1,Q2\nKopi,2,3\n" {
+		t.Errorf("csv = %q", csv)
+	}
+}
+
+// Pictures and barcodes go into XLSX as pictures, on the row and column they
+// line up with: a logo in the header, and a photo and a QR code on each row.
+func TestSpreadsheetPictures(t *testing.T) {
+	dot := "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+	tpl := []byte(`{"bands":{
+	  "columnHeader":{"height":40,"elements":[{"type":"image","x":0,"w":40,"h":40,"src":"` + dot + `"},{"type":"text","x":100,"y":20,"w":100,"h":14,"text":"Name"}]},
+	  "detail":{"height":40,"elements":[
+	    {"type":"image","x":0,"w":30,"h":30,"src":"{{photo}}"},
+	    {"type":"text","x":100,"w":100,"h":14,"text":"{{name}}"},
+	    {"type":"barcode","x":220,"w":36,"h":36,"text":"{{name}}"}]}}}`)
+	data := []map[string]any{{"name": "Kopi", "photo": dot}, {"name": "Teh"}} // Teh has no photo: no picture, no error
+	x := render(t, tpl, data, "xlsx")
+	drawing := string(unzip(t, x, "xl/drawings/drawing1.xml"))
+	anchors := regexp.MustCompile(`<xdr:col>(\d+)</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>(\d+)</xdr:row>`).FindAllStringSubmatch(drawing, -1)
+	var at []string
+	for _, a := range anchors {
+		at = append(at, a[1]+","+a[2])
+	}
+	// columns: the photo lines up with column 0, the QR code with column 1 (the name); rows: 0 the header, then one per item
+	if got := strings.Join(at, " "); got != "0,0 0,1 1,1 1,2" {
+		t.Errorf("pictures at %s, want the logo, Kopi's photo and QR, Teh's QR", got)
+	}
+	for i := 1; i <= 4; i++ {
+		img, err := png.Decode(bytes.NewReader(unzip(t, x, fmt.Sprintf("xl/media/image%d.png", i))))
+		if err != nil {
+			t.Fatalf("image%d: %v", i, err)
+		}
+		if i == 3 && img.Bounds().Dx() < 36 {
+			t.Errorf("the QR code is %dpx wide, too small to scan", img.Bounds().Dx())
+		}
+	}
+	sheet := string(unzip(t, x, "xl/worksheets/sheet1.xml"))
+	if !strings.Contains(sheet, `<drawing r:id="rId1"/>`) || !strings.Contains(sheet, `<row ht="40.0" customHeight="1">`) {
+		t.Errorf("the sheet points to its drawing, and its rows are as tall as their pictures: %s", sheet)
+	}
+	types := string(unzip(t, x, "[Content_Types].xml"))
+	if !strings.Contains(types, `/xl/drawings/drawing1.xml`) || !strings.Contains(types, `Extension="png"`) {
+		t.Errorf("content types: %s", types)
+	}
+	// a report without pictures has no drawing
+	plain := render(t, []byte(`{"bands":{"detail":{"height":14,"elements":[{"type":"text","w":100,"h":14,"text":"{{name}}"}]}}}`), data, "xlsx")
+	if strings.Contains(string(unzip(t, plain, "xl/worksheets/sheet1.xml")), "<drawing") {
+		t.Error("a drawing without pictures")
 	}
 }

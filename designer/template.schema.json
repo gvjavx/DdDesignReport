@@ -9,7 +9,8 @@
     "page": { "$ref": "#/$defs/page" },
     "dataKey": { "type": "string", "description": "Key of the row list in the data; default \"rows\". The data may also be the row list itself." },
     "sortBy": { "type": "string", "description": "Row fields to sort by, \"-\" for descending: \"category, -total\"." },
-    "groupBy": { "type": "string", "description": "Up to three row fields, \"region, city, store\"; rows with the same value form a group, printed between groupHeader/groupFooter (groupHeader2/3 for the deeper levels)." },
+    "groupBy": { "type": "string", "description": "Up to six row fields, \"region, city, store\"; rows with the same value form a group, printed between groupHeader/groupFooter (groupHeader2/3 for the deeper levels)." },
+    "pdfA": { "type": "boolean", "description": "pdf: PDF/A-2b, for archiving: every font embedded (Helvetica, Times and Courier print as the bundled Roboto and Lora), colours in sRGB, and the metadata archives ask for." },
     "groupPageBreak": { "type": "boolean", "description": "Every group starts on a new page." },
     "thousands": { "type": "string", "description": "Thousands separator of {{x:N}}; default \",\". \"none\" for none." },
     "decimal": { "type": "string", "description": "Decimal separator of {{x:N}}; default \".\". Indonesian: thousands \".\" and decimal \",\"." },
@@ -26,7 +27,13 @@
         "groupHeader": { "$ref": "#/$defs/band", "description": "Before each group (once before all rows without groupBy); repeated at the top of a page its group continues on." },
         "groupHeader2": { "$ref": "#/$defs/band" },
         "groupHeader3": { "$ref": "#/$defs/band" },
+        "groupHeader4": { "$ref": "#/$defs/band" },
+        "groupHeader5": { "$ref": "#/$defs/band" },
+        "groupHeader6": { "$ref": "#/$defs/band" },
         "detail": { "$ref": "#/$defs/band", "description": "Once per data row." },
+        "groupFooter6": { "$ref": "#/$defs/band" },
+        "groupFooter5": { "$ref": "#/$defs/band" },
+        "groupFooter4": { "$ref": "#/$defs/band" },
         "groupFooter3": { "$ref": "#/$defs/band" },
         "groupFooter2": { "$ref": "#/$defs/band" },
         "groupFooter": { "$ref": "#/$defs/band", "description": "After each group: subtotals such as {{sum(total)}}." },
@@ -85,7 +92,7 @@
       "additionalProperties": false,
       "required": ["type"],
       "properties": {
-        "type": { "enum": ["text", "rect", "line", "image", "chart", "table", "barcode", "subreport"] },
+        "type": { "enum": ["text", "rect", "line", "image", "chart", "table", "barcode", "subreport", "crosstab"] },
         "x": { "type": "number", "description": "From the band's left edge, in points." },
         "y": { "type": "number", "description": "From the band's top edge, in points." },
         "w": { "type": "number" },
@@ -135,7 +142,11 @@
           "description": "table: the look and merging of single cells, keyed \"row,column\" from 0."
         },
         "data": { "type": "string", "description": "table: a list in the data (items); the rows between header and total row repeat per item, where {{field}} is the item's and {{index}} its number. subreport: the list it prints for." },
-        "report": { "$ref": "#", "description": "subreport: the template printed for each item of data, inside the element's box (no footer band)." }
+        "report": { "$ref": "#", "description": "subreport: the template printed for each item of data, inside the element's box (no footer band)." },
+        "rowField": { "type": "string", "description": "crosstab: a row for each value of this field." },
+        "columnField": { "type": "string", "description": "crosstab: a column for each value of this field." },
+        "measure": { "type": "string", "description": "crosstab: what each cell shows, over the rows with its row and column values: an aggregate with an optional format, such as \"sum(qty * price):2\" or \"count()\" (the default)." },
+        "totalLabel": { "type": "string", "description": "crosstab: the label of the total row and column, default \"Total\"." }
       }
     }
   }

@@ -5,13 +5,59 @@ import (
 	"io/fs"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // Family is a TrueType font family. Only Regular is required: a missing bold or
 // italic face falls back to the closest one there is.
-type Family struct{ Regular, Bold, Italic, BoldItalic []byte }
+type Family struct {
+	Regular, Bold, Italic, BoldItalic []byte
+
+	// the files AddFonts found, read the first time the family is used, so a
+	// folder of a hundred fonts costs nothing until a report names one
+	mu      sync.Mutex
+	pending [4]fontFileRef
+}
+
+type fontFileRef struct {
+	fsys fs.FS
+	path string
+}
+
+var faceNames = [4]string{"Regular", "Bold", "Italic", "BoldItalic"}
+
+func (f *Family) slots() [4]*[]byte { return [4]*[]byte{&f.Regular, &f.Bold, &f.Italic, &f.BoldItalic} }
+
+// load reads the faces AddFonts found and nothing has read yet. A file that
+// cannot be read leaves its face out, so the closest other face is used.
+func (f *Family) load() *Family {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, s := range f.slots() {
+		if p := f.pending[i]; p.fsys != nil {
+			*s, _ = fs.ReadFile(p.fsys, p.path)
+			f.pending[i] = fontFileRef{}
+		}
+	}
+	return f
+}
+
+// Faces names the faces the family has, of Regular, Bold, Italic and BoldItalic,
+// without reading the files AddFonts found.
+func (f *Family) Faces() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var faces []string
+	for i, s := range f.slots() {
+		if *s != nil || f.pending[i].fsys != nil {
+			faces = append(faces, faceNames[i])
+		}
+	}
+	return faces
+}
 
 func (f *Family) face(bold, italic bool) []byte {
+	f.load()
 	try := [][]byte{f.Regular}
 	switch {
 	case bold && italic:
@@ -66,17 +112,25 @@ func AddFonts(fsys fs.FS) error {
 		if m == nil {
 			return nil
 		}
-		b, err := fs.ReadFile(fsys, path)
+		// it is read when first used; a file that cannot be read is said now, not then
+		file, err := fsys.Open(path)
 		if err != nil {
 			return err
 		}
+		file.Close()
 		name := wordStart.ReplaceAllString(m[1], "$1 $2")
 		f := Families[name]
 		if f == nil {
 			f = &Family{}
 			Families[name] = f
 		}
-		*map[string]*[]byte{"Regular": &f.Regular, "Bold": &f.Bold, "Italic": &f.Italic, "BoldItalic": &f.BoldItalic}[m[2]] = b
+		i := 0
+		for faceNames[i] != m[2] {
+			i++
+		}
+		f.mu.Lock()
+		*f.slots()[i], f.pending[i] = nil, fontFileRef{fsys, path}
+		f.mu.Unlock()
 		return nil
 	})
 }

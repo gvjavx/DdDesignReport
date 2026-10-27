@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
 
 // Every ready-made template must render in every format with its sample data.
 func TestTemplates(t *testing.T) {
-	var index []struct{ ID, Name, Description string }
+	// a template from the community also says who made it, and may link to them
+	var index []struct{ ID, Name, Description, Author, URL string }
 	raw, err := os.ReadFile("designer/templates/index.json")
 	if err != nil {
 		t.Fatal(err)
@@ -25,6 +27,13 @@ func TestTemplates(t *testing.T) {
 	}
 	for _, entry := range index {
 		t.Run(entry.ID, func(t *testing.T) {
+			// the id names the file, here and on the website
+			if !regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`).MatchString(entry.ID) {
+				t.Fatalf("id %q: lowercase letters, digits and dashes only", entry.ID)
+			}
+			if entry.URL != "" && (!strings.HasPrefix(entry.URL, "https://") || entry.Author == "") {
+				t.Errorf("url %q: an https link, with the author's name", entry.URL)
+			}
 			raw, err := os.ReadFile("designer/templates/" + entry.ID + ".json")
 			if err != nil {
 				t.Fatal(err)

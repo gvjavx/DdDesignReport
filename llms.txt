@@ -8,22 +8,24 @@
 - Node.js: `require('ddreport').render(template, data, 'pdf')` (npm `ddreport`)
 - Java/Kotlin: `DdReport.render(templateJson, dataJson, "pdf")` (Maven `io.github.gvjavx:ddreport`)
 - Any language: `ddreport -serve 127.0.0.1:8080`, or the Docker image `ghcr.io/gvjavx/ddreport`, then `POST /render?format=pdf` with body `{"template": ..., "data": ...}` and header `Authorization: Bearer <DDREPORT_TOKEN>` when the server has a token. Errors come back as status 400 with the message as the body.
-- Formats: `pdf`, `html`, `xlsx`, `xls`, `csv`.
+- Formats: `pdf`, `html`, `xlsx`, `xls`, `csv`, and `jrxml` (the template as a JasperReports 6 report). `ddreport -from-jrxml` reads a `.jrxml` back as a template.
 - Embed the designer in a web app: npm `ddreport-designer`, `createDesigner(element, { template, onChange })`.
 
 ## Writing a template
 
 - JSON Schema: `designer/template.schema.json` in the repository, also served by `ddreport -serve` at `/template.schema.json` and shipped as `ddreport-designer/template.schema.json`. Validate against it: unknown properties are mistakes.
 - Sizes are in points (1/72 inch). A4 is `595 x 842`, Letter `612 x 792`. Element `x`, `y` are relative to their band, inside the page margins.
-- Bands, top to bottom: `header` and `columnHeader` (every page), `groupHeader` (before each group), `detail` (once per data row), `groupFooter` (after each group), `summary` (once, after the last row), `footer` (every page). Grouping needs `groupBy`; up to three levels with `groupHeader2`/`groupFooter2` and `groupHeader3`/`groupFooter3`.
+- Bands, top to bottom: `header` and `columnHeader` (every page), `groupHeader` (before each group), `detail` (once per data row), `groupFooter` (after each group), `summary` (once, after the last row), `footer` (every page). Grouping needs `groupBy`; up to six levels with `groupHeader2`/`groupFooter2` through `groupHeader6`/`groupFooter6`.
 - Data rows are `data.rows` (or `dataKey`), or the data itself when it is a list. Other top-level fields are available everywhere: `{{customer.name}}`.
-- Element types: `text`, `table`, `image`, `rect`, `line`, `chart`, `barcode`, `subreport`.
+- Element types: `text`, `table`, `image`, `rect`, `line`, `chart`, `barcode`, `subreport`, `crosstab`.
+- A pivot table is `{"type": "crosstab", "rowField": "region", "columnField": "month", "measure": "sum(total):0", "text": "Region"}`: a row per region, a column per month, each cell the measure over its rows, then a `Total` column and row (`totalLabel` renames them). It takes the table colour fields (`headerFill`, `footerFill`, `stripe`, `border`).
 - Placeholders inside text and table cells: `{{field}}`, `{{qty * price:2}}` (`:N` = N decimals with separators), `{{sum(total)}}`, `{{avg(x)}}`, `{{min(x)}}`, `{{max(x)}}`, `{{count()}}`, `{{page}}`, `{{pages}}`, `{{now:dd/MM/yyyy}}`, `{{date:dd MMMM yyyy}}`, `{{if(paid, 'PAID', 'DUE')}}`, `{{upper(x)}}`, `{{round(x, 2)}}`, `{{terbilang(total)}}` (Indonesian words), `{{index}}` (row number). Aggregates cover the group in group and detail bands, all rows elsewhere. Field names with dashes go in brackets inside expressions: `{{[unit-price] * qty}}`.
 - A list inside a row (order items) is a table with `"data": "items"`: its first row (`"header": true`) and last row (`"footer": true`) print once, the rows between repeat per item.
 - Colours are `#rrggbb`, or an expression: `"color": "{{if(total < 0, '#dc2626', '#000000')}}"`.
 - `showIf` hides an element when its condition is false: `"showIf": "discount > 0"`.
 - `grow: true` on a text or table lets the band grow with its content instead of clipping it; long tables continue on the next page with their header row repeated.
 - Bold parts of a text: `Total <b>{{sum(total):2}}</b>`. Only `<b>`, `<i>`, `<u>` are markup.
+- `"pdfA": true` makes the PDF PDF/A-2b (fonts embedded; Helvetica, Times and Courier print as Roboto and Lora).
 - Indonesian number style: `"thousands": ".", "decimal": ","`; Indonesian dates: `"locale": "id"`.
 
 ## Example

@@ -33,16 +33,18 @@ type Template struct {
 	Page           Page
 	DataKey        string // key of the row array in the data, default "rows"
 	SortBy         string // row fields to sort by, "-" for descending: "category, -total"
-	GroupBy        string // row field; rows with the same value form a group. Up to three, "region, city, store", group inside each other
+	GroupBy        string // row field; rows with the same value form a group. Up to six, "region, city, store", group inside each other
 	GroupPageBreak bool   // every group starts on a new page
 	Thousands      string // separators used by {{field:2}}, default "," and "."; "none" for no thousands separator
 	Decimal        string
 	Locale         string // "id" for Indonesian month and day names in dates, English otherwise
 	CSVSeparator   string // , (default), ; or a tab
 	SheetPerGroup  bool   // xlsx, xls: a worksheet for each group of the first GroupBy field
+	PDFA           bool   // pdf: PDF/A-2b for archiving; Helvetica, Times and Courier print as the bundled Roboto and Lora
 	Bands          struct {
-		Header, ColumnHeader, GroupHeader, Detail, GroupFooter, Summary, Footer Band
-		GroupHeader2, GroupFooter2, GroupHeader3, GroupFooter3                  Band // the second and third levels of GroupBy
+		Header, ColumnHeader, GroupHeader, Detail, GroupFooter, Summary, Footer            Band
+		GroupHeader2, GroupFooter2, GroupHeader3, GroupFooter3                             Band // the second to sixth levels of GroupBy
+		GroupHeader4, GroupFooter4, GroupHeader5, GroupFooter5, GroupHeader6, GroupFooter6 Band
 	}
 
 	nodes map[string]node // expressions, parsed once
@@ -81,7 +83,7 @@ type Band struct {
 }
 
 type Element struct {
-	Type       string // text | rect | line | image | chart | table | barcode | subreport
+	Type       string // text | rect | line | image | chart | table | barcode | subreport | crosstab
 	X, Y, W, H float64
 	// Text may contain {{field}}, {{a.b}}, {{page}}, {{pages}}, {{now}}, the
 	// aggregates {{sum(f)}}, {{avg(f)}}, {{min(f)}}, {{max(f)}}, {{count()}},
@@ -127,7 +129,12 @@ type Element struct {
 	CellStyle               map[string]CellStyle // table: the look and merging of single cells, keyed "row,column" from 0
 	HeaderLine, FooterLine  float64              // table: a heavier line under the header row and over the total row, in pt
 	Report                  *Template            // subreport: the report printed for each item of Data, in the element's box
-	Frame                   float64              // table: a heavier line around the whole table, in pt
+	// crosstab: a table with a row per value of RowField and a column per value
+	// of ColumnField, each cell Measure ("sum(total):2", "count()") over the rows
+	// with both values, then totals labelled TotalLabel (default "Total"). Text is
+	// the top left cell; the rows are the band's, or the list named by Data.
+	RowField, ColumnField, Measure, TotalLabel string
+	Frame                                      float64 // table: a heavier line around the whole table, in pt
 
 	Points []float64 // internal: x,y pairs of a "poly" (charts), x,y,w,h of the dark runs of a "code" (barcodes); relative to X,Y
 	runs   []run     // text split into styled runs, placeholders resolved
@@ -138,6 +145,7 @@ type Element struct {
 	bg     string    // a table cell's background, for the spreadsheets
 	sides  uint8     // a table cell: its lines, for the spreadsheets; left 1, right 2, top 4, bottom 8
 	span   int       // a table cell: how many columns it covers
+	rspan  int       // a table cell: how many rows it covers
 	mw, mh float64   // a barcode: the size of one module, in pt
 	done   bool      // laid out and filled in already, inside a sub-report
 }
@@ -201,12 +209,14 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 	t := r.t
 	switch format {
 	case "csv":
-		cells, _, _ := r.table()
+		cells, _, _, _ := r.table(false)
 		return toCSV(cells, t.CSVSeparator)
 	case "xlsx":
 		return toXLSX(r.sheets())
 	case "xls":
 		return toXLS(r.sheets())
+	case "jrxml":
+		return ToJRXML(template)
 	case "html", "pdf":
 		if err := t.fits(); err != nil {
 			return nil, err
@@ -214,8 +224,12 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 		if err := r.initPDF(); err != nil {
 			return nil, fmt.Errorf("ddreport: font: %w", err)
 		}
-		// first pass only counts the pages, for {{pages}}
-		pages := r.paginate(len(r.paginate(0)))
+		// a second pass, once the number of pages is known, only for what needs it:
+		// {{pages}}, and bands printed on the last page only ("pages": "last")
+		pages := r.paginate(0)
+		if bytes.Contains(bytes.ToLower(template), []byte("pages")) { // JSON keys match in any case: "Pages" too
+			pages = r.paginate(len(pages))
+		}
 		if format == "html" {
 			return r.toHTML(pages), nil
 		}
@@ -228,7 +242,11 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 func (t *Template) pictures() []string {
 	b := t.Bands
 	var out []string
-	for _, band := range []Band{b.Header, b.ColumnHeader, b.GroupHeader, b.GroupHeader2, b.GroupHeader3, b.Detail, b.GroupFooter3, b.GroupFooter2, b.GroupFooter, b.Summary, b.Footer} {
+	bands := []Band{b.Header, b.ColumnHeader, b.Detail, b.Summary, b.Footer}
+	for _, l := range t.allLevels() {
+		bands = append(bands, l[0], l[1])
+	}
+	for _, band := range bands {
 		for _, e := range band.Elements {
 			switch {
 			case e.Type == "image":
@@ -254,13 +272,20 @@ type level struct {
 	header, footer Band
 }
 
+// allLevels are the header and footer of every grouping level there can be, outer first.
+func (t *Template) allLevels() [][2]Band {
+	b := t.Bands
+	return [][2]Band{{b.GroupHeader, b.GroupFooter}, {b.GroupHeader2, b.GroupFooter2}, {b.GroupHeader3, b.GroupFooter3},
+		{b.GroupHeader4, b.GroupFooter4}, {b.GroupHeader5, b.GroupFooter5}, {b.GroupHeader6, b.GroupFooter6}}
+}
+
 // levels are the grouping levels, outer first. The first field of GroupBy uses
-// GroupHeader and GroupFooter, the second GroupHeader2 and GroupFooter2, the
-// third GroupHeader3 and GroupFooter3. Without GroupBy, group bands with
-// something in them make one level around all the rows.
+// GroupHeader and GroupFooter, the second GroupHeader2 and GroupFooter2, and so
+// on to the sixth. Without GroupBy, group bands with something in them make one
+// level around all the rows.
 func (t *Template) levels() []level {
 	b := t.Bands
-	bands := [][2]Band{{b.GroupHeader, b.GroupFooter}, {b.GroupHeader2, b.GroupFooter2}, {b.GroupHeader3, b.GroupFooter3}}
+	bands := t.allLevels()
 	var out []level
 	for _, by := range strings.Split(t.GroupBy, ",") {
 		if by = strings.TrimSpace(by); by != "" && len(out) < len(bands) {
@@ -283,7 +308,10 @@ func (t *Template) fits() error {
 		tallest, name = b.Summary.Height, "summary"
 	}
 	for i, l := range t.levels() {
-		suffix := []string{"", "2", "3"}[i]
+		suffix := ""
+		if i > 0 {
+			suffix = strconv.Itoa(i + 1)
+		}
 		if l.header.Height > tallest {
 			tallest, name = l.header.Height, "groupHeader"+suffix
 		}
@@ -474,15 +502,21 @@ func (r *report) initPDF() error {
 		}
 		r.pdf.AddUTF8FontFromBytes("custom", "", Font)
 		r.pdf.AddUTF8FontFromBytes("custom", "B", bold)
-		r.family, r.familyTr = "custom", func(s string) string { return s }
+		r.family, r.familyTr = "custom", visual
 	}
 	r.tr = r.familyTr
+	if r.t.PDFA {
+		r.initPDFA()
+	}
 	return r.pdf.Error()
 }
 
 func (r *report) font(e Element, p run) {
+	if r.t.PDFA && Font == nil { // every font in the file
+		e.Font = pdfaFont(e.Font)
+	}
 	// a family from Families, its faces added to the PDF the first time they are used
-	if f := Families[e.Font]; f != nil && f.Regular != nil {
+	if f := Families[e.Font]; f != nil && f.load().Regular != nil {
 		style := ""
 		if p.bold {
 			style += "B"
@@ -499,7 +533,7 @@ func (r *report) font(e Element, p run) {
 			style += "U"
 		}
 		r.pdf.SetFont(name, style, e.size())
-		r.tr = func(s string) string { return s }
+		r.tr = visual // Arabic joined and right-to-left text reversed, as the PDF draws left to right
 		return
 	}
 	family, style := r.family, ""
@@ -730,7 +764,7 @@ func (r *report) paginate(total int) [][]Element {
 		return band.Pages != "first" && band.Pages != "last" || band.Pages == "first" && n == 1 || band.Pages == "last" && last && n == total
 	}
 	newPage := func() {
-		var back []Element
+		back := make([]Element, 0, 64) // room for a page of bands, so it is not copied as it fills
 		if hexColor.MatchString(p.Background) {
 			back = append(back, Element{Type: "rect", W: p.Width, H: p.Height, Fill: p.Background})
 		}
@@ -1212,7 +1246,7 @@ func (r *report) toHTML(pages [][]Element) []byte {
 					style += "font-family:'Courier New',Courier,monospace;"
 				}
 				f := Families[e.Font]
-				if f == nil || f.Regular == nil || !safeName.MatchString(e.Font) {
+				if f == nil || f.load().Regular == nil || !safeName.MatchString(e.Font) {
 					f = nil
 				} else {
 					style += "font-family:'" + e.Font + "',sans-serif;"
@@ -1224,7 +1258,11 @@ func (r *report) toHTML(pages [][]Element) []byte {
 				if d := e.drop(len(lines)); d > 0 {
 					style += fmt.Sprintf("padding-top:%gpt;", d)
 				}
-				fmt.Fprintf(&b, `<div style="%s">`, style)
+				dir := ""
+				if hasRTL(e.plain()) {
+					dir = ` dir="auto"` // the browser orders right-to-left text itself
+				}
+				fmt.Fprintf(&b, `<div style="%s"%s>`, style, dir)
 				// the lines are broken where the PDF breaks them, so a browser font that
 				// runs wider cannot add a line and clip the last one of a grown text
 				for i, line := range lines {
@@ -1341,6 +1379,7 @@ func (r *report) toPDF(pages [][]Element) ([]byte, error) {
 				lh := e.size() * e.leading()
 				lines := r.layout(e)
 				drop := e.drop(len(lines))
+				backwards := rightToLeft(e.plain()) // once per text: a long one has many lines
 				for i, line := range lines {
 					x := e.X
 					switch e.align() {
@@ -1351,7 +1390,11 @@ func (r *report) toPDF(pages [][]Element) ([]byte, error) {
 					}
 					base := e.Y + drop + float64(i)*lh + lh/2 + 0.3*e.size()
 					gap := e.gap(line)
-					for _, s := range line.spans {
+					spans := line.spans
+					if backwards { // the first word on the right
+						spans = bidiOrder(spans)
+					}
+					for _, s := range spans {
 						r.font(e, s.run)
 						pdf.Text(x, base, r.tr(s.text))
 						x += s.w + gap*float64(strings.Count(s.text, " "))
@@ -1426,6 +1469,9 @@ func (r *report) toPDF(pages [][]Element) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := pdf.Output(&buf); err != nil {
 		return nil, fmt.Errorf("ddreport: pdf: %w", err)
+	}
+	if r.t.PDFA {
+		return withID(buf.Bytes()), nil
 	}
 	return buf.Bytes(), nil
 }
@@ -1529,7 +1575,8 @@ type worksheet struct {
 	name   string
 	rows   [][]cell
 	widths []float64
-	merges [][3]int // row, first and last column
+	merges [][4]int // first row, first column, last column, last row
+	pics   []sheetPic
 }
 
 // column is a spreadsheet column's letters: 0 is A, 25 Z, 26 AA.
@@ -1541,38 +1588,51 @@ func column(i int) string {
 	return s
 }
 
-// row is row i as a spreadsheet writes it, with how far each merged cell
-// reaches: the value of a merged range goes to its first cell, and the others
-// keep its look (lines, fill) without a value. A range with more than one
-// value in it is left unmerged, so nothing is hidden.
-func (sh worksheet) row(i int) ([]cell, map[int]int) {
-	cells, across := slices.Clone(sh.rows[i]), map[int]int{}
+// merged says where a merged range starts in row i: its first column, and how
+// far it reaches right (last column) and down (rows under it).
+type merged struct{ hi, down int }
+
+// row is row i as a spreadsheet writes it. The value of a merged range goes to
+// its top left cell, which says how far it reaches; the others keep its look
+// (lines, fill) without a value, and are covered. A range with more than one
+// value in it, or its value not on its first row, is left unmerged, so nothing
+// is hidden.
+func (sh worksheet) row(i int) (cells []cell, starts map[int]merged, covered map[int]bool) {
+	cells, starts, covered = slices.Clone(sh.rows[i]), map[int]merged{}, map[int]bool{}
 	for _, m := range sh.merges {
-		if m[0] != i || m[2] >= len(cells) {
+		r0, lo, hi, r1 := m[0], m[1], m[2], m[3]
+		if i < r0 || i > r1 || r1 >= len(sh.rows) {
 			continue
 		}
-		lo, hi, at := m[1], m[2], -1
-		for c := lo; c <= hi; c++ {
-			if cells[c].v != nil {
-				if at >= 0 {
-					at = -2
-					break
+		var v *cell
+		ok := true
+		for r := r0; r <= r1 && ok; r++ {
+			if hi >= len(sh.rows[r]) {
+				ok = false
+				break
+			}
+			for c := lo; c <= hi; c++ {
+				if x := &sh.rows[r][c]; x.v != nil {
+					ok = v == nil && r == r0
+					v = x
 				}
-				at = c
 			}
 		}
-		if at < 0 {
+		if !ok || v == nil {
 			continue
 		}
-		v := cells[at]
 		for c := lo; c <= hi; c++ {
-			cells[c] = v
+			cells[c] = *v
 			cells[c].v = nil
+			covered[c] = true
 		}
-		cells[lo] = v
-		across[lo] = hi
+		if i == r0 {
+			cells[lo] = *v
+			delete(covered, lo)
+			starts[lo] = merged{hi, r1 - r0}
+		}
 	}
-	return cells, across
+	return cells, starts, covered
 }
 
 var badSheetName = regexp.MustCompile(`[\[\]:*?/\\]`)
@@ -1583,8 +1643,8 @@ var badSheetName = regexp.MustCompile(`[\[\]:*?/\\]`)
 func (r *report) sheets() []worksheet {
 	levels := r.t.levels()
 	if !r.t.SheetPerGroup || len(levels) == 0 || levels[0].by == "" || len(r.rows) == 0 {
-		rows, widths, merges := r.table()
-		return []worksheet{{"Report", rows, widths, merges}}
+		rows, widths, merges, pics := r.table(true)
+		return []worksheet{{"Report", rows, widths, merges, pics}}
 	}
 	all := r.rows
 	defer func() { r.rows = all }()
@@ -1592,7 +1652,7 @@ func (r *report) sheets() []worksheet {
 	used := map[string]bool{}
 	for _, g := range groupRows(all, levels[0].by) {
 		r.rows = g
-		rows, widths, merges := r.table()
+		rows, widths, merges, pics := r.table(true)
 		first, _ := g[0].(map[string]any)
 		// Excel allows 31 characters and none of []:*?/\ in a name, and no two alike
 		name := strings.TrimSpace(badSheetName.ReplaceAllString(str(lookup(levels[0].by, first)), " "))
@@ -1606,7 +1666,7 @@ func (r *report) sheets() []worksheet {
 			name = string([]rune(base)[:min(len([]rune(base)), 31-len(suffix))]) + suffix
 		}
 		used[strings.ToLower(name)] = true
-		out = append(out, worksheet{name, rows, widths, merges})
+		out = append(out, worksheet{name, rows, widths, merges, pics})
 	}
 	return out
 }
@@ -1624,23 +1684,36 @@ func toXLS(sheets []worksheet) ([]byte, error) {
 			fmt.Fprintf(&body, `<Column ss:Width="%g"/>`, max(w, 20))
 		}
 		for i := range sh.rows {
-			r, across := sh.row(i)
+			r, starts, covered := sh.row(i)
 			body.WriteString(`<Row>`)
+			next := 0 // the column Excel puts the next cell in; after cells merged from above, say where
 			for j := 0; j < len(r); j++ {
-				c, merge := r[j], ""
-				if hi, ok := across[j]; ok {
-					merge = fmt.Sprintf(` ss:MergeAcross="%d"`, hi-j)
-					j = hi // the cells it covers are not written
+				if covered[j] {
+					continue // covered by a merged cell: not written
+				}
+				c, attrs := r[j], ""
+				if j != next {
+					attrs = fmt.Sprintf(` ss:Index="%d"`, j+1)
+				}
+				next = j + 1
+				if m, ok := starts[j]; ok {
+					if m.hi > j {
+						attrs += fmt.Sprintf(` ss:MergeAcross="%d"`, m.hi-j)
+						next = m.hi + 1
+					}
+					if m.down > 0 {
+						attrs += fmt.Sprintf(` ss:MergeDown="%d"`, m.down)
+					}
 				}
 				if c.v == nil {
-					body.WriteString(`<Cell/>`)
+					body.WriteString(`<Cell` + attrs + `/>`)
 					continue
 				}
 				kind := "String"
 				if _, ok := c.v.(float64); ok {
 					kind = "Number"
 				}
-				fmt.Fprintf(&body, `<Cell ss:StyleID="s%d"%s><Data ss:Type="%s">`, st.of(c), merge, kind)
+				fmt.Fprintf(&body, `<Cell ss:StyleID="s%d"%s><Data ss:Type="%s">`, st.of(c), attrs, kind)
 				xml.EscapeText(&body, []byte(str(c.v)))
 				body.WriteString(`</Data></Cell>`)
 			}
@@ -1701,9 +1774,14 @@ func toXLSX(sheets []worksheet) ([]byte, error) {
 	var st sheetStyles
 	var files [][2]string
 	var overrides, entries, links strings.Builder
+	media := 0
 	for i, sh := range sheets {
+		tall := map[int]float64{} // rows as tall as the pictures on them
+		for _, p := range sh.pics {
+			tall[p.row] = max(tall[p.row], p.h)
+		}
 		var x bytes.Buffer
-		x.WriteString(head + `<worksheet ` + main + `>`)
+		x.WriteString(head + `<worksheet ` + main + ` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`)
 		if len(sh.widths) > 0 {
 			x.WriteString(`<cols>`)
 			for i, w := range sh.widths { // points to Excel's character units, roughly
@@ -1712,17 +1790,17 @@ func toXLSX(sheets []worksheet) ([]byte, error) {
 			x.WriteString(`</cols>`)
 		}
 		x.WriteString(`<sheetData>`)
-		var merged []string
+		var refs []string
 		for i := range sh.rows {
-			r, across := sh.row(i)
-			covered := map[int]bool{}
-			for lo, hi := range across {
-				merged = append(merged, fmt.Sprintf("%s%d:%s%d", column(lo), i+1, column(hi), i+1))
-				for c := lo + 1; c <= hi; c++ {
-					covered[c] = true
-				}
+			r, starts, covered := sh.row(i)
+			for lo, m := range starts {
+				refs = append(refs, fmt.Sprintf("%s%d:%s%d", column(lo), i+1, column(m.hi), i+1+m.down))
 			}
-			x.WriteString(`<row>`)
+			if h, ok := tall[i]; ok {
+				fmt.Fprintf(&x, `<row ht="%.1f" customHeight="1">`, max(h, 15))
+			} else {
+				x.WriteString(`<row>`)
+			}
 			for j, c := range r {
 				if c.v == nil {
 					if covered[j] {
@@ -1743,13 +1821,38 @@ func toXLSX(sheets []worksheet) ([]byte, error) {
 			x.WriteString(`</row>`)
 		}
 		x.WriteString(`</sheetData>`)
-		if len(merged) > 0 {
-			slices.Sort(merged)
-			fmt.Fprintf(&x, `<mergeCells count="%d">`, len(merged))
-			for _, ref := range merged {
+		if len(refs) > 0 {
+			slices.Sort(refs)
+			fmt.Fprintf(&x, `<mergeCells count="%d">`, len(refs))
+			for _, ref := range refs {
 				fmt.Fprintf(&x, `<mergeCell ref="%s"/>`, ref)
 			}
 			x.WriteString(`</mergeCells>`)
+		}
+		if len(sh.pics) > 0 {
+			// a picture that comes on a row after the last still gets one, so it has somewhere to sit
+			var d, dr strings.Builder
+			d.WriteString(head + `<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`)
+			dr.WriteString(head + rels)
+			for k, p := range sh.pics {
+				media++
+				const emu = 12700 // per point
+				fmt.Fprintf(&d, `<xdr:oneCellAnchor><xdr:from><xdr:col>%d</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>%d</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="%d" cy="%d"/>`+
+					`<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="%d" name="Picture %d"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>`+
+					`<xdr:blipFill><a:blip r:embed="rId%d"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>`+
+					`<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="%[3]d" cy="%[4]d"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`,
+					p.col, p.row, int(p.w*emu), int(p.h*emu), k+2, k+1, k+1)
+				name := fmt.Sprintf("image%d.%s", media, p.ext)
+				fmt.Fprintf(&dr, rel, k+1, "image", "../media/"+name)
+				files = append(files, [2]string{"xl/media/" + name, string(p.data)})
+			}
+			d.WriteString(`</xdr:wsDr>`)
+			files = append(files,
+				[2]string{fmt.Sprintf("xl/drawings/drawing%d.xml", i+1), d.String()},
+				[2]string{fmt.Sprintf("xl/drawings/_rels/drawing%d.xml.rels", i+1), dr.String() + `</Relationships>`},
+				[2]string{fmt.Sprintf("xl/worksheets/_rels/sheet%d.xml.rels", i+1), head + rels + fmt.Sprintf(rel, 1, "drawing", fmt.Sprintf("../drawings/drawing%d.xml", i+1)) + `</Relationships>`})
+			fmt.Fprintf(&overrides, `<Override PartName="/xl/drawings/drawing%d.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`, i+1)
+			x.WriteString(`<drawing r:id="rId1"/>`)
 		}
 		x.WriteString(`</worksheet>`)
 		path := fmt.Sprintf("worksheets/sheet%d.xml", i+1)
@@ -1824,6 +1927,7 @@ func toXLSX(sheets []worksheet) ([]byte, error) {
 		{"[Content_Types].xml", head + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
 			`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
 			`<Default Extension="xml" ContentType="application/xml"/>` +
+			`<Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/>` +
 			`<Override PartName="/xl/workbook.xml" ContentType="` + ctype + `sheet.main+xml"/>` + overrides.String() +
 			`<Override PartName="/xl/styles.xml" ContentType="` + ctype + `styles+xml"/></Types>`},
 		{"_rels/.rels", head + rels + fmt.Sprintf(rel, 1, "officeDocument", "xl/workbook.xml") + `</Relationships>`},

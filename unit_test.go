@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
@@ -585,7 +587,7 @@ func TestTable(t *testing.T) {
 	  "summary":{"height":20,"elements":[{"type":"chart","label":"g","value":"price"},{"type":"text","x":0,"w":280,"text":"{{count()}} rows","align":"center"}]},
 	  "footer":{"height":20,"elements":[{"type":"text","text":"ignored page {{page}}"}]}}}`
 	data := []map[string]any{{"g": "A", "name": "x", "price": 1.5}, {"g": "B", "name": "y", "price": 2}, {"g": "A", "name": "z", "price": 3}}
-	cells, widths, _ := load(t, tpl, data).table()
+	cells, widths, _, _ := load(t, tpl, data).table(false)
 
 	var got [][]any
 	for _, row := range cells {
@@ -618,12 +620,12 @@ func TestTable(t *testing.T) {
 	}
 
 	// without a detail band the column header defines the columns
-	cells, _, _ = load(t, `{"bands":{"columnHeader":{"height":10,"elements":[{"type":"text","x":50,"text":"B"},{"type":"text","x":0,"text":"A"}]}}}`, nil).table()
+	cells, _, _, _ = load(t, `{"bands":{"columnHeader":{"height":10,"elements":[{"type":"text","x":50,"text":"B"},{"type":"text","x":0,"text":"A"}]}}}`, nil).table(false)
 	if len(cells) != 1 || cells[0][0].v != "A" || cells[0][1].v != "B" {
 		t.Errorf("header-only table = %+v", cells)
 	}
 	// and with no text at all there is nothing to export
-	if cells, _, _ := load(t, `{}`, data).table(); len(cells) != 0 {
+	if cells, _, _, _ := load(t, `{}`, data).table(false); len(cells) != 0 {
 		t.Errorf("empty template exported %v", cells)
 	}
 }
@@ -872,9 +874,34 @@ func TestTableStyles(t *testing.T) {
 	}
 }
 
+// fonts are read when a report first uses them, not when they are added
+func TestFontsLoadWhenUsed(t *testing.T) {
+	dir := t.TempDir()
+	regular, _ := BundledFonts.ReadFile("fonts/Lato-Regular.ttf")
+	os.WriteFile(filepath.Join(dir, "LazyTest-Regular.ttf"), regular, 0o644)
+	if err := AddFonts(os.DirFS(dir)); err != nil {
+		t.Fatal(err)
+	}
+	defer delete(Families, "Lazy Test")
+	f := Families["Lazy Test"]
+	if f == nil || f.Regular != nil || strings.Join(f.Faces(), ",") != "Regular" {
+		t.Fatalf("before use: %v, read already: %v", f.Faces(), f.Regular != nil)
+	}
+	tpl := []byte(`{"bands":{"detail":{"height":20,"elements":[{"type":"text","w":100,"h":14,"font":"Lazy Test","text":"x"}]}}}`)
+	if pdf := render(t, tpl, []any{1}, "pdf"); !bytes.Contains(pdf, []byte("/utf8flazytest")) || f.Regular == nil {
+		t.Error("the font was not read and embedded when used")
+	}
+	// a file that went away before it was used: the report falls back, it does not fail
+	os.WriteFile(filepath.Join(dir, "GoneTest-Regular.ttf"), regular, 0o644)
+	AddFonts(os.DirFS(dir))
+	defer delete(Families, "Gone Test")
+	os.Remove(filepath.Join(dir, "GoneTest-Regular.ttf"))
+	render(t, []byte(strings.ReplaceAll(string(tpl), "Lazy Test", "Gone Test")), []any{1}, "pdf")
+}
+
 func TestBundledFonts(t *testing.T) {
 	for _, name := range []string{"Roboto", "Open Sans", "Lato", "Montserrat", "Lora", "Playfair Display", "Great Vibes"} {
-		if f := Families[name]; f == nil || f.Regular == nil {
+		if f := Families[name]; f == nil || len(f.Faces()) == 0 || f.load().Regular == nil {
 			t.Errorf("%s is not bundled", name)
 		}
 	}
