@@ -74,15 +74,18 @@ func TestToJRXML(t *testing.T) {
 	s := string(jr)
 	for _, want := range []string{
 		`<parameter name="title" class="java.lang.Object"`,                                 // a value of the data, outside the rows
-		`<field name="price" class="java.lang.Object"><fieldDescription><![CDATA[price]]>`, // a field of the rows
+		`<field name="price" class="java.lang.String"><fieldDescription><![CDATA[price]]>`, // a field of the rows
 		`<sortField name="total" order="Descending"/>`,
 		`<group name="g1">`, `<groupExpression><![CDATA[$F{region}]]>`,
 		`resetType="Group" resetGroup="g1" calculation="Sum"><variableExpression><![CDATA[((((($F{qty}) as Double) * (($F{price}) as Double))) as Double)]]>`,
 		`evaluationTime="Auto"`, `$V{CURRENT_PAGE}`, `$V{PAGE_NUMBER}`, `resetType="Page"`,
-		`markup="styled"`, `<style isBold="true">`,
+		`markup="styled"`, `<style isBold="true" pdfFontName="Helvetica-Bold">`,
+		`<sortField name="region"/>
+	<sortField name="total" order="Descending"/>`, // the group first: Jasper groups rows next to each other
+		`lineSpacing="Fixed" lineSpacingSize="12"`, // as ours: 10pt × 1.2
 		`groupingSeparator = '.' as char; decimalSeparator = ',' as char`,
 		`<printWhenExpression><![CDATA[((((($F{qty}) as Double) > 0d)) ? Boolean.TRUE : Boolean.FALSE)]]>`,
-		`<jr:QRCode `, `textAlignment="Right"`, `fontName="SansSerif" size="14" isBold="true"`,
+		`<jr:QRCode `, `textAlignment="Right"`, `fontName="SansSerif" size="14" isBold="true" isItalic="false" isUnderline="false" pdfFontName="Helvetica-Bold"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %s", want)

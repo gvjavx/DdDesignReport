@@ -11,7 +11,7 @@ import (
 
 // ToJRXML writes a template as a JasperReports 6 report (.jrxml), for teams
 // that print with JasperReports or edit in Jaspersoft Studio. Expressions are
-// Groovy (language="groovy"). Fields are java.lang.Object with their path as
+// Groovy (language="groovy"). Fields are java.lang.String (Groovy turns "12" into a number where one is needed) with their path as
 // field description, so a JsonDataSource over the rows fills them; top-level
 // fields used outside the row bands ({{title}}) become parameters. Aggregates
 // become variables reset per group, {{page}} and {{pages}} page counts.
@@ -43,8 +43,9 @@ type jasperOut struct {
 	page   bool // CURRENT_PAGE is needed
 
 	// the band being written
-	level int  // its group level, 1 outermost; 0 outside groups
-	rowed bool // its fields are those of a row: detail and group bands
+	level  int  // its group level, 1 outermost; 0 outside groups
+	rowed  bool // its fields are those of a row: detail and group bands
+	bottom int  // the lowest edge of what is written in it, as Jasper reads it
 }
 
 func (x *jasperOut) warnOnce(s string) {
@@ -398,11 +399,19 @@ func attr(s string) string {
 
 func px(f float64) int { return int(math.Round(f)) }
 
+// corePDFFonts are the PDF names of the built-in fonts: regular, bold, italic, bold italic.
+var corePDFFonts = map[string][4]string{
+	"": {"Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique"}, "Helvetica": {"Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique"},
+	"Times":   {"Times-Roman", "Times-Bold", "Times-Italic", "Times-BoldItalic"},
+	"Courier": {"Courier", "Courier-Bold", "Courier-Oblique", "Courier-BoldOblique"},
+}
+
 var jasperFont = map[string]string{"Helvetica": "SansSerif", "": "SansSerif", "Times": "Serif", "Courier": "Monospaced"}
 
 // element writes one element of a band.
 func (x *jasperOut) element(b *strings.Builder, e Element) {
 	common := func(extra string) string {
+		x.bottom = max(x.bottom, px(e.Y)+max(px(e.H), 1)) // a line is at least 1pt tall, so it may reach past the band
 		s := fmt.Sprintf(`<reportElement x="%d" y="%d" width="%d" height="%d"%s`, px(e.X), px(e.Y), max(px(e.W), 1), max(px(e.H), 1), extra)
 		if e.ShowIf != "" {
 			if g, ok := x.groovy(e.ShowIf); ok {
@@ -424,6 +433,11 @@ func (x *jasperOut) element(b *strings.Builder, e Element) {
 	}
 	switch e.Type {
 	case "text":
+		// Jasper prints nothing of a text whose first line does not fit, and measures a line
+		// at about 1.3 times the font size: a box that cannot hold one line gets that much
+		if !e.Grow {
+			e.H = max(e.H, math.Ceil(e.size()*1.35))
+		}
 		font := jasperFont[e.Font]
 		if font == "" {
 			font = e.Font
@@ -437,18 +451,35 @@ func (x *jasperOut) element(b *strings.Builder, e Element) {
 		if valign == "" {
 			valign = "Top"
 		}
+		// the built-in PDF fonts print bold and italic only by their PDF name
+		faces, core := corePDFFonts[e.Font]
+		pdfName := func(bold, italic bool) string {
+			if !core {
+				return ""
+			}
+			i := 0
+			if bold {
+				i++
+			}
+			if italic {
+				i += 2
+			}
+			return ` pdfFontName="` + faces[i] + `"`
+		}
 		text := e.Text
 		markup := ""
 		if styleTag.MatchString(text) {
 			markup = ` markup="styled"`
-			text = strings.NewReplacer("<b>", `<style isBold="true">`, "<i>", `<style isItalic="true">`, "<u>", `<style isUnderline="true">`, "</b>", "</style>", "</i>", "</style>", "</u>", "</style>").Replace(text)
+			text = strings.NewReplacer("<b>", `<style isBold="true"`+pdfName(true, e.Italic)+`>`, "<i>", `<style isItalic="true"`+pdfName(e.Bold, true)+`>`, "<u>", `<style isUnderline="true">`, "</b>", "</style>", "</i>", "</style>", "</u>", "</style>").Replace(text)
 		}
 		box := ""
 		if e.Border > 0 {
 			box = fmt.Sprintf(`<box><pen lineWidth="%g"/></box>`, e.Border)
 		}
-		textElement := fmt.Sprintf(`<textElement textAlignment="%s" verticalAlignment="%s"%s><font fontName="%s" size="%g" isBold="%t" isItalic="%t" isUnderline="%t"/><paragraph lineSpacing="Proportional" lineSpacingSize="%g"/></textElement>`,
-			align, valign, markup, attr(font), e.size(), e.Bold, e.Italic, e.Underline, e.leading())
+		// line spacing in points, as ours: Jasper's proportional spacing is taller, and it
+		// prints nothing of a text whose first line does not fit its box
+		textElement := fmt.Sprintf(`<textElement textAlignment="%s" verticalAlignment="%s"%s><font fontName="%s" size="%g" isBold="%t" isItalic="%t" isUnderline="%t"%s/><paragraph lineSpacing="Fixed" lineSpacingSize="%g"/></textElement>`,
+			align, valign, markup, attr(font), e.size(), e.Bold, e.Italic, e.Underline, pdfName(e.Bold, e.Italic), e.size()*e.leading())
 		el := common(colors(e.Color))
 		if !strings.Contains(e.Text, "{{") {
 			fmt.Fprintf(b, "\t\t\t<staticText>%s%s%s<text><![CDATA[%s]]></text></staticText>\n", el, box, textElement, cdata(text))
@@ -513,6 +544,7 @@ func (x *jasperOut) element(b *strings.Builder, e Element) {
 		for _, c := range cells {
 			c.ShowIf = e.ShowIf
 			if c.Type == "text" {
+				c.Border = 0 // the table's lines are elements of their own
 				c.Text = strings.Join(slices.Collect(func(yield func(string) bool) {
 					for _, r := range c.parse() {
 						yield(r.text)
@@ -532,16 +564,14 @@ func (x *jasperOut) element(b *strings.Builder, e Element) {
 
 // band writes a band, as tall as what is in it.
 func (x *jasperOut) band(b *strings.Builder, tag string, band Band, level int, rowed bool) {
-	x.level, x.rowed = level, rowed
-	h := band.Height
-	for _, e := range band.Elements {
-		h = max(h, e.Y+e.H)
-	}
+	x.level, x.rowed, x.bottom = level, rowed, 0
 	var els strings.Builder
 	for _, e := range band.Elements {
 		x.element(&els, e)
 	}
-	fmt.Fprintf(b, "\t<%s>\n\t\t<band height=\"%d\" splitType=\"Stretch\">\n%s\t\t</band>\n\t</%s>\n", tag, px(math.Ceil(h)), els.String(), tag)
+	// as tall as designed, and as what is in it: Jasper refuses an element reaching outside its band
+	h := max(px(math.Ceil(band.Height)), x.bottom)
+	fmt.Fprintf(b, "\t<%s>\n\t\t<band height=\"%d\" splitType=\"Stretch\">\n%s\t\t</band>\n\t</%s>\n", tag, h, els.String(), tag)
 }
 
 func (x *jasperOut) report() []byte {
@@ -608,9 +638,20 @@ func (x *jasperOut) report() []byte {
 	}) {
 		fmt.Fprintf(&out, "\t<parameter name=\"%s\" class=\"java.lang.Object\" isForPrompting=\"false\"/>\n", name)
 	}
-	// the sort fields must be fields too
+	// the sort fields must be fields too. Jasper groups only rows that are next to each
+	// other, where ours gathers the rows of a group wherever they are: sort by the group fields first
 	var sorts strings.Builder
-	for _, s := range strings.Split(t.SortBy, ",") {
+	var by []string
+	for _, l := range levels {
+		if l.by != "" {
+			by = append(by, l.by)
+		}
+	}
+	if len(by) > 0 {
+		x.warnOnce("the rows are sorted by the group fields (" + strings.Join(by, ", ") + "), as Jasper groups only rows next to each other")
+	}
+	sorted := map[string]bool{}
+	for _, s := range append(by, strings.Split(t.SortBy, ",")...) {
 		if s = strings.TrimSpace(s); s == "" {
 			continue
 		}
@@ -619,6 +660,10 @@ func (x *jasperOut) report() []byte {
 			s, order = strings.TrimSpace(s[1:]), ` order="Descending"`
 		}
 		name := jasperName.ReplaceAllString(s, "_")
+		if sorted[name] { // a group field also in sortBy: sorted once, in the group's place
+			continue
+		}
+		sorted[name] = true
 		x.fields[name] = s
 		fmt.Fprintf(&sorts, "\t<sortField name=\"%s\"%s/>\n", name, order)
 	}
@@ -629,7 +674,7 @@ func (x *jasperOut) report() []byte {
 			}
 		}
 	}) {
-		fmt.Fprintf(&out, "\t<field name=\"%s\" class=\"java.lang.Object\"><fieldDescription><![CDATA[%s]]></fieldDescription></field>\n", name, cdata(x.fields[name]))
+		fmt.Fprintf(&out, "\t<field name=\"%s\" class=\"java.lang.String\"><fieldDescription><![CDATA[%s]]></fieldDescription></field>\n", name, cdata(x.fields[name]))
 	}
 	out.WriteString(sorts.String())
 	if x.page {

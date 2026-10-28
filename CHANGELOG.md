@@ -1,5 +1,18 @@
 # Riwayat versi
 
+## Belum dirilis
+
+**JasperReports**: semua 13 template siap pakai, diekspor ke `.jrxml`, kini dikompilasi, diisi data contohnya, dan diekspor ke PDF oleh JasperReports 6.21 sungguhan. Yang diperbaiki dari ekspornya:
+- Garis di tepi bawah band tidak lagi keluar dari band (JasperReports menolak laporan seperti itu).
+- Field bertipe `java.lang.String`, bukan `Object`: `JsonDataSource` memberi `Object` berupa node JSON yang tidak bisa dihitung.
+- Bold dan italic font bawaan ikut ke PDF (`pdfFontName`).
+- Sel tabel tidak lagi bergaris ganda.
+- Baris diurutkan menurut field grup lebih dulu, karena JasperReports hanya menggabungkan baris yang berurutan.
+- Kotak teks yang terlalu pendek untuk satu baris (menurut ukuran JasperReports, sekitar 1,3 kali ukuran font) dipertinggi seperlunya, agar isinya tidak hilang.
+
+**PDF/A**: PDF/A-2b dari `"pdfA": true`, juga yang ditandatangani dan yang berisi teks Arab, lulus validasi veraPDF 1.30.
+
+
 ## 0.4.0 · 28 Okt 2026
 
 **Designer**
