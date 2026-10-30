@@ -1,6 +1,6 @@
 # Riwayat versi
 
-## Belum dirilis
+## 0.4.1 · 30 Okt 2026
 
 **Template**: `"version"` (versi format template, sekarang 1). Designer menulisnya di setiap template. Ddreport menolak template yang versinya lebih baru dari yang bisa dibacanya, dengan pesan yang jelas, alih-alih mencetaknya tanpa bagian yang belum dikenalnya. Template tanpa `version` tetap dibaca seperti biasa. Dari Go: `ddreport.FormatVersion`.
 
