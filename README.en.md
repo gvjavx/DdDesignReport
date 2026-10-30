@@ -8,6 +8,8 @@ A reporting library with a drag-and-drop designer. Templates are designed in the
 
 The full documentation is in Indonesian: [README.md](README.md). This page covers what you need to start; the template format is described by its [JSON Schema](designer/template.schema.json) and summarised, with a tested example, in [llms.txt](llms.txt). What is new in each version: [CHANGELOG.md](CHANGELOG.md) (Indonesian).
 
+**Start here:** [`examples/app`](examples/app) is a whole report feature in about 120 lines of Node.js with no framework: the designer on a page, one template per customer, preview with real data, PDF and Excel downloads, and receipts to a network printer or, through Web Serial, to a USB or Bluetooth one. `npm install && node server.js`. The step-by-step guide, with Laravel and common errors, is [INTEGRASI.md](INTEGRASI.md) (Indonesian).
+
 ## The designer
 
 A standalone app with preview and export: download the binary for your system from the [latest GitHub Release](https://github.com/gvjavx/DdDesignReport/releases/latest) (`ddreport-linux-amd64`, `ddreport-darwin-arm64`, `ddreport-windows-amd64.exe`, ...), rename it to `ddreport`, then:
@@ -26,8 +28,9 @@ import { createDesigner } from 'ddreport-designer'
 const designer = createDesigner(document.getElementById('designer'), {
   template: savedTemplate,            // optional
   onChange: t => save(t),             // after every change
-  fields: ['name', 'qty', 'price'],   // optional: the data fields offered in the Field menu
-  data: sampleData,                   // optional: sample data the canvas draws charts and barcodes from
+  fields: ['name', 'qty', 'price'],   // optional: the data fields in the Field menu (default: those of data)
+  data: sampleData,                   // optional: sample data for charts and barcodes on the canvas, the Field menu,
+                                      // and the preview's warning about fields the data does not have
   simple: true,                       // optional: easy mode for first-time users
   lang: 'id',                         // optional: Indonesian interface (default 'en')
 })
@@ -43,7 +46,8 @@ It comes with 13 ready-made templates (invoice, sales report, receipt, payslip, 
 ```go
 import ddreport "github.com/gvjavx/DdDesignReport"
 
-pdf, err := ddreport.Render(templateJSON, data, "pdf") // "pdf" | "html" | "xlsx" | "xls" | "csv" | "jrxml"
+pdf, err := ddreport.Render(templateJSON, data, "pdf") // "pdf" | "html" | "xlsx" | "xls" | "csv" | "jrxml" | "escpos" | "txt"
+missing, err := ddreport.Missing(templateJSON, data)  // fields the template uses that the data lacks: they print empty
 ```
 
 **Node.js** (`npm install ddreport`; the binary for your system comes with it)
@@ -91,6 +95,7 @@ The answer is the document, `400` with the error message, or `401` without the r
 - Large reports: 100 000 rows print to PDF in about 12 seconds on a 2017 laptop, peaking at about 500 MB: pages are drawn as soon as they are laid out (`go test -bench Large`).
 - Receipt printers: format `escpos` gives ESC/POS commands for 58 and 80 mm thermal printers (send the bytes as they are, e.g. to port 9100 or `/dev/usb/lp0`), and `txt` the same layout as plain text for previews and dot-matrix printers. Texts land in the character columns their boxes cover, aligned and wrapped; 11 pt and over prints double height; QR and Code 128 are drawn by the printer, pictures as dots, then the paper is cut. 32 characters a line up to 60 mm paper, 48 up to 92 mm, 80 wider, or `"textColumns"`.
 - AI assistants: `ddreport -mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio with `template_guide` (llms.txt and the schema), `check_template` (misspelt properties, then a trial render) and `render_template`. Claude Code: `claude mcp add ddreport -- /path/to/ddreport -mcp`.
+- A field the data does not have prints empty. `DDREPORT_STRICT=1` makes the binary and the server refuse such a report instead, naming the fields; the designer's preview names them too, given sample data.
 - Servers: `DDREPORT_MAX_ROWS` refuses reports with more rows than that (`ddreport.MaxRows` in Go); the Docker image has a HEALTHCHECK (`ddreport -healthcheck 127.0.0.1:8080`).
 - Templates from the community are welcome: see "Menyumbang template" in the [README](README.md#menyumbang-template).
 

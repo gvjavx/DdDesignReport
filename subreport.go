@@ -22,6 +22,7 @@ func (r *report) child(e Element) *Template {
 			sub.Locale = r.t.Locale
 		}
 		sub.now = r.t.now
+		sub.fields = r.t.fields
 	}
 	return sub
 }
@@ -31,9 +32,12 @@ func (r *report) child(e Element) *Template {
 // and summary, over its group for a group band, the item itself for a detail.
 func (r *report) subBands(e Element, sc scope, visit func(b Band, sc scope, head bool)) {
 	sub := r.child(e)
-	items, _ := lookup(e.Data, sc.ctx...).([]any)
+	list := lookup(e.Data, sc.ctx...)
+	items, _ := list.([]any)
 	if items == nil && (e.Data == "" || e.Data == r.t.DataKey) {
 		items = sc.rows
+	} else {
+		sc.seen(e.Data, list)
 	}
 	items = append([]any(nil), items...) // sorting must not reorder the data of the report around it
 	sub.sort(items)

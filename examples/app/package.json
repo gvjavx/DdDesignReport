@@ -1,0 +1,10 @@
+{
+  "name": "ddreport-example-app",
+  "private": true,
+  "description": "A report feature in a Node.js app: customers edit their layouts, the app prints them with its data",
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "ddreport": "^0.4.3",
+    "ddreport-designer": "^0.4.3"
+  }
+}

@@ -130,5 +130,10 @@ func checkTemplate(template, data json.RawMessage) (string, error) {
 	if _, err := ddreport.Render(template, data, "pdf"); err != nil {
 		return "", err
 	}
+	if len(data) > 0 && string(data) != "null" {
+		if err := missing(template, data); err != nil {
+			return "", err
+		}
+	}
 	return "ok: the template is valid and renders", nil
 }

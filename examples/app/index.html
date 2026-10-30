@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laporan saya</title>
+<style>
+  body { margin: 0; font: 15px system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh }
+  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #ddd }
+  header select, header button, header a { font: inherit; padding: 6px 10px }
+  #status { color: #555 }
+  #designer { flex: 1; min-height: 0 }
+</style>
+</head>
+<body>
+<header>
+  <select id="report" aria-label="Laporan"></select>
+  <button id="save">Simpan</button>
+  <a id="pdf" target="_blank">Buka PDF</a>
+  <a id="xlsx">Unduh Excel</a>
+  <button id="usb">Cetak struk (USB/Bluetooth)</button>
+  <button id="lan">Cetak struk (printer jaringan)</button>
+  <span id="status" role="status"></span>
+</header>
+<div id="designer"></div>
+
+<script type="module">
+import { createDesigner } from '/designer.js'
+
+const $ = s => document.querySelector(s)
+const say = text => { $('#status').textContent = text }
+// errors come back as text: a template mistake says what is wrong
+const call = async (url, options) => {
+  const res = await fetch(url, options)
+  if (!res.ok) throw new Error(await res.text())
+  return res
+}
+let id
+
+const designer = createDesigner($('#designer'), {
+  lang: 'id',
+  simple: true, // for admins and staff: the tools they need, each with its name
+  // the report as it is being edited, printed by the server with the real data
+  preview: async template => (await call('/api/preview/' + id, { method: 'POST', body: JSON.stringify(template) })).text(),
+})
+
+async function open(next) {
+  id = next
+  const { template, data } = await (await call('/api/templates/' + id)).json()
+  designer.setTemplate(template)
+  designer.setData(data) // charts on the canvas, the Field menu, and the check for fields the data does not have
+  $('#pdf').href = `/reports/${id}.pdf`
+  $('#xlsx').href = `/reports/${id}.xlsx`
+  say('')
+}
+
+$('#save').onclick = async () => {
+  try {
+    await call('/api/templates/' + id, { method: 'PUT', body: JSON.stringify(designer.getTemplate()) })
+    say('Tersimpan')
+  } catch (err) { say(err.message) }
+}
+
+// A receipt straight from the browser to a printer on USB or Bluetooth, with Web Serial (Chrome
+// and Edge on a computer). The printer must show up as a serial port: most Bluetooth printers and
+// USB ones with a serial (CDC) driver do; one installed as a Windows printer goes through
+// the network button, or your own print agent.
+let port
+$('#usb').onclick = async () => {
+  try {
+    if (!('serial' in navigator)) throw new Error('Browser ini tidak punya Web Serial: pakai Chrome atau Edge di komputer')
+    const bytes = new Uint8Array(await (await call(`/reports/${id}.escpos`)).arrayBuffer())
+    port ??= await navigator.serial.requestPort() // the printer is picked once
+    if (!port.writable) await port.open({ baudRate: 9600 })
+    const writer = port.writable.getWriter()
+    try { await writer.write(bytes) } finally { writer.releaseLock() }
+    say('Terkirim ke printer')
+  } catch (err) { say(err.message) }
+}
+
+$('#lan').onclick = async () => {
+  try {
+    await call('/api/print/' + id, { method: 'POST' })
+    say('Terkirim ke printer')
+  } catch (err) { say(err.message) }
+}
+
+const list = await (await call('/api/templates')).json()
+$('#report').innerHTML = list.map(t => `<option value="${t.id}">${t.name}</option>`).join('')
+$('#report').onchange = () => open($('#report').value).catch(err => say(err.message))
+await open(list[0].id)
+</script>
+</body>
+</html>

@@ -1,5 +1,18 @@
 # Contoh
 
+## Aplikasi lengkap (`app/`)
+
+Fitur laporan di sebuah aplikasi Node.js, dari awal sampai akhir: designer di halaman, template per pelanggan, preview dengan data sungguhan, unduh PDF dan Excel, cetak struk ke printer jaringan atau lewat Web Serial. Penjelasan langkah demi langkahnya di [INTEGRASI.md](../INTEGRASI.md).
+
+```sh
+cd examples/app
+npm install
+node server.js                 # buka http://localhost:3000
+PRINTER=192.168.1.50 node server.js   # dengan printer struk jaringan (Git Bash; PowerShell: $env:PRINTER = "...")
+```
+
+## Laporan penjualan
+
 Laporan penjualan dengan grouping, subtotal, teks yang membungkus, dan chart.
 
 - `sales.json`: template (bisa dibuka di designer lewat **Open…**)

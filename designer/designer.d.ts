@@ -53,9 +53,9 @@ export interface DesignerOptions {
   fontBase?: string
   /** more font names, registered with the backend */
   fonts?: string[]
-  /** the data's field names, for the Field menu */
+  /** the data's field names, for the Field menu; without it, those of the sample data */
   fields?: string[]
-  /** sample data that charts on the page are drawn from */
+  /** sample data: charts on the page are drawn from it, the Field menu lists its fields, and the preview names fields it does not have */
   data?: unknown
   /** fewer tools, each button with its name: for a first report */
   simple?: boolean
@@ -92,7 +92,7 @@ export interface Designer {
   setTemplate(template?: Template | object): void
   /** changes the Field menu */
   setFields(fields: string[]): void
-  /** changes the sample data the charts are drawn from */
+  /** changes the sample data */
   setData(data: unknown): void
   /**
    * does what a ribbon button does, for a toolbar of your own: 'bold', 'align:center', 'add:table',

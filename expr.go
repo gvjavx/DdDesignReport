@@ -237,7 +237,7 @@ func (p *parser) factor() node {
 		}
 		key := p.src[p.pos+1 : p.pos+end]
 		p.pos += end + 1
-		return func(s scope) any { return field(key, s.ctx) }
+		return func(s scope) any { return s.seen(key, field(key, s.ctx)) }
 	case '\'', '"': // 'text'
 		end := strings.IndexByte(p.src[p.pos+1:], c)
 		if end < 0 {
@@ -266,7 +266,7 @@ func (p *parser) factor() node {
 	if p.peek() != '(' {
 		return func(s scope) any {
 			if v := lookup(word, s.ctx...); v != nil || word != "now" {
-				return v
+				return s.seen(word, v)
 			}
 			return s.t.now // {{now}}, unless the data has a field called now
 		}
@@ -354,6 +354,32 @@ func field(key string, ctx []map[string]any) any {
 		}
 	}
 	return nil
+}
+
+// seen notes whether the data has a field the template asks for, for Missing,
+// and passes its value on.
+func (s scope) seen(key string, v any) any {
+	if f := s.t.fields; f != nil && !f[key] {
+		f[key] = v != nil || present(key, s.ctx)
+	}
+	return v
+}
+
+// present says whether a context has the path, with a value or null.
+func present(path string, ctx []map[string]any) bool {
+	for _, c := range ctx {
+		if _, ok := c[path]; ok {
+			return true
+		}
+		m, keys := c, strings.Split(path, ".")
+		for _, k := range keys[:len(keys)-1] {
+			m, _ = m[k].(map[string]any)
+		}
+		if _, ok := m[keys[len(keys)-1]]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // binary does arithmetic. Anything that is not a number, a division by zero

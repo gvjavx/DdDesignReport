@@ -457,6 +457,19 @@ const tests = {
     const err = bad.q('.ddr-sheet [role=alert]')
     check('shows the error in the middle, in red, with no frame over it', err.textContent === 'no server' && err.classList.contains('err') && !bad.q('.ddr-sheet iframe').classList.contains('ready'))
     bad.q('.ddr-preview').close()
+    const typo = { page: { width: 300, height: 200 }, bands: { detail: { height: 20, elements: [{ type: 'text', x: 0, y: 0, w: 200, h: 14, text: '{{name}} {{nmae}} {{sum(qty):2}}' }] } } }
+    const warned = open(typo, { data: [{ name: 'Kopi', qty: 1 }], preview: async () => '<html><head></head><body></body></html>' })
+    warned.click('preview')
+    const warn = warned.q('.ddr-preview .ddr-warn')
+    check('names a field the sample data does not have', !warn.hidden && /: nmae$/.test(warn.textContent), warn.textContent)
+    warned.d.setData([{ name: 'Kopi', nmae: 'x', qty: 1 }])
+    warned.click('preview')
+    check('and says nothing once the data has it', warn.hidden)
+    warned.q('.ddr-preview').close()
+    const plain = open(typo, { preview: async () => '' })
+    plain.click('preview')
+    check('nor without sample data to compare with', plain.q('.ddr-preview .ddr-warn').hidden)
+    plain.q('.ddr-preview').close()
     check('no preview option, no preview button', !open().q('[data-cmd=preview]'))
   },
   'a position of 0 shows as 0'() {
@@ -482,6 +495,11 @@ const tests = {
     check('fields first, then expressions', values().includes('{{customer.name}}') && values().includes('{{qty}}') && values().includes('{{count()}}'))
     t.d.setFields(['harga'])
     check('setFields replaces them', values().includes('{{harga}}') && !values().includes('{{qty}}'))
+    const d = open(undefined, { data: { shop: 'W', customer: { city: 'Y' }, rows: [{ name: 'Kopi' }] } })
+    const own = () => [...d.q('[data-id=field]').options].map(o => o.value)
+    check('without fields, those of the sample data', ['{{shop}}', '{{customer.city}}', '{{name}}'].every(v => own().includes(v)), own().join(' '))
+    d.d.setData([{ sku: 'A' }])
+    check('and of new sample data', own().includes('{{sku}}') && !own().includes('{{shop}}'))
   },
   'band names in the interface language'() {
     const t = open(undefined, { lang: 'id' })

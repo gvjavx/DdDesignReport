@@ -1,5 +1,18 @@
 # Riwayat versi
 
+## 0.4.3 · 30 Okt 2026
+
+**Integrasi**: [INTEGRASI.md](INTEGRASI.md), panduan memasang ddreport sebagai fitur aplikasi (designer, template per pelanggan, bentuk data, render dari Node.js dan Laravel, printer struk, dan masalah yang sering muncul), dengan contoh aplikasi lengkap yang bisa dijalankan di `examples/app`: server Node.js tanpa framework dan satu halaman, termasuk cetak struk ke printer jaringan (port 9100) dan ke printer USB/Bluetooth dari browser lewat Web Serial.
+
+**Field yang salah ketik**: placeholder yang field-nya tidak ada di data tercetak kosong tanpa error, dan kini bisa ditangkap:
+- Preview di designer menyebut field yang tidak ada di data contoh: "Tidak ada di data contoh, tercetak kosong: nmae".
+- `DDREPORT_STRICT=1` membuat binary, server, dan wrapper Node.js/Java menolak laporan seperti itu dengan nama field-nya.
+- Dari Go: `ddreport.Missing(template, data)`. `check_template` di server MCP juga menyebutnya bila diberi data.
+
+**Designer**: tanpa opsi `fields`, menu Field berisi field dari data contoh (`data` atau `setData()`), jadi cukup memberi data contoh.
+
+**Perbaikan**: perintah Windows untuk printer struk yang di-share di README kehilangan garis miringnya (`\\localhost\PrinterStruk`). Test antrean server tidak lagi macet di Linux.
+
 ## 0.4.2 · 30 Okt 2026
 
 **Printer struk**: format `escpos` mencetak langsung ke printer thermal 58 dan 80 mm (ESC/POS): teks di kolom karakter sesuai kotaknya, rata dan dibungkus seperti di desain, tebal dan tinggi ganda (11 pt ke atas), garis menjadi `-`, QR dan Code 128 digambar printer, gambar sebagai titik, lalu kertas dipotong. Format `txt` adalah tata letak yang sama sebagai teks biasa, untuk pratinjau dan printer dot matrix. `"textColumns"` mengubah jumlah karakter per baris (default 32, 48, atau 80 menurut lebar kertas). Designer: ukuran kertas **Struk 58 mm** dan **Struk 80 mm**, **Karakter per baris** di tab Layout, dan ekspor TXT dan ESC/POS di aplikasi standalone.

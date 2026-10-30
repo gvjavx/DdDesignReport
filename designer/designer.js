@@ -10,6 +10,7 @@
 // fontBase is the URL the bundled fonts are served from (`ddreport -serve` has them at 'fonts/');
 // without it the page shows them only where they are installed. fonts adds names from ddreport.Families.
 // fields lists the data's field names for the Field menu; designer.setFields(list) changes it later.
+// Without it, the menu lists the fields of the sample data.
 // data is sample data (fields plus rows, or just rows) that charts are drawn from; designer.setData(data) changes it.
 
 // the bands in print order; the group levels after the first show when Group by names that many fields
@@ -87,6 +88,49 @@ const TITLE = {
 }
 const FIELD_TOKENS = ['{{page}}', '{{pages}}', '{{index}}', '{{now:dd/MM/yyyy}}', '{{field:2}}', '{{field:dd MMMM yyyy}}', '{{qty * price:2}}', '{{sum(field):2}}', '{{avg(field):2}}', '{{min(field)}}', '{{max(field)}}', '{{count()}}', "{{if(field > 0, 'yes', 'no')}}", '{{terbilang(field)}}']
 
+// The fields and lists the template asks for that neither the sample data nor the field list has: a typo
+// prints empty. Like ddreport.Missing, but read from the template's text rather than found while printing.
+// Nothing without sample data or a field list to compare with.
+// the field names of sample data: its own fields, nested ones as customer.city, and those of its list items
+function dataFields(data) {
+  const names = new Set()
+  const walk = (obj, prefix) => {
+    for (const [k, v] of Object.entries(obj ?? {})) {
+      if (Array.isArray(v)) for (const row of v.slice(0, 50)) { if (row && typeof row === 'object') Object.keys(row).forEach(n => names.add(n)) }
+      else if (v && typeof v === 'object') walk(v, prefix + k + '.')
+      else names.add(prefix + k)
+    }
+  }
+  walk(Array.isArray(data) ? { rows: data } : data, '')
+  return [...names]
+}
+
+function missingFields(tpl, data, fields) {
+  const known = new Set(['page', 'pages', 'index', 'now', ...fields]), out = new Set()
+  const keys = (v, pre) => {
+    if (Array.isArray(v)) v.forEach(x => keys(x, ''))
+    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) known.add(pre + k), keys(x, pre + k + '.')
+  }
+  keys(data, '')
+  if (known.size === 4) return []
+  const expr = s => {
+    if (known.has(s.trim())) return // {{unit-price}}: a field named so, not unit minus price
+    s = s.replace(/'[^']*'?|"[^"]*"?/g, ' ').replace(/\[([^\]]*)\]/g, (_, k) => (known.has(k) || out.add(k), ' '))
+    for (const [, w, call] of s.matchAll(/([\p{L}_][\p{L}\p{N}_.]*)(\s*\()?/gu)) {
+      if (!call && !/^(and|or|not)$/.test(w) && !known.has(w)) out.add(w)
+    }
+  }
+  const walk = (v, k) => {
+    if (typeof v !== 'string') {
+      if (v && typeof v === 'object') for (const [key, x] of Object.entries(v)) walk(x, Array.isArray(v) ? k : key)
+    } else if (k === 'showIf') expr(v.replace(/^\s*\{\{|\}\}\s*$/g, ''))
+    else if (k === 'data') { if (v !== (tpl.dataKey || 'rows') && !known.has(v)) out.add(v) }
+    else if (!v.startsWith('data:')) for (const [, e] of v.matchAll(/\{\{\s*([^{}:]+?)\s*(?::[^{}]*?)?\s*\}\}/g)) expr(e)
+  }
+  walk(tpl.bands)
+  return [...out].sort()
+}
+
 // Indonesian interface. Anything missing here stays English.
 const ID = {
   Home: 'Beranda', Insert: 'Sisipkan', Layout: 'Tata Letak', View: 'Tampilan',
@@ -114,7 +158,7 @@ const ID = {
   'Thousands separator': 'Pemisah ribuan', 'Decimal sign': 'Tanda desimal',
   'Zoom out': 'Perkecil', 'Zoom in': 'Perbesar', 'Reset zoom': 'Zoom 100%', Ruler: 'Penggaris', Snap: 'Tempel',
   'Snap to the edges of other elements while dragging (hold Alt to turn off)': 'Menempel ke tepi elemen lain saat digeser (tahan Alt untuk mematikan)',
-  Preview: 'Pratinjau', 'Render the report with sample data': 'Cetak laporan dengan data contoh', Close: 'Tutup', 'Report preview': 'Pratinjau laporan', 'Rendering…': 'Mencetak…', page: 'halaman', pages: 'halaman',
+  Preview: 'Pratinjau', 'Render the report with sample data': 'Cetak laporan dengan data contoh', 'Not in the sample data, prints empty:': 'Tidak ada di data contoh, tercetak kosong:', Close: 'Tutup', 'Report preview': 'Pratinjau laporan', 'Rendering…': 'Mencetak…', page: 'halaman', pages: 'halaman',
   'Band heights. Select an element to edit it; double-click a text or a table cell to type.': 'Tinggi band. Pilih elemen untuk mengubahnya; klik ganda teks atau sel tabel untuk mengetik.',
   'elements selected. Use the ribbon to format, align or move them together.': 'elemen dipilih. Pakai ribbon untuk memformat, meratakan, atau memindahkannya bersama.',
   'Drag to resize this band': 'Tarik untuk mengubah tinggi band ini', band: 'band', text: 'teks', rows: 'baris', columns: 'kolom', 'column widths': 'lebar kolom',
@@ -355,6 +399,7 @@ const CSS = `
 .ddr-fonts label{display:flex;align-items:center;gap:6px;padding:3px 0}
 .ddr-fonts label[hidden]{display:none}
 .ddr-preview [role=status]{color:var(--muted)}
+.ddr-preview .ddr-warn{margin:8px 0 0;color:#b45309}
 .ddr-sheet{position:relative;display:grid;place-items:center;width:min(92vw,900px);height:80vh;margin-top:8px;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:#e5e7eb}
 .ddr-sheet p{margin:0;padding:16px;max-width:60ch;color:#475569;text-align:center;white-space:pre-wrap}
 .ddr-sheet p.err{color:#dc2626}
@@ -1007,9 +1052,10 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
 
   // the Field menu: the data's own fields first, so a name is picked rather than typed (and mistyped)
   function fillFields() {
+    const list = fields.length ? fields : dataFields(data)
     const opt = v => `<option value="${v.replaceAll('&', '&amp;').replaceAll('"', '&quot;')}">${v.replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</option>`
     $('[data-id=field]').innerHTML = `<option value="">${L('Field…')}</option>` +
-      (fields.length ? `<optgroup label="${L('Data')}">${fields.map(f => opt(`{{${f}}}`)).join('')}</optgroup>` : '') +
+      (list.length ? `<optgroup label="${L('Data')}">${list.map(f => opt(`{{${f}}}`)).join('')}</optgroup>` : '') +
       `<optgroup label="${L('Expressions')}">${FIELD_TOKENS.map(opt).join('')}</optgroup>`
   }
   fillFields()
@@ -1569,16 +1615,19 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
     dialog.className = 'ddr-preview'
     // the frame sits over a note that says what is going on, and only shows once its document has
     // loaded: while rendering, or after an error, the preview never looks like an empty page
-    dialog.innerHTML = `<form method="dialog"><button>${L('Close')}</button><span role="status"></span></form>` +
+    dialog.innerHTML = `<form method="dialog"><button>${L('Close')}</button><span role="status"></span></form><p class="ddr-warn" hidden></p>` +
       `<div class="ddr-sheet"><p role="alert"></p><iframe sandbox title="${L('Report preview')}"></iframe></div>`
     box.innerHTML = group('Report', tile('preview', 'preview', 'Preview', 'Render the report with sample data'))
-    const frame = dialog.querySelector('iframe'), status = dialog.querySelector('[role=status]'), note = dialog.querySelector('[role=alert]')
+    const frame = dialog.querySelector('iframe'), status = dialog.querySelector('[role=status]'), note = dialog.querySelector('[role=alert]'), warn = dialog.querySelector('.ddr-warn')
     let runs = 0
     frame.onload = () => { if (frame.srcdoc) frame.classList.add('ready') }
     commands.preview = async () => {
       const run = ++runs // a later click wins over a slow earlier render
       frame.classList.remove('ready')
       status.textContent = ''
+      const miss = missingFields(tpl, data, fields)
+      warn.hidden = !miss.length
+      warn.textContent = `⚠ ${L('Not in the sample data, prints empty:')} ${miss.join(', ')}`
       note.textContent = L('Rendering…')
       note.classList.remove('err')
       if (!dialog.open) dialog.showModal() // open at once, so the click visibly did something
@@ -2111,7 +2160,7 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
     getTemplate: () => structuredClone(tpl),
     setTemplate: t => load(t),
     setFields: list => { fields = Array.isArray(list) ? list.map(String) : []; fillFields() },
-    setData: d => { data = d; draw() },
+    setData: d => { data = d; fillFields(); draw() },
     // run does what a ribbon button does, for a toolbar of the host's own: 'bold', 'align:center', 'add:table', 'zoom:fit'
     run: cmd => { const name = String(cmd).split(':')[0]; if (!Object.hasOwn(commands, name)) throw new Error('ddreport: no command ' + name); run(String(cmd)); sync() },
     commands: () => Object.keys(commands).filter(c => !hidden.has(c)),

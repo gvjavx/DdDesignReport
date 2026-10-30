@@ -28,7 +28,9 @@
 // -serve hands them to the designer too, and lists every font at GET /fonts.json.
 // Without DDREPORT_FONTS, a ddreport-fonts folder in the current folder is used,
 // the one node fontpack/download.mjs fills. DDREPORT_MAX_ROWS caps the rows of
-// one report.
+// one report. DDREPORT_STRICT=1 refuses a report whose template asks for fields
+// the data does not have (ddreport.Missing), naming them, instead of printing
+// them empty.
 //
 // -healthcheck asks a server on this machine for GET /healthz and exits 1 when it
 // does not answer ok: a HEALTHCHECK for the image, which has no curl. With -mcp
@@ -86,8 +88,25 @@ func render(in io.Reader, format string) ([]byte, error) {
 var signCert, signKey []byte
 var signReason string
 
+// strict is DDREPORT_STRICT: a field the data lacks fails the report.
+var strict = os.Getenv("DDREPORT_STRICT") == "1"
+
+// missing is the error for fields the data lacks, nil when it has them all.
+func missing(template, data json.RawMessage) error {
+	m, err := ddreport.Missing(template, data)
+	if err == nil && len(m) > 0 {
+		err = fmt.Errorf("ddreport: the data has no %s (a typo in the template, or a field the query does not return)", strings.Join(m, ", "))
+	}
+	return err
+}
+
 // renderSigned renders, and signs a PDF when there is a key to sign with.
 func renderSigned(template, data json.RawMessage, format string) ([]byte, error) {
+	if strict && format != "jrxml" {
+		if err := missing(template, data); err != nil {
+			return nil, err
+		}
+	}
 	doc, err := ddreport.Render(template, data, format)
 	if err != nil || format != "pdf" || signKey == nil {
 		return doc, err

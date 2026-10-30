@@ -75,8 +75,11 @@ func (r *report) grid(e Element, sc scope, measure, once bool) ([]Element, float
 	var items []any
 	data := e.Data != "" && !once
 	if data {
-		if items, _ = lookup(e.Data, sc.ctx...).([]any); items == nil && e.Data == r.t.DataKey {
+		list := lookup(e.Data, sc.ctx...)
+		if items, _ = list.([]any); items == nil && e.Data == r.t.DataKey {
 			items = sc.rows
+		} else {
+			sc.seen(e.Data, list)
 		}
 	}
 	all := &scope{r.t, items, sc.ctx} // header and total row of a data table: over all its items

@@ -60,9 +60,10 @@ type Template struct {
 		GroupHeader4, GroupFooter4, GroupHeader5, GroupFooter5, GroupHeader6, GroupFooter6 Band
 	}
 
-	nodes map[string]node // expressions, parsed once
-	now   time.Time       // {{now}}, the same on every page
-	ready bool            // a sub-report's template has taken the settings of its report
+	nodes  map[string]node // expressions, parsed once
+	fields map[string]bool // fields and lists the template asked for, and whether the data had them (Missing)
+	now    time.Time       // {{now}}, the same on every page
+	ready  bool            // a sub-report's template has taken the settings of its report
 }
 
 type Page struct {
@@ -257,6 +258,26 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 	return nil, fmt.Errorf("ddreport: unknown format %q", format)
 }
 
+// Missing lists the fields and lists the template asks for that the data does
+// not have: a typo, or a column the query does not return. Their placeholders
+// print empty, so a report can look right while a field is blank. A field
+// that only some rows lack is not missing.
+func Missing(template []byte, data any) ([]string, error) {
+	r, err := newReport(template, data)
+	if err != nil {
+		return nil, err
+	}
+	r.textLayout() // fills in every band once
+	var out []string
+	for k, ok := range r.t.fields {
+		if !ok {
+			out = append(out, k)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
 // pictures are the image sources of the template's bands, those of its sub-reports included.
 func (t *Template) pictures() []string {
 	b := t.Bands
@@ -376,6 +397,7 @@ func newReport(template []byte, data any) (*report, error) {
 		t.Thousands = ""
 	}
 	t.now = time.Now()
+	t.fields = map[string]bool{}
 	bands := &t.Bands
 	images := []string{t.Page.BackgroundImage}
 	images = append(images, t.pictures()...)

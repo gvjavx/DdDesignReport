@@ -6,6 +6,8 @@ Library reporting dengan designer drag and drop. Template didesain di browser, d
 
 **Untuk software house:** pasang designer-nya di aplikasi Anda, dan klien bisa mengubah sendiri kop faktur, kolom slip gaji, atau tata letak rapor mereka. Tidak ada lagi tiket "tolong geser logonya" untuk Anda. Mode mudah, tombol yang bisa disembunyikan, dan teks antarmuka yang bisa diganti membuatnya cocok untuk admin dan staf yang bukan programmer, dan dokumen lokal sudah ada: kuitansi dengan terbilang, kertas F4, nama bulan Indonesia, slip gaji, surat jalan, dan rapor.
 
+**Mulai di sini:** [Integrasi dalam 10 menit](INTEGRASI.md), dengan contoh aplikasi lengkap di [`examples/app`](examples/app): designer di halaman, template per pelanggan, preview, PDF dan Excel, dan cetak struk.
+
 Butuh dibuatkan template atau dipasangkan? Lihat [jasa](https://gvjavx.github.io/DdDesignReport-website/#jasa).
 
 Yang baru di setiap versi: [CHANGELOG.md](CHANGELOG.md). English: [README.en.md](README.en.md).
@@ -41,7 +43,8 @@ const designer = createDesigner(document.getElementById('designer'), {
   fontBase: '/fonts/',                // opsional: URL font bawaan (`ddreport -serve` menyajikannya di /fonts/)
   fonts: ['Inter'],                   // opsional: font tambahan yang didaftarkan di backend
   fields: ['name', 'qty', 'price'],   // opsional: nama field data untuk menu Field; ubah dengan designer.setFields()
-  data: sampleData,                   // opsional: data contoh; chart di kanvas digambar darinya; ubah dengan designer.setData()
+  data: sampleData,                   // opsional: data contoh: chart di kanvas, menu Field (bila fields tidak diisi), dan peringatan
+                                      // field yang tidak ada di data saat Preview; ubah dengan designer.setData()
   preview: async t => {               // opsional, memunculkan tombol Preview
     const res = await fetch('/api/report/preview', { method: 'POST', body: JSON.stringify(t) })
     return res.text()                 // HTML hasil render backend (format "html")
@@ -221,10 +224,10 @@ Format `escpos` mencetak langsung ke printer struk thermal 58 mm dan 80 mm (USB,
 ddreport -format escpos < struk.json > struk.bin
 cat struk.bin > /dev/usb/lp0                 # Linux, printer USB
 nc 192.168.1.50 9100 < struk.bin             # printer jaringan (port 9100)
-copy /b struk.bin \localhostPrinterStruk   # Windows, printer yang di-share
+copy /b struk.bin \\localhost\PrinterStruk  # Windows, printer yang di-share
 ```
 
-Dari kode: `render(template, data, 'escpos')` di Node.js, `DdReport.render(..., "escpos")` di Java, atau `POST /render?format=escpos`, lalu kirim byte-nya ke printer, misalnya lewat socket ke port 9100 atau lewat library printer Bluetooth di aplikasi Android (fungsi yang menulis byte mentah). Template **Struk kasir** siap pakai sudah selebar kertas 80 mm.
+Dari kode: `render(template, data, 'escpos')` di Node.js, `DdReport.render(..., "escpos")` di Java, atau `POST /render?format=escpos`, lalu kirim byte-nya ke printer, misalnya lewat socket ke port 9100 atau lewat library printer Bluetooth di aplikasi Android (fungsi yang menulis byte mentah). Dari aplikasi web: printer jaringan lewat server, atau printer Bluetooth/USB langsung dari browser dengan Web Serial; lihat [Cetak ke printer struk](INTEGRASI.md#5-cetak-ke-printer-struk). Template **Struk kasir** siap pakai sudah selebar kertas 80 mm.
 
 ## PDF/A dan tanda tangan digital
 
@@ -271,14 +274,14 @@ Java, Kotlin, dan Node.js memanggil binary `ddreport`. Paketnya membawa binary u
 **Java** (Maven Central, `io.github.gvjavx:ddreport`): tambahkan wrapper-nya dan binary untuk sistem tempat aplikasi berjalan, dengan classifier `linux-x64`, `linux-arm64`, `windows-x64`, `windows-arm64`, `darwin-x64`, atau `darwin-arm64`.
 
 ```xml
-<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.4.2</version></dependency>
-<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.4.2</version><classifier>linux-x64</classifier></dependency>
+<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.4.3</version></dependency>
+<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.4.3</version><classifier>linux-x64</classifier></dependency>
 ```
 
 ```kotlin
 // Gradle
-implementation("io.github.gvjavx:ddreport:0.4.2")
-runtimeOnly("io.github.gvjavx:ddreport:0.4.2:linux-x64")
+implementation("io.github.gvjavx:ddreport:0.4.3")
+runtimeOnly("io.github.gvjavx:ddreport:0.4.3:linux-x64")
 ```
 
 Package Java-nya tetap `io.ddreport` (`import io.ddreport.DdReport`).
@@ -326,7 +329,7 @@ Keduanya memakai `ddreport -stdio`: binary terus berjalan dan membaca permintaan
 docker run -p 8080:8080 -e DDREPORT_TOKEN=rahasia-panjang ghcr.io/gvjavx/ddreport
 ```
 
-Dengan `DDREPORT_TOKEN`, setiap render harus mengirim `Authorization: Bearer <token>` (tanpa itu jawabannya `401`); designer di `/` tetap terbuka, dan preview-nya memakai token dari alamat halaman: `http://server:8080/#token=rahasia-panjang`. Tanpa token, siapa pun yang bisa menjangkau port itu bisa me-render, jadi `ddreport -serve` memberi peringatan bila alamatnya terbuka ke jaringan. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran, dan bila sudah empat kali jumlah prosesor yang menunggu atau berjalan, render berikutnya dijawab `503` dengan `Retry-After: 5` agar tidak menunggu bermenit-menit. `GET /healthz` menjawab `ok` tanpa token, untuk load balancer atau pemantauan. Setiap render, impor, dan akses My templates dicatat satu baris di stderr: `POST /render?format=pdf 200 48213B 85ms` (tanpa token dan tanpa isi laporan). `DDREPORT_MAX_ROWS=50000` menolak laporan yang barisnya lebih dari itu dengan pesan error, alih-alih menghabiskan memori server (lihat [Performa](#performa)). Image Docker punya HEALTHCHECK bawaan: `ddreport -healthcheck 127.0.0.1:8080` meminta `/healthz` dan keluar dengan kode 1 bila server tidak menjawab `ok`. Permintaan dari halaman situs lain di browser (header `Origin` yang berbeda) ditolak; panggil dari backend Anda, bukan langsung dari browser. Tanpa token, server hanya melayani alamat `localhost` atau alamat IP (misalnya `http://192.168.1.5:8080`), agar situs lain yang mengarahkan namanya ke mesin Anda (DNS rebinding) tidak bisa membaca atau menghapus My templates; untuk memakai nama domain, isi `DDREPORT_TOKEN`.
+Dengan `DDREPORT_TOKEN`, setiap render harus mengirim `Authorization: Bearer <token>` (tanpa itu jawabannya `401`); designer di `/` tetap terbuka, dan preview-nya memakai token dari alamat halaman: `http://server:8080/#token=rahasia-panjang`. Tanpa token, siapa pun yang bisa menjangkau port itu bisa me-render, jadi `ddreport -serve` memberi peringatan bila alamatnya terbuka ke jaringan. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran, dan bila sudah empat kali jumlah prosesor yang menunggu atau berjalan, render berikutnya dijawab `503` dengan `Retry-After: 5` agar tidak menunggu bermenit-menit. `GET /healthz` menjawab `ok` tanpa token, untuk load balancer atau pemantauan. Setiap render, impor, dan akses My templates dicatat satu baris di stderr: `POST /render?format=pdf 200 48213B 85ms` (tanpa token dan tanpa isi laporan). `DDREPORT_STRICT=1` menolak laporan yang memakai field yang tidak ada di data (salah ketik, atau kolom yang tidak dikembalikan query) dengan nama field-nya, alih-alih mencetaknya kosong; dari Go: `ddreport.Missing(template, data)`. `DDREPORT_MAX_ROWS=50000` menolak laporan yang barisnya lebih dari itu dengan pesan error, alih-alih menghabiskan memori server (lihat [Performa](#performa)). Image Docker punya HEALTHCHECK bawaan: `ddreport -healthcheck 127.0.0.1:8080` meminta `/healthz` dan keluar dengan kode 1 bila server tidak menjawab `ok`. Permintaan dari halaman situs lain di browser (header `Origin` yang berbeda) ditolak; panggil dari backend Anda, bukan langsung dari browser. Tanpa token, server hanya melayani alamat `localhost` atau alamat IP (misalnya `http://192.168.1.5:8080`), agar situs lain yang mengarahkan namanya ke mesin Anda (DNS rebinding) tidak bisa membaca atau menghapus My templates; untuk memakai nama domain, isi `DDREPORT_TOKEN`.
 
 PHP (juga di shared hosting yang tidak boleh menjalankan program, selama server ddreport ada di mesin lain):
 

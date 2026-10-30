@@ -61,6 +61,28 @@ func TestTemplates(t *testing.T) {
 			if pdf := render(t, file.Template, file.Data, "pdf"); !bytes.HasPrefix(pdf, []byte("%PDF-")) {
 				t.Error("not a PDF")
 			}
+			if m, err := Missing(file.Template, file.Data); err != nil || len(m) > 0 {
+				t.Errorf("fields the sample data lacks: %v %v", m, err)
+			}
 		})
+	}
+}
+
+// Missing names a misspelt field, list, or field of a list item, and not one
+// that is only null, only in some rows, a built-in, or in the parameters.
+func TestMissing(t *testing.T) {
+	tpl := []byte(`{"bands":{
+		"header":{"height":20,"elements":[{"type":"text","x":0,"y":0,"w":200,"h":14,"text":"{{shop}} {{shpo}} {{page}} {{now:yyyy}}"}]},
+		"detail":{"height":40,"elements":[
+			{"type":"text","x":0,"y":0,"w":200,"h":14,"text":"{{name}} {{nmae}} {{[unit-price]}} {{note}} {{if(paid, 'x', '')}} {{sum(qty)}}"},
+			{"type":"table","x":0,"y":20,"w":200,"h":14,"data":"itmes","cells":[["{{sku}}"]]}]},
+		"summary":{"height":20,"elements":[{"type":"table","x":0,"y":0,"w":200,"h":14,"data":"items","cells":[["{{sku}} {{skuu}} {{index}}"]]}]}}}`)
+	data := `{"shop":"Warung","items":[{"sku":"A"}],"rows":[{"name":"Kopi","unit-price":5,"note":null,"qty":1},{"name":"Teh","qty":2,"paid":true}]}`
+	m, err := Missing(tpl, json.RawMessage(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(m, " "); got != "itmes nmae shpo skuu" {
+		t.Errorf("missing: %q", got)
 	}
 }

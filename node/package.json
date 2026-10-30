@@ -1,6 +1,6 @@
 {
   "name": "ddreport",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Render DdDesignReport templates to PDF, HTML, XLSX or CSV",
   "main": "index.js",
   "scripts": { "test": "node --test test.js" },
