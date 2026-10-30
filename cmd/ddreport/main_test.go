@@ -414,13 +414,19 @@ func TestHealthAndFullQueue(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer s3cret")
 		go http.DefaultClient.Do(req)
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	// a try that got into the queue before it filled waits behind the held renders;
+	// it gives up after a second and leaves its place
+	try := &http.Client{Timeout: time.Second}
+	deadline := time.Now().Add(10 * time.Second)
 	for {
 		req, _ := http.NewRequest("POST", srv.URL+"/render?format=csv", strings.NewReader(request))
 		req.Header.Set("Authorization", "Bearer s3cret")
-		res, err := http.DefaultClient.Do(req)
+		res, err := try.Do(req)
 		if err != nil {
-			t.Fatal(err)
+			if time.Now().After(deadline) {
+				t.Fatal(err)
+			}
+			continue
 		}
 		res.Body.Close()
 		if res.StatusCode == 503 && res.Header.Get("Retry-After") != "" {
