@@ -429,7 +429,7 @@ func TestSpreadsheetPictures(t *testing.T) {
 	data := []map[string]any{{"name": "Kopi", "photo": dot}, {"name": "Teh"}} // Teh has no photo: no picture, no error
 	x := render(t, tpl, data, "xlsx")
 	drawing := string(unzip(t, x, "xl/drawings/drawing1.xml"))
-	anchors := regexp.MustCompile(`<xdr:col>(\d+)</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>(\d+)</xdr:row>`).FindAllStringSubmatch(drawing, -1)
+	anchors := regexp.MustCompile(`<xdr:col>(\d+)</xdr:col><xdr:colOff>\d+</xdr:colOff><xdr:row>(\d+)</xdr:row>`).FindAllStringSubmatch(drawing, -1)
 	var at []string
 	for _, a := range anchors {
 		at = append(at, a[1]+","+a[2])

@@ -1,7 +1,10 @@
 package ddreport
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
 	"slices"
@@ -17,10 +20,16 @@ import (
 // become variables reset per group, {{page}} and {{pages}} page counts.
 //
 // Texts, tables (cell by cell), pictures, boxes, lines, barcodes (the jr:QRCode
-// and jr:Code128 components), groups, sorting and the band options carry over.
-// Charts, sub-reports, crosstabs, data tables' repeating rows and terbilang have
-// no direct counterpart: they are left out or kept as they print once, and the
-// comment at the top of the file lists them.
+// and jr:Code128 components), groups, sorting and the band options carry over;
+// terbilang becomes a Groovy closure. A data table's repeating rows and a
+// sub-report's detail band become a jr:list over the items (a parameter holding a
+// java.util.List of Maps, or a row field holding a JSON list), with what is under
+// them moving down as it grows. Charts are Jasper charts (they need JFreeChart);
+// a donut prints as a pie. A crosstab is kept as the table it prints with no data.
+// What has no counterpart is listed in the comment at the top of the file.
+//
+// Properties named ddreport.* keep what Jasper has no place for, so FromJRXML
+// reads the template back as it was.
 //
 // It is also the "jrxml" format of Render and of the ddreport binary.
 func ToJRXML(template []byte) ([]byte, error) {
@@ -28,7 +37,29 @@ func ToJRXML(template []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	x := &jasperOut{r: r, t: r.t, fields: map[string]string{}, params: map[string]bool{}}
+	x := &jasperOut{r: r, t: r.t, fields: map[string]string{}, params: map[string]string{}}
+	// each element as written, so a data table or sub-report can be read back whole,
+	// and the settings beside the page and bands
+	var raw struct {
+		Bands map[string]struct{ Elements []json.RawMessage }
+	}
+	var top map[string]json.RawMessage
+	if json.Unmarshal(template, &top) == nil {
+		for k := range top {
+			if k := strings.ToLower(k); k == "page" || k == "bands" {
+				delete(top, k)
+			}
+		}
+		if b, err := json.Marshal(top); err == nil && len(top) > 0 {
+			x.settings = string(b)
+		}
+	}
+	if json.Unmarshal(template, &raw) == nil {
+		x.raw = map[string][]json.RawMessage{}
+		for name, b := range raw.Bands {
+			x.raw[name] = b.Elements
+		}
+	}
 	return x.report(), nil
 }
 
@@ -36,16 +67,30 @@ type jasperOut struct {
 	r      *report
 	t      *Template
 	fields map[string]string // Jasper name: path in the row
-	params map[string]bool
+	params map[string]string // Jasper name: path in the data
 	vars   strings.Builder
 	nvars  int
 	warn   []string
-	page   bool // CURRENT_PAGE is needed
+	page   bool // the text being written has a page number: it is evaluated once the pages are known
 
 	// the band being written
 	level  int  // its group level, 1 outermost; 0 outside groups
 	rowed  bool // its fields are those of a row: detail and group bands
 	bottom int  // the lowest edge of what is written in it, as Jasper reads it
+	right  int  // and the rightmost
+
+	// data tables and sub-reports: their rows are a jr:list over a sub-dataset
+	subsets   strings.Builder
+	nlists    int
+	list      map[string]string // writing a list's contents: the fields of its sub-dataset
+	coll      string            // writing a data table's header or total row: Groovy for its items, which aggregates run over
+	floatFrom float64           // in the band: what starts at or below this moves down as the list above it grows
+
+	raw      map[string][]json.RawMessage // the elements of each band, as the template has them
+	rawEl    json.RawMessage              // the one being written
+	settings string                       // the template beside its page and bands, as JSON
+	props    string                       // properties for the next reportElement
+	part     bool                         // what is written is part of an element read back whole
 }
 
 func (x *jasperOut) warnOnce(s string) {
@@ -59,16 +104,35 @@ var jasperName = regexp.MustCompile(`[^\p{L}\p{N}_]`)
 // field is a reference to a value of the data: a field of the row, or a parameter.
 func (x *jasperOut) field(path string, inAggregate bool) string {
 	name := jasperName.ReplaceAllString(path, "_")
+	switch {
+	case x.coll != "" && inAggregate: // an item of the collection an aggregate runs over
+		return "r?.get(" + groovyString(path) + ")"
+	case x.list != nil: // a list's contents: a field of its item, by its key, or else of the row around it, as ours
+		x.list[path] = path
+		return "($F{" + path + "} != null ? $F{" + path + "} : $P{parent_" + name + "})"
+	}
 	if x.rowed || inAggregate {
 		x.fields[name] = path
 		return "$F{" + name + "}"
 	}
-	x.params[name] = true
+	x.params[name] = path
 	return "$P{" + name + "}"
 }
 
 // variable declares an aggregate and returns its reference.
 func (x *jasperOut) variable(fn, arg string) string {
+	if x.coll != "" { // over the items of a data table, in Groovy: no variable sees them
+		each := "(" + x.coll + " ?: []).collect{ r -> ((" + cmpOr(arg, "1") + ") as Double) }.findAll{ it != null }"
+		switch fn {
+		case "sum":
+			return "(" + each + ".sum() ?: 0d)"
+		case "avg":
+			return "({ l -> l ? l.sum() / l.size() : null }.call(" + each + "))"
+		case "min", "max":
+			return "(" + each + "." + fn + "())"
+		}
+		return "((" + x.coll + " ?: []).size())"
+	}
 	x.nvars++
 	name := fmt.Sprintf("v%d", x.nvars)
 	calc := map[string]string{"sum": "Sum", "avg": "Average", "min": "Lowest", "max": "Highest", "count": "Count"}[fn]
@@ -197,6 +261,19 @@ func (p *jasperParser) chain(ops string, next func() (string, bool)) (string, bo
 func (p *jasperParser) sum() (string, bool)     { return p.chain("+-", p.product) }
 func (p *jasperParser) product() (string, bool) { return p.chain("*/", p.factor) }
 
+// groovyTerbilang is terbilang (expr.go) as a Groovy closure, so a .jrxml spells
+// numbers out with nothing added to JasperReports: 2750000 is "dua juta tujuh ratus lima puluh ribu".
+const groovyTerbilang = `{ Object v -> if (v == null || v == '') return null; double f = (v as Double); double n = Math.round(Math.abs(f)); ` +
+	`if (n >= 1e18d) return String.valueOf(v); if (n == 0) return 'nol'; ` +
+	`def small = ['', 'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'delapan', 'sembilan', 'sepuluh', 'sebelas']; ` +
+	`def join = { String a, String b -> (a + ' ' + b).trim() }; def spell; spell = { long m -> ` +
+	`if (m < 12) return small[(int) m]; if (m < 20) return small[(int) (m - 10)] + ' belas'; ` +
+	`if (m < 100) return join(small[(int) m.intdiv(10)] + ' puluh', small[(int) (m % 10)]); ` +
+	`if (m < 200) return join('seratus', spell(m - 100)); if (m < 1000) return join(small[(int) m.intdiv(100)] + ' ratus', spell(m % 100)); ` +
+	`if (m < 2000) return join('seribu', spell(m - 1000)); ` +
+	`for (u in [[1000000000000000L, 'kuadriliun'], [1000000000000L, 'triliun'], [1000000000L, 'miliar'], [1000000L, 'juta'], [1000L, 'ribu']]) { if (m >= u[0]) return join(spell(m.intdiv(u[0])) + ' ' + u[1], spell(m % u[0])) }; ` +
+	`return '' }; (f < 0 ? 'minus ' : '') + spell((long) n) }`
+
 func groovyString(s string) string {
 	return "'" + strings.NewReplacer(`\`, `\\`, `'`, `\'`, "\n", `\n`).Replace(s) + "'"
 }
@@ -258,10 +335,14 @@ func (p *jasperParser) factor() (string, bool) {
 		switch word {
 		case "page":
 			p.x.page = true
-			return "$V{CURRENT_PAGE}", true
+			return "$V{MASTER_CURRENT_PAGE}", true
 		case "pages":
-			return "$V{PAGE_NUMBER}", true
+			p.x.page = true
+			return "$V{MASTER_TOTAL_PAGES}", true
 		case "index":
+			if p.x.list != nil { // the item's number in its list
+				return "$V{REPORT_COUNT}", true
+			}
 			if n := len(p.x.t.levels()); n > 0 && p.x.rowed {
 				return fmt.Sprintf("$V{g%d_COUNT}", n), true
 			}
@@ -313,9 +394,8 @@ func (p *jasperParser) factor() (string, bool) {
 			places = "((" + args[1] + ") as Integer)"
 		}
 		return "(" + asNumber(args[0], nums[0]) + " == null ? null : new java.math.BigDecimal(" + asNumber(args[0], nums[0]) + ".toString()).setScale(" + places + ", java.math.RoundingMode.HALF_UP).doubleValue())", true
-	case word == "terbilang":
-		p.x.warnOnce("terbilang(...) has no JasperReports counterpart: the number is printed in digits")
-		return args[0], nums[0]
+	case word == "terbilang" && len(args) == 1:
+		return "(" + groovyTerbilang + ").call(" + args[0] + ")", false
 	}
 	p.bad = true
 	return "", false
@@ -399,6 +479,21 @@ func attr(s string) string {
 
 func px(f float64) int { return int(math.Round(f)) }
 
+func property(name, value string) string {
+	return `<property name="` + name + `" value="` + attr(value) + `"/>`
+}
+
+// whole is a property holding the element being written as the template has it,
+// so FromJRXML reads a data table or sub-report back whole, not as its parts.
+func (x *jasperOut) whole() string {
+	var b bytes.Buffer
+	if x.rawEl == nil || json.Compact(&b, x.rawEl) != nil {
+		return ""
+	}
+	x.rawEl = nil // nothing inside it is the element
+	return property("ddreport.element", b.String())
+}
+
 // corePDFFonts are the PDF names of the built-in fonts: regular, bold, italic, bold italic.
 var corePDFFonts = map[string][4]string{
 	"": {"Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique"}, "Helvetica": {"Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique"},
@@ -412,12 +507,26 @@ var jasperFont = map[string]string{"Helvetica": "SansSerif", "": "SansSerif", "T
 func (x *jasperOut) element(b *strings.Builder, e Element) {
 	common := func(extra string) string {
 		x.bottom = max(x.bottom, px(e.Y)+max(px(e.H), 1)) // a line is at least 1pt tall, so it may reach past the band
+		x.right = max(x.right, px(e.X)+max(px(e.W), 1))
+		if x.floatFrom > 0 && e.Y >= x.floatFrom-0.5 {
+			extra = ` positionType="Float"` + extra
+		}
 		s := fmt.Sprintf(`<reportElement x="%d" y="%d" width="%d" height="%d"%s`, px(e.X), px(e.Y), max(px(e.W), 1), max(px(e.H), 1), extra)
+		// properties FromJRXML reads back: a whole element, or that this is part of one
+		inner := x.props
+		x.props = ""
+		if x.part {
+			inner += `<property name="ddreport.part" value="1"/>`
+		}
 		if e.ShowIf != "" {
 			if g, ok := x.groovy(e.ShowIf); ok {
-				return s + `><printWhenExpression><![CDATA[` + cdata("(("+g+") ? Boolean.TRUE : Boolean.FALSE)") + `]]></printWhenExpression></reportElement>`
+				inner += `<printWhenExpression><![CDATA[` + cdata("(("+g+") ? Boolean.TRUE : Boolean.FALSE)") + `]]></printWhenExpression>`
+			} else {
+				x.warnOnce("a show-when condition Jasper cannot express is left out: " + e.ShowIf)
 			}
-			x.warnOnce("a show-when condition Jasper cannot express is left out: " + e.ShowIf)
+		}
+		if inner != "" {
+			return s + ">" + inner + "</reportElement>"
 		}
 		return s + `/>`
 	}
@@ -435,8 +544,9 @@ func (x *jasperOut) element(b *strings.Builder, e Element) {
 	case "text":
 		// Jasper prints nothing of a text whose first line does not fit, and measures a line
 		// at about 1.3 times the font size: a box that cannot hold one line gets that much
-		if !e.Grow {
-			e.H = max(e.H, math.Ceil(e.size()*1.35))
+		if h := math.Ceil(e.size() * 1.35); !e.Grow && h > e.H {
+			x.props += property("ddreport.h", str(e.H)) // the height as designed, for FromJRXML
+			e.H = h
 		}
 		font := jasperFont[e.Font]
 		if font == "" {
@@ -485,9 +595,14 @@ func (x *jasperOut) element(b *strings.Builder, e Element) {
 			fmt.Fprintf(b, "\t\t\t<staticText>%s%s%s<text><![CDATA[%s]]></text></staticText>\n", el, box, textElement, cdata(text))
 			return
 		}
+		x.page = false
 		g, vars, _ := x.text(text)
 		when := ""
-		if vars {
+		switch {
+		case x.list != nil: // in a list each item's values are there as it prints: Jasper allows no delay
+		case x.page: // "Page 2 of 5": both known when the report is done
+			when = ` evaluationTime="Master"`
+		case vars:
 			when = ` evaluationTime="Auto"`
 		}
 		grow := ""
@@ -538,10 +653,22 @@ func (x *jasperOut) element(b *strings.Builder, e Element) {
 			e = x.r.crosstab(e, scope{x.t, nil, nil})
 		}
 		if e.Data != "" {
-			x.warnOnce("a table with rows from data (" + e.Data + ") prints its rows once; use a Jasper list or sub-report to repeat them per item")
+			x.dataTable(b, e)
+			return
 		}
+		// cell by cell; the first one carries the whole table, so it reads back as one
+		whole := x.whole()
 		cells, _ := x.r.grid(e, scope{x.t, nil, nil}, false, true)
-		for _, c := range cells {
+		if whole != "" {
+			defer func() { x.part = false }()
+		}
+		for i, c := range cells {
+			if whole != "" && i == 0 {
+				x.props += whole
+			}
+			if whole != "" {
+				x.part = i > 0
+			}
 			c.ShowIf = e.ShowIf
 			if c.Type == "text" {
 				c.Border = 0 // the table's lines are elements of their own
@@ -553,22 +680,276 @@ func (x *jasperOut) element(b *strings.Builder, e Element) {
 			}
 			x.element(b, c)
 		}
+	case "list": // the box of a data table's jr:list, which dataTable writes the rest of
+		fmt.Fprintf(b, "\t\t\t<componentElement>%s\n", common(""))
 	case "chart":
-		x.warnOnce("charts are left out: add a Jasper chart where the box was")
-		fmt.Fprintf(b, "\t\t\t<rectangle>%s<graphicElement><pen lineWidth=\"0.5\" lineStyle=\"Dashed\"/></graphicElement></rectangle>\n", common(""))
+		x.props = property("ddreport.label", e.Label) + property("ddreport.value", e.Value) // what FromJRXML reads back
+		x.chart(b, e, common(""))
 	case "subreport":
-		x.warnOnce("sub-reports are left out: add a Jasper sub-report where the box was")
-		fmt.Fprintf(b, "\t\t\t<rectangle>%s<graphicElement><pen lineWidth=\"0.5\" lineStyle=\"Dashed\"/></graphicElement></rectangle>\n", common(""))
+		x.subreport(b, e)
+	}
+}
+
+// rows splits a table into the table of its rows from to to, where they are on the page.
+func tableRows(e Element, from, to int, header, footer bool) Element {
+	h := make([]float64, len(e.Cells))
+	sum := 0.0
+	for i := range h {
+		h[i] = 1
+		if i < len(e.Heights) && e.Heights[i] > 0 {
+			h[i] = e.Heights[i]
+		}
+		sum += h[i]
+	}
+	for i := range h {
+		h[i] *= e.H / sum
+	}
+	part := e
+	part.Data, part.Header, part.Footer = "", header, footer
+	part.Cells, part.Heights = e.Cells[from:to], h[from:to]
+	part.Y, part.H = e.Y, 0
+	for i := range from {
+		part.Y += h[i]
+	}
+	for i := from; i < to; i++ {
+		part.H += h[i]
+	}
+	part.CellStyle = map[string]CellStyle{}
+	for k, s := range e.CellStyle { // "row,column", counted from the part's first row
+		var r, c int
+		if _, err := fmt.Sscanf(k, "%d,%d", &r, &c); err == nil && r >= from && r < to {
+			part.CellStyle[fmt.Sprintf("%d,%d", r-from, c)] = s
+		}
+	}
+	if !header && !footer {
+		part.Frame = 0 // the frame is drawn around each item
+	}
+	return part
+}
+
+// dataTable writes a table whose rows repeat for each item of a list in the data:
+// its header row, a jr:list repeating the rows between, and its total row under
+// the list, moving down as it grows. The items are a parameter of the report (a
+// java.util.List of Maps), or in a detail band a field of the row holding a JSON list.
+func (x *jasperOut) dataTable(b *strings.Builder, e Element) {
+	nr := len(e.Cells)
+	first, last := 0, nr
+	if e.Header {
+		first = 1
+	}
+	if e.Footer && nr-1 >= first && (nr > 1 || !e.Header) {
+		last = nr - 1
+	}
+	coll, whole := x.items(e.Data), x.whole()
+	// header and total row: their aggregates count the items. With the list
+	// carrying the whole table, they are its parts
+	edge := func(from, to int, header, footer bool) {
+		if from < to {
+			x.coll, x.part = coll, whole != "" && first < last
+			x.element(b, tableRows(e, from, to, header, footer))
+			x.coll, x.part = "", false
+		}
+	}
+	edge(0, first, true, false)
+	if first < last {
+		items := tableRows(e, first, last, false, false)
+		top, height := items.Y, items.H
+		items.X, items.Y = 0, 0
+		x.repeat(b, e, coll, whole, top, height, func(inner *strings.Builder) { x.element(inner, items) })
+	}
+	edge(last, nr, false, true)
+}
+
+// items is the Groovy for a list in the data: a parameter of the report (a
+// java.util.List of Maps), or in a band of rows a field of the row holding a JSON list.
+func (x *jasperOut) items(path string) string {
+	coll := x.field(path, false)
+	if x.rowed {
+		// Jackson comes with JasperReports, which reads JSON with it
+		coll = "(new com.fasterxml.jackson.databind.ObjectMapper().readValue((" + coll + " ?: '[]') as String, java.util.List))"
+	}
+	return coll
+}
+
+// repeat writes a jr:list at top in e's box, printing what write writes once for
+// each of the items, over a sub-dataset with a field for every key they use.
+// whole is the property that reads the element back.
+func (x *jasperOut) repeat(b *strings.Builder, e Element, coll, whole string, top, height float64, write func(*strings.Builder)) {
+	x.nlists++
+	name := fmt.Sprintf("list%d", x.nlists)
+	outer, float, bottom, right := x.list, x.floatFrom, x.bottom, x.right
+	x.list, x.floatFrom, x.bottom, x.right = map[string]string{}, 0, 0, 0
+	var inner strings.Builder
+	write(&inner)
+	fields, contents, wide := x.list, max(px(math.Ceil(height)), x.bottom, 1), max(px(e.W), x.right)
+	x.list, x.floatFrom, x.bottom, x.right = outer, float, bottom, right
+	keys := slices.Sorted(maps.Keys(fields))
+	var parents strings.Builder // what an item has not comes from around the list
+	for _, f := range keys {
+		fmt.Fprintf(&parents, `<datasetParameter name="parent_%s"><datasetParameterExpression><![CDATA[%s]]></datasetParameterExpression></datasetParameter>`,
+			jasperName.ReplaceAllString(f, "_"), cdata(x.field(f, false)))
+	}
+	place := e
+	place.Y, place.H, place.W = top, float64(contents), float64(wide)
+	place.Type, place.ShowIf = "list", e.ShowIf
+	fmt.Fprintf(&x.subsets, "\t<subDataset name=\"%s\">\n", name)
+	for _, f := range keys {
+		fmt.Fprintf(&x.subsets, "\t\t<parameter name=\"parent_%s\" class=\"java.lang.Object\"/>\n", jasperName.ReplaceAllString(f, "_"))
+	}
+	for _, f := range keys {
+		fmt.Fprintf(&x.subsets, "\t\t<field name=\"%s\" class=\"java.lang.Object\"/>\n", attr(f))
+	}
+	x.subsets.WriteString("\t</subDataset>\n")
+	x.props = whole
+	x.element(b, place) // the list's box
+	fmt.Fprintf(b, "\t\t\t\t<jr:list xmlns:jr=\"http://jasperreports.sourceforge.net/jasperreports/components\" xsi:schemaLocation=\"http://jasperreports.sourceforge.net/jasperreports/components http://jasperreports.sourceforge.net/xsd/components.xsd\" printOrder=\"Vertical\">"+
+		"<datasetRun subDataset=\"%s\">%s<dataSourceExpression><![CDATA[%s]]></dataSourceExpression></datasetRun>"+
+		"<jr:listContents height=\"%d\" width=\"%d\">\n%s\t\t\t\t</jr:listContents></jr:list></componentElement>\n",
+		name, parents.String(), cdata("new net.sf.jasperreports.engine.data.JRMapCollectionDataSource((java.util.Collection) ("+coll+" ?: []))"), contents, wide, inner.String())
+}
+
+// subreport writes a sub-report in its box: its header and column header, its
+// detail band repeated in a jr:list for each item, and its summary under that,
+// moving down as the list grows. Aggregates in header and summary count the items.
+func (x *jasperOut) subreport(b *strings.Builder, e Element) {
+	rep := e.Report
+	if rep == nil || e.Data == "" {
+		x.warnOnce("a sub-report without a list (data) or a report is left as an empty box")
+		e.Type, e.Border = "rect", 0.5
+		x.element(b, e)
+		return
+	}
+	if strings.TrimSpace(rep.GroupBy) != "" || strings.TrimSpace(rep.SortBy) != "" {
+		x.warnOnce("a sub-report's groups and sorting are left out: its items print in the order of the data")
+	}
+	d := rep.Bands.Detail
+	listed := d.Height > 0 || len(d.Elements) > 0
+	coll, whole, y := x.items(e.Data), x.whole(), e.Y
+	// a band of the sub-report, at y in the box; around the list, a part of the element it carries
+	at := func(w *strings.Builder, band Band, dx, dy float64, part bool) {
+		x.part = part && whole != "" && listed
+		for _, el := range band.Elements {
+			el.X += dx
+			el.Y += dy
+			x.element(w, el)
+		}
+		x.part = false
+	}
+	for _, band := range []Band{rep.Bands.Header, rep.Bands.ColumnHeader} {
+		x.coll = coll
+		at(b, band, e.X, y, true)
+		x.coll = ""
+		y += band.Height
+	}
+	if listed {
+		x.repeat(b, e, coll, whole, y, d.Height, func(inner *strings.Builder) { at(inner, d, 0, 0, false) })
+		y += d.Height
+	}
+	x.coll = coll
+	at(b, rep.Bands.Summary, e.X, y, true)
+	x.coll = ""
+}
+
+// chart writes a chart over the rows of its band: all of them, or its group's.
+// Jasper's datasets keep the last value of a label where ours sum them, so a
+// variable sums each label's values row by row, in the order the labels come,
+// and the chart draws that once the rows are done. Charts need JFreeChart, as
+// every JasperReports chart does.
+func (x *jasperOut) chart(b *strings.Builder, e Element, box string) {
+	if strings.TrimSpace(e.Label) == "" || strings.TrimSpace(e.Value) == "" { // nothing to draw yet: its box
+		x.warnOnce("a chart without a label and value field is left as an empty box")
+		fmt.Fprintf(b, "\t\t\t<rectangle>%s<graphicElement><pen lineWidth=\"0.5\" lineStyle=\"Dashed\"/></graphicElement></rectangle>\n", box)
+		return
+	}
+	x.nvars++
+	sums := fmt.Sprintf("chart%d", x.nvars)
+	rowed := x.rowed
+	x.rowed = true // label and value are fields of the rows
+	label := x.field(e.Label, true)
+	value, ok := x.groovy(e.Value)
+	x.rowed = rowed
+	if !ok {
+		x.warnOnce("a chart value Jasper cannot express is drawn as nothing: " + e.Value)
+		value = "null"
+	}
+	reset, when := ` resetType="Report"`, ` evaluationTime="Report"`
+	if lv := x.level; lv > 0 || x.rowed && len(x.t.levels()) > 0 {
+		if lv == 0 {
+			lv = len(x.t.levels())
+		}
+		reset = fmt.Sprintf(` resetType="Group" resetGroup="g%d"`, lv)
+		when = fmt.Sprintf(` evaluationTime="Group" evaluationGroup="g%d"`, lv)
+	}
+	fmt.Fprintf(&x.vars, "\t<variable name=\"%s\" class=\"java.util.Map\"%s calculation=\"Nothing\"><variableExpression><![CDATA[%s]]></variableExpression><initialValueExpression><![CDATA[new java.util.LinkedHashMap()]]></initialValueExpression></variable>\n",
+		sums, reset, cdata("({ m, k, v -> m.put(k, ((m.get(k) ?: 0d) as Double) + v); m }).call($V{"+sums+"} ?: new java.util.LinkedHashMap(), "+
+			label+" == null ? '' : String.valueOf("+label+"), (("+value+") as Double) ?: 0d)"))
+	x.nlists++
+	set := fmt.Sprintf("list%d", x.nlists)
+	fmt.Fprintf(&x.subsets, "\t<subDataset name=\"%s\">\n\t\t<field name=\"label\" class=\"java.lang.Object\"/>\n\t\t<field name=\"value\" class=\"java.lang.Object\"/>\n\t</subDataset>\n", set)
+	dataset := fmt.Sprintf(`<dataset%s><datasetRun subDataset="%s"><dataSourceExpression><![CDATA[%s]]></dataSourceExpression></datasetRun></dataset>`,
+		reset, set, cdata("new net.sf.jasperreports.engine.data.JRMapCollectionDataSource($V{"+sums+"}.collect{ k, v -> ['label': k, 'value': v] })"))
+	color := `<seriesColor seriesOrder="0" color="` + palette[0] + `"/>`
+	slices := "" // a pie's slices, in the colours ours has
+	for i, c := range palette {
+		slices += fmt.Sprintf(`<seriesColor seriesOrder="%d" color="%s"/>`, i, c)
+	}
+	head := func(legend bool) string {
+		return fmt.Sprintf(`<chart isShowLegend="%t"%s>%s</chart>`, legend, when, box)
+	}
+	series := `<categorySeries><seriesExpression><![CDATA["` + attr(e.Value) + `"]]></seriesExpression><categoryExpression><![CDATA[String.valueOf($F{label})]]></categoryExpression>` +
+		`<valueExpression><![CDATA[($F{value} as Double)]]></valueExpression></categorySeries>`
+	axes := `<categoryAxisFormat><axisFormat/></categoryAxisFormat><valueAxisFormat><axisFormat/></valueAxisFormat>`
+	switch e.Chart {
+	case "pie", "donut":
+		if e.Chart == "donut" {
+			x.warnOnce("a donut chart prints as a pie: JasperReports 6 has no donut")
+		}
+		fmt.Fprintf(b, "\t\t\t<pieChart>%s<pieDataset>%s<keyExpression><![CDATA[String.valueOf($F{label})]]></keyExpression>"+
+			"<valueExpression><![CDATA[Math.max(($F{value} as Double), 0d)]]></valueExpression></pieDataset><piePlot><plot>%s</plot><itemLabel/></piePlot></pieChart>\n", head(true), dataset, slices)
+	case "line":
+		fmt.Fprintf(b, "\t\t\t<lineChart>%s<categoryDataset>%s%s</categoryDataset><linePlot><plot>%s</plot>%s</linePlot></lineChart>\n", head(false), dataset, series, color, axes)
+	default:
+		orientation := ""
+		if e.Chart == "hbar" {
+			orientation = ` orientation="Horizontal"`
+		}
+		fmt.Fprintf(b, "\t\t\t<barChart>%s<categoryDataset>%s%s</categoryDataset><barPlot><plot%s>%s</plot><itemLabel/>%s</barPlot></barChart>\n", head(false), dataset, series, orientation, color, axes)
 	}
 }
 
 // band writes a band, as tall as what is in it.
-func (x *jasperOut) band(b *strings.Builder, tag string, band Band, level int, rowed bool) {
-	x.level, x.rowed, x.bottom = level, rowed, 0
-	var els strings.Builder
+func (x *jasperOut) band(b *strings.Builder, tag, key string, band Band, level int, rowed bool) {
+	x.level, x.rowed, x.bottom, x.floatFrom = level, rowed, 0, 0
+	// under a data table's first repeated row, things move down as its list grows
 	for _, e := range band.Elements {
+		if e.Type == "table" && e.Data != "" {
+			first, last := 0, len(e.Cells)
+			if e.Header {
+				first = 1
+			}
+			if e.Footer && last-1 >= first {
+				last--
+			}
+			if rows := tableRows(e, first, last, false, false); first < last && (x.floatFrom == 0 || rows.Y+rows.H < x.floatFrom) {
+				x.floatFrom = rows.Y + rows.H
+			}
+		}
+		if e.Type == "subreport" && e.Report != nil && e.Data != "" { // under its repeated detail band
+			r := e.Report.Bands
+			if end := e.Y + r.Header.Height + r.ColumnHeader.Height + r.Detail.Height; x.floatFrom == 0 || end < x.floatFrom {
+				x.floatFrom = end
+			}
+		}
+	}
+	var els strings.Builder
+	for i, e := range band.Elements {
+		x.rawEl = nil
+		if r := x.raw[key]; i < len(r) {
+			x.rawEl = r[i]
+		}
 		x.element(&els, e)
 	}
+	x.rawEl = nil
 	// as tall as designed, and as what is in it: Jasper refuses an element reaching outside its band
 	h := max(px(math.Ceil(band.Height)), x.bottom)
 	fmt.Fprintf(b, "\t<%s>\n\t\t<band height=\"%d\" splitType=\"Stretch\">\n%s\t\t</band>\n\t</%s>\n", tag, h, els.String(), tag)
@@ -594,25 +975,29 @@ func (x *jasperOut) report() []byte {
 		}
 		fmt.Fprintf(&groups, "\t<group name=\"g%d\"%s>\n\t\t<groupExpression><![CDATA[%s]]></groupExpression>\n", i+1, newPage, cdata(by))
 		var gh, gf strings.Builder
-		x.band(&gh, "groupHeader", l.header, i+1, true)
-		x.band(&gf, "groupFooter", l.footer, i+1, true)
+		suffix := ""
+		if i > 0 {
+			suffix = strconv.Itoa(i + 1)
+		}
+		x.band(&gh, "groupHeader", "groupHeader"+suffix, l.header, i+1, true)
+		x.band(&gf, "groupFooter", "groupFooter"+suffix, l.footer, i+1, true)
 		groups.WriteString(gh.String() + gf.String() + "\t</group>\n")
 	}
 
 	// bands, in Jasper's order
 	if bs.Header.Pages == "first" {
-		x.band(&body, "title", bs.Header, 0, false)
+		x.band(&body, "title", "header", bs.Header, 0, false)
 	} else if len(bs.Header.Elements) > 0 || bs.Header.Height > 0 {
-		x.band(&body, "pageHeader", bs.Header, 0, false)
+		x.band(&body, "pageHeader", "header", bs.Header, 0, false)
 	}
-	x.band(&body, "columnHeader", bs.ColumnHeader, 0, false)
-	x.band(&body, "detail", bs.Detail, 0, true)
+	x.band(&body, "columnHeader", "columnHeader", bs.ColumnHeader, 0, false)
+	x.band(&body, "detail", "detail", bs.Detail, 0, true)
 	if bs.Footer.Pages == "last" {
-		x.band(&body, "lastPageFooter", bs.Footer, 0, false)
+		x.band(&body, "lastPageFooter", "footer", bs.Footer, 0, false)
 	} else {
-		x.band(&body, "pageFooter", bs.Footer, 0, false)
+		x.band(&body, "pageFooter", "footer", bs.Footer, 0, false)
 	}
-	x.band(&body, "summary", bs.Summary, 0, false)
+	x.band(&body, "summary", "summary", bs.Summary, 0, false)
 
 	var out strings.Builder
 	out.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
@@ -627,16 +1012,17 @@ func (x *jasperOut) report() []byte {
 	if bs.Summary.NewPage {
 		summaryNewPage = ` isSummaryNewPage="true"`
 	}
-	fmt.Fprintf(&out, `<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd" name="report" language="groovy" pageWidth="%d" pageHeight="%d" columnWidth="%d" leftMargin="%d" rightMargin="%d" topMargin="%d" bottomMargin="%d" whenNoDataType="AllSectionsNoDetail"%s>`+"\n",
+	fmt.Fprintf(&out, `<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd" name="report" language="groovy" pageWidth="%d" pageHeight="%d" columnWidth="%d" leftMargin="%d" rightMargin="%d" topMargin="%d" bottomMargin="%d" whenNoDataType="AllSectionsNoDetail" isSummaryWithPageHeaderAndFooter="true"%s>`+"\n",
 		px(t.Page.Width), px(t.Page.Height), px(t.Page.Width-left-right), px(left), px(right), px(top), px(bottom), summaryNewPage)
-	for _, name := range slices.Sorted(func(yield func(string) bool) {
-		for k := range x.params {
-			if !yield(k) {
-				return
-			}
-		}
-	}) {
-		fmt.Fprintf(&out, "\t<parameter name=\"%s\" class=\"java.lang.Object\" isForPrompting=\"false\"/>\n", name)
+	// the template's settings that Jasper has no place for, such as the sorting before
+	// the group fields were put first, and number separators: FromJRXML reads them back
+	if x.settings != "" {
+		out.WriteString("\t" + property("ddreport.settings", x.settings) + "\n")
+	}
+	out.WriteString(x.subsets.String())
+	for _, name := range slices.Sorted(maps.Keys(x.params)) {
+		// its path in the data, such as customer.name, for FromJRXML
+		fmt.Fprintf(&out, "\t<parameter name=\"%s\" class=\"java.lang.Object\" isForPrompting=\"false\"><parameterDescription><![CDATA[%s]]></parameterDescription></parameter>\n", name, cdata(x.params[name]))
 	}
 	// the sort fields must be fields too. Jasper groups only rows that are next to each
 	// other, where ours gathers the rows of a group wherever they are: sort by the group fields first
@@ -677,9 +1063,6 @@ func (x *jasperOut) report() []byte {
 		fmt.Fprintf(&out, "\t<field name=\"%s\" class=\"java.lang.String\"><fieldDescription><![CDATA[%s]]></fieldDescription></field>\n", name, cdata(x.fields[name]))
 	}
 	out.WriteString(sorts.String())
-	if x.page {
-		out.WriteString("\t<variable name=\"CURRENT_PAGE\" class=\"java.lang.Integer\" resetType=\"Page\"><variableExpression><![CDATA[$V{PAGE_NUMBER}]]></variableExpression></variable>\n")
-	}
 	out.WriteString(x.vars.String())
 	out.WriteString(groups.String())
 	out.WriteString(body.String())

@@ -1,6 +1,6 @@
 # DdDesignReport
 
-> Report library: templates are JSON (made in a drag-and-drop designer, or written by hand or by an LLM), and one Go core renders them with data to PDF, HTML, XLSX, XLS or CSV, from Go, Java, Kotlin, Node.js, or any language over HTTP. MIT licensed.
+> Report library: templates are JSON (made in a drag-and-drop designer, or written by hand or by an LLM), and one Go core renders them with data to PDF, HTML, XLSX, XLS, CSV or ESC/POS receipt-printer commands, from Go, Java, Kotlin, Node.js, or any language over HTTP. MIT licensed.
 
 ## Rendering
 
@@ -8,7 +8,7 @@
 - Node.js: `require('ddreport').render(template, data, 'pdf')` (npm `ddreport`)
 - Java/Kotlin: `DdReport.render(templateJson, dataJson, "pdf")` (Maven `io.github.gvjavx:ddreport`)
 - Any language: `ddreport -serve 127.0.0.1:8080`, or the Docker image `ghcr.io/gvjavx/ddreport`, then `POST /render?format=pdf` with body `{"template": ..., "data": ...}` and header `Authorization: Bearer <DDREPORT_TOKEN>` when the server has a token. Errors come back as status 400 with the message as the body.
-- Formats: `pdf`, `html`, `xlsx`, `xls`, `csv`, and `jrxml` (the template as a JasperReports 6 report). `ddreport -from-jrxml` reads a `.jrxml` back as a template.
+- Formats: `pdf`, `html`, `xlsx`, `xls`, `csv`, and `jrxml` (the template as a JasperReports 6 report), `escpos` (58/80 mm thermal receipt printers: send the bytes as they are) and `txt` (the same layout as plain text). For a receipt, make the page 164 pt (58 mm) or 226 pt (80 mm) wide; texts go in the character columns their boxes cover (32 or 48 a line, or `"textColumns"`), 11 pt and over prints double height. `ddreport -from-jrxml` reads a `.jrxml` back as a template.
 - Embed the designer in a web app: npm `ddreport-designer`, `createDesigner(element, { template, onChange })`.
 
 ## Writing a template

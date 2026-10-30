@@ -63,12 +63,14 @@ import (
 )
 
 var mime = map[string]string{
-	"pdf":   "application/pdf",
-	"html":  "text/html; charset=utf-8",
-	"xlsx":  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-	"csv":   "text/csv; charset=utf-8",
-	"xls":   "application/vnd.ms-excel",
-	"jrxml": "application/xml; charset=utf-8",
+	"pdf":    "application/pdf",
+	"html":   "text/html; charset=utf-8",
+	"xlsx":   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	"csv":    "text/csv; charset=utf-8",
+	"xls":    "application/vnd.ms-excel",
+	"jrxml":  "application/xml; charset=utf-8",
+	"escpos": "application/octet-stream",
+	"txt":    "text/plain; charset=utf-8",
 }
 
 func render(in io.Reader, format string) ([]byte, error) {
@@ -491,7 +493,7 @@ func font(env string) ([]byte, error) {
 
 func main() {
 	log.SetFlags(0)
-	format := flag.String("format", "pdf", "pdf, html, xlsx, xls or csv")
+	format := flag.String("format", "pdf", "pdf, html, xlsx, xls, csv, jrxml, escpos (receipt printers) or txt")
 	stdio := flag.Bool("stdio", false, "keep running and render one request after another from stdin (for the Java and Node.js renderers)")
 	fromJRXML := flag.Bool("from-jrxml", false, "read a JasperReports .jrxml on stdin and write it as a template; what did not come over goes to stderr")
 	serve := flag.String("serve", "", "serve the designer and POST /render on this address, e.g. 127.0.0.1:8080")

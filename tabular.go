@@ -91,13 +91,30 @@ func (r *report) table(withPictures bool) ([][]cell, []float64, [][4]int, []shee
 	var pics []sheetPic
 	// pictures adds the images and barcodes of a band, at the row given and the column they line up with
 	pictures := func(els []Element, sc scope, row func(e Element) int) {
+		// a picture wholly under another one on its row goes on the next row
+		bottoms := map[int]float64{}
+		els = slices.SortedStableFunc(slices.Values(els), func(a, b Element) int { return cmp.Compare(a.Y, b.Y) })
 		for _, e := range els {
-			if !withPictures || e.Type != "image" && e.Type != "barcode" || !sc.shows(e) {
+			if !withPictures || e.Type != "image" && e.Type != "barcode" && e.Type != "chart" || !sc.shows(e) {
 				continue
 			}
-			data, ext, ok := pictureOf(e, sc)
-			if !ok {
-				continue
+			var data []byte
+			var ext string
+			var ch *sheetChart
+			if e.Type == "chart" {
+				labels, sums := chartData(t, e, sc.rows)
+				if len(labels) == 0 {
+					continue
+				}
+				ch = &sheetChart{kind: e.Chart, labels: labels}
+				for _, l := range labels {
+					ch.values = append(ch.values, sums[l])
+				}
+			} else {
+				var ok bool
+				if data, ext, ok = pictureOf(e, sc); !ok {
+					continue
+				}
 			}
 			// the column its left edge is in, or else the one after the columns that end before it
 			col := 0
@@ -110,7 +127,22 @@ func (r *report) table(withPictures bool) ([][]cell, []float64, [][4]int, []shee
 					col = i + 1
 				}
 			}
-			pics = append(pics, sheetPic{row(e), col, e.W, e.H, data, ext})
+			// as far into its column as it is on the page, so two side by side stay so;
+			// past the last column, in the columns of Excel's own width (about 48pt)
+			dx := 0.0
+			if col < len(cols) {
+				dx = max(e.X-cols[col].X, 0)
+			} else if len(cols) > 0 {
+				past := max(e.X-cols[len(cols)-1].X-cols[len(cols)-1].W, 0)
+				col += int(past / 48)
+				dx = math.Mod(past, 48)
+			}
+			at := row(e)
+			for b, ok := bottoms[at]; ok && e.Y >= b-0.5; b, ok = bottoms[at] {
+				at++
+			}
+			bottoms[at] = max(bottoms[at], e.Y+e.H)
+			pics = append(pics, sheetPic{at, col, dx, e.W, e.H, data, ext, ch})
 		}
 	}
 	// lines adds one row per visual line of the band
@@ -118,7 +150,15 @@ func (r *report) table(withPictures bool) ([][]cell, []float64, [][4]int, []shee
 		sc := scope{t, rows, ctx}
 		flat := r.flat(band, sc, false)
 		all := textLines(flat)
-		base := len(out)
+		base, before := len(out), len(pics)
+		// the rows the band's pictures went on are the band's, even past its last line of text
+		defer func() {
+			for _, p := range pics[before:] {
+				for len(out) <= p.row {
+					out = append(out, make([]cell, len(cols)))
+				}
+			}
+		}()
 		// a picture goes on the last line that starts above it
 		pictures(flat.Elements, sc, func(e Element) int {
 			k := 0

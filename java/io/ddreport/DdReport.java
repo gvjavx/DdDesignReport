@@ -60,7 +60,7 @@ public final class DdReport {
     /**
      * @param templateJson template exported by the designer
      * @param dataJson     JSON object (fields plus the row array) or JSON array of rows; null or empty for none
-     * @param format       pdf, html, xlsx, xls or csv
+     * @param format       pdf, html, xlsx, xls, csv, jrxml, escpos (receipt printers) or txt
      * @param timeout      how long the render may take before it is stopped
      */
     public static byte[] render(String templateJson, String dataJson, String format, Duration timeout)

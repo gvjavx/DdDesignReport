@@ -221,6 +221,13 @@ const tests = {
     check('the page is drawn that way', t.q('.ddr-page').style.width === '792px' && t.q('.ddr-page').style.paddingLeft === '50px')
     t.click('noBackground')
     check('background removed', t.tpl.page.background === '')
+    // a receipt roll is known by its width, however long it is made
+    t.set('[data-id=paper]', 'Receipt 58 mm'); t.set('[data-page=height]', 900)
+    check('receipt paper', t.tpl.page.width === 164 && t.q('[data-id=paper]').value === 'Receipt 58 mm', JSON.stringify(t.tpl.page))
+    t.set('[data-tpl=textColumns]', 42)
+    check('characters per line', t.tpl.textColumns === 42)
+    t.set('[data-tpl=textColumns]', '')
+    check('emptied, it is the default again', !('textColumns' in t.tpl))
   },
   'zoom keeps positions in points'() {
     const t = open()

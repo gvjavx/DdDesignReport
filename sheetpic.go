@@ -3,6 +3,8 @@ package ddreport
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/xml"
+	"fmt"
 	"image"
 	"image/draw"
 	"image/png"
@@ -17,9 +19,18 @@ import (
 // drawn as one. It sits at the top left of a cell and keeps its size in points.
 type sheetPic struct {
 	row, col int
+	dx       float64 // from the column's left edge, in points
 	w, h     float64
 	data     []byte
-	ext      string // png or jpeg
+	ext      string      // png or jpeg
+	chart    *sheetChart // instead of a picture: a chart Excel draws, and can change
+}
+
+// sheetChart is a chart element as a native spreadsheet chart, its data written into it.
+type sheetChart struct {
+	kind   string // bar, hbar, line, pie or donut
+	labels []string
+	values []float64
 }
 
 // encode is the barcode of an element: Code 128, or a QR code.
@@ -92,4 +103,86 @@ func pictureOf(e Element, sc scope) (data []byte, ext string, ok bool) {
 		return b.Bytes(), "png", true
 	}
 	return nil, "", false
+}
+
+// chartXML is a spreadsheet chart with its data written into it (no cells to
+// point at), in the report's colours: one series, a colour per slice for a pie.
+func chartXML(c *sheetChart) string {
+	var b strings.Builder
+	esc := func(s string) string {
+		var x strings.Builder
+		xml.EscapeText(&x, []byte(s))
+		return x.String()
+	}
+	colour := func(i int) string {
+		return `<c:spPr><a:solidFill><a:srgbClr val="` + strings.ToUpper(palette[i%len(palette)][1:]) + `"/></a:solidFill></c:spPr>`
+	}
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+		`<c:chart><c:autoTitleDeleted val="1"/><c:plotArea><c:layout/>`)
+	round := c.kind == "pie" || c.kind == "donut"
+	switch c.kind {
+	case "pie":
+		b.WriteString(`<c:pieChart><c:varyColors val="1"/>`)
+	case "donut":
+		b.WriteString(`<c:doughnutChart><c:varyColors val="1"/>`)
+	case "line":
+		b.WriteString(`<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>`)
+	default:
+		dir := "col"
+		if c.kind == "hbar" {
+			dir = "bar"
+		}
+		b.WriteString(`<c:barChart><c:barDir val="` + dir + `"/><c:grouping val="clustered"/><c:varyColors val="0"/>`)
+	}
+	b.WriteString(`<c:ser><c:idx val="0"/><c:order val="0"/>`)
+	switch {
+	case round:
+		for i := range c.labels {
+			fmt.Fprintf(&b, `<c:dPt><c:idx val="%d"/><c:bubble3D val="0"/>%s</c:dPt>`, i, colour(i))
+		}
+	case c.kind == "line":
+		b.WriteString(`<c:spPr><a:ln w="22225"><a:solidFill><a:srgbClr val="` + strings.ToUpper(palette[0][1:]) + `"/></a:solidFill></a:ln></c:spPr><c:marker><c:symbol val="circle"/><c:size val="5"/></c:marker>`)
+	default:
+		b.WriteString(colour(0) + `<c:invertIfNegative val="0"/>`)
+	}
+	fmt.Fprintf(&b, `<c:cat><c:strLit><c:ptCount val="%d"/>`, len(c.labels))
+	for i, l := range c.labels {
+		fmt.Fprintf(&b, `<c:pt idx="%d"><c:v>%s</c:v></c:pt>`, i, esc(l))
+	}
+	fmt.Fprintf(&b, `</c:strLit></c:cat><c:val><c:numLit><c:formatCode>General</c:formatCode><c:ptCount val="%d"/>`, len(c.values))
+	for i, v := range c.values {
+		if round {
+			v = max(v, 0) // as the PDF draws them: a slice cannot be negative
+		}
+		fmt.Fprintf(&b, `<c:pt idx="%d"><c:v>%s</c:v></c:pt>`, i, str(v))
+	}
+	b.WriteString(`</c:numLit></c:val>`)
+	if c.kind == "line" {
+		b.WriteString(`<c:smooth val="0"/>`)
+	}
+	b.WriteString(`</c:ser>`)
+	switch c.kind {
+	case "pie":
+		b.WriteString(`<c:firstSliceAng val="0"/></c:pieChart>`)
+	case "donut":
+		b.WriteString(`<c:firstSliceAng val="0"/><c:holeSize val="50"/></c:doughnutChart>`)
+	case "line":
+		b.WriteString(`<c:marker val="1"/><c:axId val="1"/><c:axId val="2"/></c:lineChart>`)
+	default:
+		b.WriteString(`<c:gapWidth val="60"/><c:axId val="1"/><c:axId val="2"/></c:barChart>`)
+	}
+	if !round {
+		cat, val := "b", "l"
+		if c.kind == "hbar" {
+			cat, val = "l", "b"
+		}
+		b.WriteString(`<c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="` + cat + `"/><c:numFmt formatCode="General" sourceLinked="0"/><c:tickLblPos val="low"/><c:crossAx val="2"/><c:crosses val="autoZero"/></c:catAx>` +
+			`<c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="` + val + `"/><c:majorGridlines/><c:numFmt formatCode="#,##0" sourceLinked="0"/><c:tickLblPos val="nextTo"/><c:crossAx val="1"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx>`)
+	}
+	b.WriteString(`</c:plotArea>`)
+	if round {
+		b.WriteString(`<c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>`)
+	}
+	b.WriteString(`<c:plotVisOnly val="1"/></c:chart></c:chartSpace>`)
+	return b.String()
 }

@@ -1,6 +1,8 @@
 package ddreport
 
 import (
+	"cmp"
+	"slices"
 	"strconv"
 )
 
@@ -335,10 +337,17 @@ func (r *report) grid(e Element, sc scope, measure, once bool) ([]Element, float
 // spreadsheets. As on the page, what is under a table or sub-report that came
 // out taller than designed moves down, so it is read after it.
 func (r *report) flat(b Band, sc scope, once bool) Band {
-	type growth struct{ bottom, extra float64 }
-	var els, fixed []Element
+	type growth struct{ bottom, extra float64 } // where, as designed
+	var els []Element
 	var grown []growth
-	for _, e := range b.Elements {
+	// top to bottom, so a table under one that grew moves down too, with its texts
+	for _, e := range slices.SortedStableFunc(slices.Values(b.Elements), func(a, b Element) int { return cmp.Compare(a.Y, b.Y) }) {
+		top := e.Y
+		for _, g := range grown {
+			if top >= g.bottom {
+				e.Y += g.extra
+			}
+		}
 		var parts []Element
 		var h float64
 		if e.Type == "crosstab" {
@@ -356,21 +365,13 @@ func (r *report) flat(b Band, sc scope, once bool) Band {
 			}
 			h = th
 		default:
-			fixed = append(fixed, e)
+			els = append(els, e)
 			continue
 		}
 		els = append(els, parts...)
 		if h > e.H {
-			grown = append(grown, growth{e.Y + e.H, h - e.H})
+			grown = append(grown, growth{top + e.H, h - e.H})
 		}
-	}
-	for _, e := range fixed {
-		for _, g := range grown {
-			if e.Y >= g.bottom {
-				e.Y += g.extra
-			}
-		}
-		els = append(els, e)
 	}
 	b.Elements = els
 	return b

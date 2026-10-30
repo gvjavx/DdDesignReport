@@ -2,6 +2,7 @@ package ddreport
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -20,10 +21,16 @@ import (
 // as a box), barcodes and pictures embedded as Base64 come over, with fonts,
 // colours, alignment and borders. A text field's expression comes over when it
 // is made of text, fields ($F{} and $P{} become {{field}}), page numbers, row
-// counts, Sum / Average / Lowest / Highest / Count variables of a field, and
-// arithmetic on fields; its pattern becomes a number or date format. What is
-// not, such as other Java, is kept as written in [brackets] and noted, as are
-// charts, sub-reports, crosstabs, lists and pictures from files.
+// counts, Sum / Average / Lowest / Highest / Count variables of a field,
+// arithmetic, comparisons, && || !, and c ? a : b (as if); its pattern becomes
+// a number or date format. Bar, line and pie charts on a field come over, as do
+// lists (as sub-reports over the list their data source names) and crosstabs
+// (their first row group, column group and measure). What does not, such as
+// other Java, is kept as written in [brackets] and noted, as are a sub-report's
+// own file and pictures from files.
+//
+// A report ToJRXML wrote comes back as the template it was made from, through
+// the ddreport.* properties it keeps.
 func FromJRXML(jrxml []byte) (template []byte, notes []string, err error) {
 	var root xnode
 	if err := xml.Unmarshal(jrxml, &root); err != nil {
@@ -40,15 +47,32 @@ func FromJRXML(jrxml []byte) (template []byte, notes []string, err error) {
 		}
 		in.fields[f.attr("name")] = path
 	}
+	// a parameter's description is its path in the data, as ToJRXML writes it (customer.name)
+	for _, p := range root.all("parameter") {
+		if path := strings.TrimSpace(p.child("parameterDescription").Text); path != "" && operandOnly.MatchString(path) {
+			in.fields[p.attr("name")] = path
+		}
+	}
 	for _, v := range root.all("variable") {
 		in.vars[v.attr("name")] = [2]string{v.attr("calculation"), strings.TrimSpace(v.child("variableExpression").Text)}
+	}
+	t := in.template()
+	// the settings ToJRXML kept, such as number separators and the sorting it changed
+	for _, p := range root.all("property") {
+		var settings jsonMap
+		if p.attr("name") == "ddreport.settings" && json.Unmarshal([]byte(p.attr("value")), &settings) == nil {
+			delete(t, "sortBy") // the group fields first was for Jasper: the template's own sorting, if any, is in them
+			for k, v := range settings {
+				t[k] = v
+			}
+		}
 	}
 	// written as people read it: < and > stay as they are (showIf, <b>)
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
-	err = enc.Encode(in.template())
+	err = enc.Encode(t)
 	return b.Bytes(), in.notes, err
 }
 
@@ -238,6 +262,24 @@ func (in *jasperIn) elements(parent *xnode, dx, dy float64, out *[]any) {
 	for i := range parent.Nodes {
 		n := &parent.Nodes[i]
 		re := n.child("reportElement")
+		if c := n.child("chart"); c.XMLName.Local != "" { // a chart's box is in its chart part
+			re = c.child("reportElement")
+		}
+		props := map[string]string{}
+		for _, p := range re.all("property") {
+			props[p.attr("name")] = p.attr("value")
+		}
+		// what ToJRXML wrote: an element whole, and its parts around it
+		if props["ddreport.part"] != "" {
+			continue
+		}
+		if whole := props["ddreport.element"]; whole != "" {
+			var el any
+			if json.Unmarshal([]byte(whole), &el) == nil {
+				*out = append(*out, el)
+				continue
+			}
+		}
 		x, y, w, h := re.num("x")+dx, re.num("y")+dy, re.num("width"), re.num("height")
 		e := jsonMap{"x": x, "y": y, "w": w, "h": h}
 		if c := re.attr("forecolor"); hexColor.MatchString(c) {
@@ -259,6 +301,9 @@ func (in *jasperIn) elements(parent *xnode, dx, dy float64, out *[]any) {
 		switch n.XMLName.Local {
 		case "staticText", "textField":
 			e["type"] = "text"
+			if h, err := strconv.ParseFloat(props["ddreport.h"], 64); err == nil { // as designed, before ToJRXML made room for Jasper's line
+				e["h"] = h
+			}
 			in.textStyle(n.child("textElement"), e)
 			if n.XMLName.Local == "staticText" {
 				e["text"] = in.markup(n.child("text").Text, n.child("textElement").attr("markup"))
@@ -322,6 +367,15 @@ func (in *jasperIn) elements(parent *xnode, dx, dy float64, out *[]any) {
 			in.elements(n, x, y, out)
 			continue
 		case "componentElement":
+			if list := n.child("list"); list.XMLName.Local != "" {
+				// its contents for each item: a sub-report over the list its data source names
+				contents := list.child("listContents")
+				els := []any{}
+				in.elements(contents, 0, 0, &els)
+				e["type"], e["data"] = "subreport", in.listOf(list.child("datasetRun").child("dataSourceExpression").Text)
+				e["report"] = jsonMap{"bands": jsonMap{"detail": jsonMap{"height": contents.num("height"), "elements": els}}}
+				break
+			}
 			code := n.child("QRCode")
 			e["format"] = "qr"
 			if code.XMLName.Local == "" {
@@ -341,8 +395,62 @@ func (in *jasperIn) elements(parent *xnode, dx, dy float64, out *[]any) {
 			e["text"] = in.expression(strings.TrimSpace(code.child("codeExpression").Text), "")
 		case "reportElement", "property", "":
 			continue
+		case "barChart", "bar3DChart", "stackedBarChart", "stackedBar3DChart", "lineChart", "pieChart", "pie3DChart":
+			kind := map[string]string{"lineChart": "line", "pieChart": "pie", "pie3DChart": "pie"}[n.XMLName.Local]
+			if kind == "" {
+				kind = "bar"
+				for _, plot := range []string{"barPlot", "bar3DPlot"} {
+					if n.child(plot).child("plot").attr("orientation") == "Horizontal" {
+						kind = "hbar"
+					}
+				}
+			}
+			label, value := props["ddreport.label"], props["ddreport.value"]
+			if label == "" || value == "" { // a chart made in Jasper: its category and value
+				set := n.child("categoryDataset").child("categorySeries")
+				key := set.child("categoryExpression").Text
+				if set.XMLName.Local == "" {
+					set = n.child("pieDataset")
+					key = set.child("keyExpression").Text
+				}
+				key = strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(key), "String.valueOf("), ")")
+				in.evalAt = ""
+				l, okL := in.fieldOf(key)
+				v, okV := in.ours(strings.TrimSpace(set.child("valueExpression").Text))
+				if !okL || !okV {
+					in.note("a chart whose category or value is not a field or arithmetic on fields is left without them: pick them again in the designer")
+				}
+				label, value = l, v
+			}
+			e["type"], e["chart"], e["label"], e["value"] = "chart", kind, label, value
+		case "crosstab":
+			// one row per value of the row group, a column per value of the column group, the first measure in each cell
+			row := n.child("rowGroup").child("bucket").child("bucketExpression").Text
+			col := n.child("columnGroup").child("bucket").child("bucketExpression").Text
+			m := n.child("measure")
+			r, okR := in.fieldOf(row)
+			c, okC := in.fieldOf(col)
+			arg, okM := in.ours(strings.TrimSpace(m.child("measureExpression").Text))
+			fn := map[string]string{"Sum": "sum", "Average": "avg", "Lowest": "min", "Highest": "max", "Count": "count", "DistinctCount": "count"}[cmp.Or(m.attr("calculation"), "Nothing")]
+			if !okR || !okC || !okM && fn != "count" || fn == "" {
+				in.note("a crosstab Jasper groups on more than a field, or measures with something else than sum, average, lowest, highest or count, is left out")
+				continue
+			}
+			measure := fn + "(" + arg + ")"
+			if fn == "count" {
+				measure = "count()"
+			}
+			if len(n.all("rowGroup")) > 1 || len(n.all("columnGroup")) > 1 || len(n.all("measure")) > 1 {
+				in.note("a crosstab keeps its first row group, column group and measure")
+			}
+			e["type"], e["rowField"], e["columnField"], e["measure"] = "crosstab", r, c, measure
+		case "subreport":
+			// its report is a file of its own: the box, over the list its data source names, to design again
+			in.note("a sub-report's own .jrxml is not read: import it on its own and copy its bands into the sub-report (" + strings.TrimSpace(n.child("subreportExpression").Text) + ")")
+			e["type"], e["data"] = "subreport", in.listOf(n.child("dataSourceExpression").Text)
+			e["report"] = jsonMap{"bands": jsonMap{"detail": jsonMap{"height": h, "elements": []any{}}}}
 		default:
-			in.note("the " + n.XMLName.Local + " elements are left out (charts, sub-reports, crosstabs, lists): add them again in the designer")
+			in.note("the " + n.XMLName.Local + " elements are left out: add them again in the designer")
 			continue
 		}
 		*out = append(*out, e)
@@ -451,6 +559,17 @@ func (in *jasperIn) fieldOf(expr string) (string, bool) {
 	return in.path(m[2]), true
 }
 
+// listOf is the list a data source expression reads: the first field or parameter it names.
+func (in *jasperIn) listOf(expr string) string {
+	for _, m := range jasperRef.FindAllStringSubmatch(expr, -1) {
+		if m[1] != "V" && !strings.HasPrefix(m[2], "REPORT_") {
+			return in.path(m[2])
+		}
+	}
+	in.note("a list or sub-report whose data source names no field or parameter gets none: set its list (data) in the designer")
+	return ""
+}
+
 // expression turns a text field's expression into a text with placeholders:
 // literal strings joined with + to fields, variables and arithmetic.
 func (in *jasperIn) expression(expr, pattern string) string {
@@ -486,6 +605,20 @@ func (in *jasperIn) expression(expr, pattern string) string {
 // value is one placeholder for a part of an expression that is not text.
 func (in *jasperIn) value(expr, format string) string {
 	expr = strings.TrimSpace(expr)
+	// how ToJRXML prints a placeholder: the value in a closure that formats it as ours do
+	if m := printed.FindStringSubmatch(expr); m != nil {
+		switch body := m[1]; {
+		case format != "":
+		case numberFormat.MatchString(body):
+			pattern := numberFormat.FindStringSubmatch(body)[1]
+			_, frac, _ := strings.Cut(pattern, ".")
+			format = ":" + strconv.Itoa(len(frac))
+		case dateFormat.MatchString(body):
+			pattern, _ := stringLiteral("'" + dateFormat.FindStringSubmatch(body)[1] + "'")
+			format = ":" + pattern
+		}
+		expr = strings.TrimSpace(m[2])
+	}
 	for strings.HasPrefix(expr, "(") && strings.HasSuffix(expr, ")") && balanced(expr[1:len(expr)-1]) {
 		expr = strings.TrimSpace(expr[1 : len(expr)-1])
 	}
@@ -499,6 +632,30 @@ func (in *jasperIn) value(expr, format string) string {
 // ours is one of our expressions for a Jasper one: references, numbers, + - * / and parentheses.
 func (in *jasperIn) ours(expr string) (string, bool) {
 	ok := true
+	// the Groovy ToJRXML writes for ours: terbilang, a list item's field that falls back
+	// to the row's, numbers made doubles
+	expr = strings.ReplaceAll(expr, "("+groovyTerbilang+").call(", "terbilang(")
+	expr = parentRef.ReplaceAllString(expr, `$$F{$1}`)
+	expr = strings.NewReplacer(" as Double", "", " as Integer", "").Replace(expr)
+	expr = doubleLiteral.ReplaceAllString(expr, "$1")
+	// upper, lower and round, as ToJRXML writes them
+	expr = nullSafe(expr, "String.valueOf(", func(a, rest string) (string, int) {
+		for java, ours := range map[string]string{").toUpperCase()": "upper", ").toLowerCase()": "lower"} {
+			if strings.HasPrefix(rest, java) {
+				return ours + "(" + a + ")", len(java)
+			}
+		}
+		return "", 0
+	})
+	expr = nullSafe(expr, "new java.math.BigDecimal(", func(a, rest string) (string, int) {
+		const set, mode = ".toString()).setScale(", ", java.math.RoundingMode.HALF_UP).doubleValue()"
+		places, _, ok := strings.Cut(strings.TrimPrefix(rest, set), mode)
+		if !strings.HasPrefix(rest, set) || !ok {
+			return "", 0
+		}
+		return "round(" + a + ", " + places + ")", len(set) + len(places) + len(mode)
+	})
+	expr = javaOps(ternary(expr))
 	s := jasperRef.ReplaceAllStringFunc(expr, func(ref string) string {
 		m := jasperRef.FindStringSubmatch(ref)
 		if m[1] != "V" {
@@ -509,6 +666,10 @@ func (in *jasperIn) ours(expr string) (string, bool) {
 			return p
 		}
 		switch name := m[2]; {
+		case name == "MASTER_TOTAL_PAGES":
+			return "pages"
+		case name == "MASTER_CURRENT_PAGE":
+			return "page"
 		case name == "PAGE_NUMBER" && (in.evalAt == "Report"):
 			return "pages"
 		case name == "PAGE_NUMBER", name == "CURRENT_PAGE":
@@ -533,21 +694,176 @@ func (in *jasperIn) ours(expr string) (string, bool) {
 		}
 	})
 	s = strings.ReplaceAll(s, "new java.util.Date()", "now")
-	if !ok || !ourExpression.MatchString(s) {
+	// texts may be compared and chosen, not joined: ours adds numbers only
+	bare := quoted.ReplaceAllString(s, "''")
+	if !ok || !ourExpression.MatchString(bare) || joined.MatchString(bare) {
 		return "", false
 	}
-	for _, call := range jasperCall.FindAllStringSubmatch(s, -1) {
-		if !slices.Contains([]string{"sum", "avg", "min", "max", "count"}, call[1]) {
-			return "", false // a Java method such as toUpperCase()
+	for _, call := range jasperCall.FindAllStringSubmatch(bare, -1) {
+		if !slices.Contains([]string{"sum", "avg", "min", "max", "count", "terbilang", "if", "upper", "lower", "round", "not", "and", "or"}, call[1]) {
+			return "", false // a Java method such as substring()
 		}
 	}
 	return strings.TrimSpace(s), true
 }
 
+// nullSafe reads what ToJRXML writes for a function of a value: (a == null ? null :
+// <call>a<rest>), the parentheses around it or not. For the text after the second a,
+// f says what it is in ours and how much of the text it takes, or "" when it is not one.
+func nullSafe(s, call string, f func(a, rest string) (string, int)) string {
+	sep := " == null ? null : " + call
+	for from := 0; ; {
+		i := strings.Index(s[from:], sep)
+		if i < 0 {
+			return s
+		}
+		i += from
+		open := i + len(sep)
+		// the second a: up to where its parentheses close, or to a . at their level
+		j, depth := open, 0
+		for ; j < len(s); j++ {
+			if c := s[j]; c == '(' {
+				depth++
+			} else if c == ')' || c == '.' && depth == 0 && strings.HasPrefix(s[j:], ".toString()") {
+				if depth == 0 {
+					break
+				}
+				depth--
+			}
+		}
+		a := s[open:j]
+		ours, n := f(a, s[j:])
+		start, end := i-len(a), j+n
+		if ours == "" || start < 0 || s[start:i] != a {
+			from = open
+			continue
+		}
+		if start > 0 && s[start-1] == '(' && end < len(s) && s[end] == ')' {
+			start, end = start-1, end+1
+		}
+		s = s[:start] + ours + s[end:]
+		from = start + len(ours)
+	}
+}
+
+// ternary turns Java's c ? a : b into if(c, a, b), in the parts in parentheses too.
+func ternary(s string) string {
+	q, colon := -1, -1
+	scanTop(s, func(i int, c byte) {
+		switch {
+		case c == '?' && q < 0:
+			q = i
+		case c == ':' && q >= 0 && colon < 0:
+			colon = i
+		}
+	})
+	if q >= 0 && colon > q {
+		part := func(s string) string { return strings.TrimSpace(ternary(s)) }
+		return "if(" + part(s[:q]) + ", " + part(s[q+1:colon]) + ", " + part(s[colon+1:]) + ")"
+	}
+	// no choice at the top: look inside each part in parentheses
+	var b strings.Builder
+	depth, start, last := 0, 0, 0
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote != 0:
+			if c == '\\' {
+				i++
+			} else if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == '(':
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		case c == ')':
+			if depth--; depth == 0 {
+				b.WriteString(s[last:start+1] + ternary(s[start+1:i]) + ")")
+				last = i + 1
+			}
+		}
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
+
+// scanTop calls f for each character outside strings and parentheses.
+func scanTop(s string, f func(int, byte)) {
+	depth := 0
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote != 0:
+			if c == '\\' {
+				i++
+			} else if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+		case depth == 0:
+			f(i, c)
+		}
+	}
+}
+
+// javaOps writes Java's operators and strings as ours, outside strings: == is =,
+// && and, || or, ! not, and "text" is 'text'.
+func javaOps(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '"' || c == '\'':
+			end := i + 1
+			for end < len(s) && s[end] != c {
+				if s[end] == '\\' {
+					end++
+				}
+				end++
+			}
+			lit, _ := stringLiteral(s[i:min(end+1, len(s))])
+			b.WriteString("'" + strings.ReplaceAll(lit, "'", "’") + "'")
+			i = end
+		case strings.HasPrefix(s[i:], "=="):
+			b.WriteString("=")
+			i++
+		case strings.HasPrefix(s[i:], "&&"):
+			b.WriteString(" and ")
+			i++
+		case strings.HasPrefix(s[i:], "||"):
+			b.WriteString(" or ")
+			i++
+		case c == '!' && !strings.HasPrefix(s[i:], "!="):
+			b.WriteString("not ")
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
 var (
+	printed       = regexp.MustCompile(`(?s)^\(\{ v -> (.*?) \}\)\((.*)\)$`)
+	numberFormat  = regexp.MustCompile(`DecimalFormat\('([^']*)'`)
+	dateFormat    = regexp.MustCompile(`SimpleDateFormat\('((?:[^'\\]|\\.)*)'`)
+	parentRef     = regexp.MustCompile(`\(\$F\{([^}]+)\} != null \? \$F\{[^}]+\} : \$P\{parent_[^}]*\}\)`)
+	doubleLiteral = regexp.MustCompile(`\b(\d+(?:\.\d+)?)d\b`)
+	quoted        = regexp.MustCompile(`'[^']*'`)
+	joined        = regexp.MustCompile(`''\s*\+|\+\s*''`)
 	operandOnly   = regexp.MustCompile(`^[\p{L}\p{N}_.]+$`)
 	jasperCall    = regexp.MustCompile(`([\p{L}_][\p{L}\p{N}_.]*)\s*\(`)
-	ourExpression = regexp.MustCompile(`^[\p{L}\p{N}_.\s()+\-*/\[\]]+$`)
+	ourExpression = regexp.MustCompile(`^[\p{L}\p{N}_.\s()+\-*/\[\],=<>!']+$`)
 )
 
 // condition turns a print-when expression into a show-when condition, for the simple ones.

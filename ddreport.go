@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"iter"
 	"math"
 	"regexp"
 	"slices"
@@ -52,6 +53,7 @@ type Template struct {
 	CSVSeparator   string // , (default), ; or a tab
 	SheetPerGroup  bool   // xlsx, xls: a worksheet for each group of the first GroupBy field
 	PDFA           bool   // pdf: PDF/A-2b for archiving; Helvetica, Times and Courier print as the bundled Roboto and Lora
+	TextColumns    int    // escpos, txt: characters per line; default from the paper: 32 up to 60 mm wide, 48 up to 92 mm, 80 wider
 	Bands          struct {
 		Header, ColumnHeader, GroupHeader, Detail, GroupFooter, Summary, Footer            Band
 		GroupHeader2, GroupFooter2, GroupHeader3, GroupFooter3                             Band // the second to sixth levels of GroupBy
@@ -210,7 +212,7 @@ func (e Element) pieces() []run {
 }
 
 // Render fills template with data and returns the report in the given format:
-// "pdf", "html", "xlsx", "xls" or "csv". data is anything that marshals to a JSON
+// "pdf", "html", "xlsx", "xls", "csv", "jrxml", "escpos" (receipt printers) or "txt". data is anything that marshals to a JSON
 // object (fields plus a row array under DataKey) or to a JSON array of rows.
 func Render(template []byte, data any, format string) ([]byte, error) {
 	r, err := newReport(template, data)
@@ -228,6 +230,10 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 		return toXLS(r.sheets())
 	case "jrxml":
 		return ToJRXML(template)
+	case "escpos":
+		return toEscpos(r.textLayout()), nil
+	case "txt":
+		return toText(r.textLayout()), nil
 	case "html", "pdf":
 		if err := t.fits(); err != nil {
 			return nil, err
@@ -235,12 +241,14 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 		if err := r.initPDF(); err != nil {
 			return nil, fmt.Errorf("ddreport: font: %w", err)
 		}
-		// a second pass, once the number of pages is known, only for what needs it:
-		// {{pages}}, and bands printed on the last page only ("pages": "last")
-		pages := r.paginate(0)
+		// pages are drawn as they are laid out, so a long report never holds them all.
+		// What needs the number of pages first, {{pages}} and bands printed on the
+		// last page only ("pages": "last"), gets a pass that only counts them
+		total := 0
 		if bytes.Contains(bytes.ToLower(template), []byte("pages")) { // JSON keys match in any case: "Pages" too
-			pages = r.paginate(len(pages))
+			total = r.layPages(0, func([]Element) bool { return true })
 		}
+		pages := func(yield func([]Element) bool) { r.layPages(total, yield) }
 		if format == "html" {
 			return r.toHTML(pages), nil
 		}
@@ -759,12 +767,28 @@ func (r *report) split(els []Element, h, cut float64) (now, rest []Element, rest
 	return now, rest, restH
 }
 
-// paginate lays the bands out on pages.
+// paginate lays the bands out on pages, all of them at once.
 func (r *report) paginate(total int) [][]Element {
+	var all [][]Element
+	r.layPages(total, func(page []Element) bool { all = append(all, page); return true })
+	return all
+}
+
+// layPages lays the bands out on pages, handing each page to yield as soon as it
+// is full, so a long report is drawn page by page instead of all held at once.
+// It stops when yield returns false, and returns the number of pages.
+func (r *report) layPages(total int, yield func([]Element) bool) int {
 	t := r.t
 	p, b := t.Page, t.Bands
 	mTop, _, mBottom, mLeft := p.margins()
-	var pages [][]Element
+	var page []Element // the one being filled
+	count, stopped := 0, false
+	done := func() {
+		if page != nil && !stopped {
+			stopped = !yield(page)
+		}
+		page = nil
+	}
 	var y, top, bottom float64
 	var group func() // repeats the header of the group under way at the top of a new page
 	put := func(els []Element, at float64) {
@@ -772,15 +796,15 @@ func (r *report) paginate(total int) [][]Element {
 			els[i].X += mLeft
 			els[i].Y += at
 		}
-		pages[len(pages)-1] = append(pages[len(pages)-1], els...)
+		page = append(page, els...)
 	}
 	// on says whether a band prints on the current page: a band marked "first"
 	// prints on the first page only, one marked "last" (footer) on the last
 	on := func(band Band, last bool) bool {
-		n := len(pages)
-		return band.Pages != "first" && band.Pages != "last" || band.Pages == "first" && n == 1 || band.Pages == "last" && last && n == total
+		return band.Pages != "first" && band.Pages != "last" || band.Pages == "first" && count == 1 || band.Pages == "last" && last && count == total
 	}
 	newPage := func() {
+		done()
 		back := make([]Element, 0, 64) // room for a page of bands, so it is not copied as it fills
 		if hexColor.MatchString(p.Background) {
 			back = append(back, Element{Type: "rect", W: p.Width, H: p.Height, Fill: p.Background})
@@ -788,8 +812,8 @@ func (r *report) paginate(total int) [][]Element {
 		if p.BackgroundImage != "" {
 			back = append(back, Element{Type: "image", W: p.Width, H: p.Height, Src: p.BackgroundImage})
 		}
-		pages = append(pages, back)
-		sc := scope{t, r.rows, []map[string]any{{"page": float64(len(pages)), "pages": float64(total)}, r.root}}
+		page, count = back, count+1
+		sc := scope{t, r.rows, []map[string]any{{"page": float64(count), "pages": float64(total)}, r.root}}
 		y = mTop
 		for _, band := range []Band{b.Header, b.ColumnHeader} {
 			if on(band, false) {
@@ -879,7 +903,8 @@ func (r *report) paginate(total int) [][]Element {
 	if len(b.Summary.Elements) > 0 {
 		flow(b.Summary, r.rows, r.root)
 	}
-	return pages
+	done()
+	return count
 }
 
 // groups splits the rows by the first GroupBy field, groups in order of first appearance.
@@ -970,12 +995,9 @@ func str(v any) string {
 	return fmt.Sprint(v)
 }
 
-var palette = []string{"#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948", "#b07aa1", "#9c755f"}
-
-// chart turns a chart element into the rects, lines, texts and polys that draw it.
-// Bars, lines and hbars get a value scale that includes zero, so negative values
-// reach below it; a pie or donut cannot show them and draws them as zero.
-func chart(t *Template, e Element, rows []any) []Element {
+// chartData is what a chart shows: its labels in the order they first come, and
+// the value of each, summed over the rows with that label.
+func chartData(t *Template, e Element, rows []any) ([]string, map[string]float64) {
 	var labels []string
 	sums := map[string]float64{}
 	for _, r := range rows {
@@ -988,6 +1010,16 @@ func chart(t *Template, e Element, rows []any) []Element {
 		f, _ := num(v)
 		sums[l] += f
 	}
+	return labels, sums
+}
+
+var palette = []string{"#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f", "#edc948", "#b07aa1", "#9c755f"}
+
+// chart turns a chart element into the rects, lines, texts and polys that draw it.
+// Bars, lines and hbars get a value scale that includes zero, so negative values
+// reach below it; a pie or donut cannot show them and draws them as zero.
+func chart(t *Template, e Element, rows []any) []Element {
+	labels, sums := chartData(t, e, rows)
 	if len(labels) == 0 {
 		return nil
 	}
@@ -1237,7 +1269,7 @@ func (e Element) gap(l textLine) float64 {
 	return max(e.W-l.w, 0) / float64(spaces)
 }
 
-func (r *report) toHTML(pages [][]Element) []byte {
+func (r *report) toHTML(pages iter.Seq[[]Element]) []byte {
 	var b, head strings.Builder
 	type face struct {
 		name         string
@@ -1248,7 +1280,7 @@ func (r *report) toHTML(pages [][]Element) []byte {
 		`@page{size:%[1]gpt %[2]gpt;margin:0}body{margin:0;font:10pt/1.2 Helvetica,Arial,sans-serif}`+
 		`.p{position:relative;width:%[1]gpt;height:%[2]gpt;overflow:hidden;page-break-after:always}`+
 		`.p>*{position:absolute;box-sizing:border-box;overflow:hidden;white-space:pre}`, r.t.Page.Width, r.t.Page.Height)
-	for _, page := range pages {
+	for page := range pages {
 		b.WriteString(`<div class="p">`)
 		for _, e := range page {
 			style := fmt.Sprintf("left:%gpt;top:%gpt;width:%gpt;height:%gpt;", e.X, e.Y, e.W, e.H)
@@ -1380,9 +1412,9 @@ func (r *report) toHTML(pages [][]Element) []byte {
 	return []byte(head.String() + b.String())
 }
 
-func (r *report) toPDF(pages [][]Element) ([]byte, error) {
+func (r *report) toPDF(pages iter.Seq[[]Element]) ([]byte, error) {
 	pdf := r.pdf
-	for _, page := range pages {
+	for page := range pages {
 		pdf.AddPage()
 		for _, e := range page {
 			switch e.Type {
@@ -1791,7 +1823,7 @@ func toXLSX(sheets []worksheet) ([]byte, error) {
 	var st sheetStyles
 	var files [][2]string
 	var overrides, entries, links strings.Builder
-	media := 0
+	media, charts := 0, 0
 	for i, sh := range sheets {
 		tall := map[int]float64{} // rows as tall as the pictures on them
 		for _, p := range sh.pics {
@@ -1852,13 +1884,26 @@ func toXLSX(sheets []worksheet) ([]byte, error) {
 			d.WriteString(head + `<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`)
 			dr.WriteString(head + rels)
 			for k, p := range sh.pics {
-				media++
 				const emu = 12700 // per point
-				fmt.Fprintf(&d, `<xdr:oneCellAnchor><xdr:from><xdr:col>%d</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>%d</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="%d" cy="%d"/>`+
+				if p.chart != nil {
+					charts++
+					fmt.Fprintf(&d, `<xdr:oneCellAnchor><xdr:from><xdr:col>%d</xdr:col><xdr:colOff>%d</xdr:colOff><xdr:row>%d</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="%d" cy="%d"/>`+
+						`<xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="%d" name="Chart %d"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>`+
+						`<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="%[4]d" cy="%[5]d"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">`+
+						`<c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" r:id="rId%[8]d"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:oneCellAnchor>`,
+						p.col, int(p.dx*emu), p.row, int(p.w*emu), int(p.h*emu), k+2, k+1, k+1)
+					name := fmt.Sprintf("chart%d.xml", charts)
+					fmt.Fprintf(&dr, rel, k+1, "chart", "../charts/"+name)
+					files = append(files, [2]string{"xl/charts/" + name, chartXML(p.chart)})
+					fmt.Fprintf(&overrides, `<Override PartName="/xl/charts/%s" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`, name)
+					continue
+				}
+				media++
+				fmt.Fprintf(&d, `<xdr:oneCellAnchor><xdr:from><xdr:col>%d</xdr:col><xdr:colOff>%d</xdr:colOff><xdr:row>%d</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="%d" cy="%d"/>`+
 					`<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="%d" name="Picture %d"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>`+
 					`<xdr:blipFill><a:blip r:embed="rId%d"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>`+
-					`<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="%[3]d" cy="%[4]d"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`,
-					p.col, p.row, int(p.w*emu), int(p.h*emu), k+2, k+1, k+1)
+					`<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="%[4]d" cy="%[5]d"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`,
+					p.col, int(p.dx*emu), p.row, int(p.w*emu), int(p.h*emu), k+2, k+1, k+1)
 				name := fmt.Sprintf("image%d.%s", media, p.ext)
 				fmt.Fprintf(&dr, rel, k+1, "image", "../media/"+name)
 				files = append(files, [2]string{"xl/media/" + name, string(p.data)})

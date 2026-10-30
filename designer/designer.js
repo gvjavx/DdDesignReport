@@ -19,7 +19,8 @@ const BANDS = ['header', 'columnHeader', 'groupHeader', ...LEVELS.map(n => 'grou
 const HEIGHT = { header: 60, summary: 30, footer: 30 } // a new band's height; the others 20
 const LEVEL = Object.fromEntries(LEVELS.flatMap(n => [['groupHeader' + n, n], ['groupFooter' + n, n]]))
 const SIDES = ['marginTop', 'marginRight', 'marginBottom', 'marginLeft']
-const PAPER = { A4: [595, 842], A5: [420, 595], Letter: [612, 792], Legal: [612, 1008], F4: [595, 935] }
+// receipt rolls have no length of their own: they are known by their width
+const PAPER = { A4: [595, 842], A5: [420, 595], Letter: [612, 792], Legal: [612, 1008], F4: [595, 935], 'Receipt 58 mm': [164, 600], 'Receipt 80 mm': [226, 600] }
 const FONTS = {
   Helvetica: 'Helvetica,Arial,sans-serif', Times: "'Times New Roman',Times,serif", Courier: "'Courier New',Courier,monospace",
   // bundled with the renderer
@@ -126,6 +127,8 @@ const ID = {
   ...Object.fromEntries(LEVELS.flatMap(n => [['groupHeader' + n, 'kepala grup ' + n], ['groupFooter' + n, 'kaki grup ' + n]])),
   'row field, or up to six: region, city': 'field baris, atau sampai enam: region, city',
   'PDF/A for archiving: every font in the file (Helvetica, Times and Courier print as Roboto and Lora)': 'PDF/A untuk arsip: semua font ada di dalam file (Helvetica, Times, dan Courier dicetak dengan Roboto dan Lora)', 'A sheet per group': 'Sheet per grup',
+  'Receipt 58 mm': 'Struk 58 mm', 'Receipt 80 mm': 'Struk 80 mm', 'Characters per line': 'Karakter per baris',
+  'Receipt printers (ESC/POS) and plain text: characters per line; empty for what the paper fits': 'Printer struk (ESC/POS) dan teks biasa: jumlah karakter per baris; kosongkan untuk sesuai lebar kertas',
   'Excel (xlsx, xls): a worksheet for each group of the first Group by field': 'Excel (xlsx, xls): satu sheet untuk setiap grup dari field Group by pertama',
   'header line': 'garis judul', 'total line': 'garis total', frame: 'bingkai',
   'Sub-report': 'Sub-laporan', 'Edit sub-report…': 'Ubah sub-laporan…', 'list in the data': 'daftar di data', Done: 'Selesai',
@@ -901,7 +904,8 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
         `<label title="${L('Decimal sign')}">0<input data-tpl="decimal" type="text" style="width:34px" placeholder="." aria-label="${L('Decimal sign')}">00</label>` +
         `<label>${L('Dates in')}<select data-tpl="locale"><option value="">${L('English')}</option><option value="id">${L('Indonesian')}</option></select></label>` +
         `<label>${L('CSV separator')}<select data-tpl="csvSeparator"><option value="">,</option><option value=";">;</option><option value="&#9;">${L('Tab')}</option></select></label>` +
-        `<label title="${L('PDF/A for archiving: every font in the file (Helvetica, Times and Courier print as Roboto and Lora)')}"><input data-tpl="pdfA" type="checkbox">PDF/A</label>`),
+        `<label title="${L('PDF/A for archiving: every font in the file (Helvetica, Times and Courier print as Roboto and Lora)')}"><input data-tpl="pdfA" type="checkbox">PDF/A</label>` +
+        `<label title="${L('Receipt printers (ESC/POS) and plain text: characters per line; empty for what the paper fits')}">${L('Characters per line')}<input data-tpl="textColumns" type="number" min="8" max="255" style="width:56px" placeholder="auto"></label>`),
     View:
       group('Show', `<label><input data-id="ruler" type="checkbox" checked>${L('Ruler')}</label><label title="${L('Snap to the edges of other elements while dragging (hold Alt to turn off)')}"><input data-id="snap" type="checkbox" checked>${L('Snap')}</label>`),
   }
@@ -1483,8 +1487,9 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
     const value = c.type === 'checkbox' ? c.checked : c.type === 'number' || d.prop === 'lineHeight' ? +c.value || 0 : c.value
     if (d.prop) return apply(d.prop, value)
     if (d.page) p[d.page] = d.page === 'width' || d.page === 'height' ? Math.max(50, value) : value
+    else if (d.tpl && c.type === 'number' && !value) delete tpl[d.tpl] // empty: the default
     else if (d.tpl) tpl[d.tpl] = value
-    else if (d.id === 'paper' && PAPER[value]) [p.width, p.height] = p.width > p.height ? [...PAPER[value]].reverse() : PAPER[value]
+    else if (d.id === 'paper' && PAPER[value]) [p.width, p.height] = p.width > p.height && !value.startsWith('Receipt') ? [...PAPER[value]].reverse() : PAPER[value]
     else if (d.id === 'orientation') { if ((value === 'Landscape') !== p.width > p.height) [p.width, p.height] = [p.height, p.width] }
     else if (d.id === 'field' && value) {
       c.value = ''
@@ -1622,7 +1627,8 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
     $('[data-id=nothousands]').checked = none
     Object.assign($('[data-tpl=thousands]'), { disabled: none, value: none ? '' : tpl.thousands ?? '' })
     const [short, long] = [p.width, p.height].sort((a, b) => a - b)
-    $('[data-id=paper]').value = Object.keys(PAPER).find(k => PAPER[k][0] === short && PAPER[k][1] === long) ?? 'Custom'
+    $('[data-id=paper]').value = Object.keys(PAPER).find(k => PAPER[k][0] === short && PAPER[k][1] === long) ??
+      Object.keys(PAPER).find(k => k.startsWith('Receipt') && PAPER[k][0] === p.width) ?? 'Custom'
     $('[data-id=orientation]').value = p.width > p.height ? 'Landscape' : 'Portrait'
     $('[data-cmd=undo]').disabled = at <= 0
     $('[data-cmd=redo]').disabled = at >= history.length - 1

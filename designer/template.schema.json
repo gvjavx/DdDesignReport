@@ -17,6 +17,7 @@
     "decimal": { "type": "string", "description": "Decimal separator of {{x:N}}; default \".\". Indonesian: thousands \".\" and decimal \",\"." },
     "locale": { "enum": ["", "en", "id"], "description": "\"id\" for Indonesian month and day names in dates." },
     "csvSeparator": { "enum": ["", ",", ";", "\t"], "description": "CSV separator; default \",\". \";\" for Excel in Indonesian or European settings." },
+    "textColumns": { "type": "integer", "minimum": 8, "maximum": 255, "description": "escpos and txt: characters per line. Default from the paper width: 32 up to 60 mm (58 mm receipt printers), 48 up to 92 mm (80 mm), 80 wider (dot matrix)." },
     "sheetPerGroup": { "type": "boolean", "description": "XLSX and XLS: a worksheet for each group of the first groupBy field." },
     "bands": {
       "type": "object",

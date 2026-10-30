@@ -22,7 +22,7 @@ const fail = (status, stderr) => new Error(stderr.toString().trim() || `ddreport
  * it is done; servers should use renderAsync.
  * @param {object} template template exported by the designer
  * @param {object|Array} data fields plus the row array, or just the rows
- * @param {'pdf'|'html'|'xlsx'|'xls'|'csv'} format
+ * @param {'pdf'|'html'|'xlsx'|'xls'|'csv'|'jrxml'|'escpos'|'txt'} format
  * @param {{timeout?: number}} options timeout in milliseconds, default 60000; 0 for none
  * @returns {Buffer}
  */
