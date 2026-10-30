@@ -6,6 +6,7 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "version": { "type": "integer", "minimum": 1, "maximum": 1, "description": "Template format version it was written for. An engine refuses a version newer than it reads, rather than print the report wrongly." },
     "page": { "$ref": "#/$defs/page" },
     "dataKey": { "type": "string", "description": "Key of the row list in the data; default \"rows\". The data may also be the row list itself." },
     "sortBy": { "type": "string", "description": "Row fields to sort by, \"-\" for descending: \"category, -total\"." },

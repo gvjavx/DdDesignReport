@@ -4,6 +4,10 @@
 
 Library reporting dengan designer drag and drop. Template didesain di browser, disimpan sebagai JSON, lalu di-render oleh satu core (Go) menjadi **PDF, HTML, XLSX, XLS, atau CSV** dari backend Go, Java, Kotlin, Node.js, atau bahasa apa pun lewat HTTP. Template juga bisa dibawa ke dan dari JasperReports (`.jrxml`).
 
+**Untuk software house:** pasang designer-nya di aplikasi Anda, dan klien bisa mengubah sendiri kop faktur, kolom slip gaji, atau tata letak rapor mereka. Tidak ada lagi tiket "tolong geser logonya" untuk Anda. Mode mudah, tombol yang bisa disembunyikan, dan teks antarmuka yang bisa diganti membuatnya cocok untuk admin dan staf yang bukan programmer, dan dokumen lokal sudah ada: kuitansi dengan terbilang, kertas F4, nama bulan Indonesia, slip gaji, surat jalan, dan rapor.
+
+Butuh dibuatkan template atau dipasangkan? Lihat [jasa](https://gvjavx.github.io/DdDesignReport-website/#jasa).
+
 Yang baru di setiap versi: [CHANGELOG.md](CHANGELOG.md). English: [README.en.md](README.en.md).
 
 ```
@@ -101,6 +105,16 @@ Data contoh harus buatan, bukan data pelanggan sungguhan. Template yang disumban
 
 Template adalah JSON. [`designer/template.schema.json`](designer/template.schema.json) adalah JSON Schema-nya (juga di `ddreport-designer/template.schema.json` dan di `/template.schema.json` pada `ddreport -serve`), untuk validasi dan pelengkapan otomatis di editor; properti yang tidak dikenal adalah kesalahan. [`llms.txt`](llms.txt) meringkas cara menulis template untuk asisten AI, dengan contoh yang dicek oleh test.
 
+### Asisten AI (MCP)
+
+`ddreport -mcp` menjadikan binary-nya server [MCP](https://modelcontextprotocol.io) lewat stdin/stdout, sehingga asisten AI (Claude, Cursor, dan lainnya) bisa membaca cara menulis template (`template_guide`: isi `llms.txt` dan JSON Schema), memeriksa template yang ditulisnya (`check_template`: properti yang salah ketik, yang diabaikan saat mencetak, lalu dicoba dicetak dengan data contoh), dan mencetaknya ke file (`render_template`). Contoh: minta asisten membuat template dari foto faktur lama Anda, lalu memeriksanya sendiri sampai valid.
+
+```sh
+claude mcp add ddreport -- /path/ke/ddreport -mcp     # Claude Code
+```
+
+Untuk aplikasi lain, daftarkan perintah `ddreport` dengan argumen `-mcp` di pengaturan server MCP-nya.
+
 | Band | Muncul |
 | --- | --- |
 | `header`, `columnHeader`, `footer` | di setiap halaman; `"pages": "first"` hanya di halaman pertama, `"last"` (footer) hanya di halaman terakhir |
@@ -109,6 +123,8 @@ Template adalah JSON. [`designer/template.schema.json`](designer/template.schema
 | `summary` | sekali, setelah baris terakhir |
 
 `"newPage": true` pada `groupHeader`, `detail`, `groupFooter`, atau `summary` memulai band itu di halaman baru. Band yang lebih tinggi dari satu halaman (misalnya surat panjang dengan Wrap) berlanjut ke halaman berikutnya, baris demi baris; tidak ada teks yang terpotong. Footer yang ikut memanjang tetap di dalam margin bawah.
+
+**Versi format**: designer menulis `"version": 1` di setiap template. Nomor ini hanya naik bila ddreport versi lama akan mencetak template baru dengan salah (misalnya melewatkan elemen yang belum dikenalnya). Ddreport menolak template yang versinya lebih baru dari yang bisa dibacanya, dengan pesan yang menyebut versinya, alih-alih mencetaknya tidak lengkap. Template tanpa `version` dibaca sebagai versi 1. Jadi perbarui backend (wrapper, binary, atau image Docker) bersamaan dengan atau sebelum designer.
 
 **Placeholder** di dalam teks:
 
@@ -290,7 +306,7 @@ Keduanya memakai `ddreport -stdio`: binary terus berjalan dan membaca permintaan
 docker run -p 8080:8080 -e DDREPORT_TOKEN=rahasia-panjang ghcr.io/gvjavx/ddreport
 ```
 
-Dengan `DDREPORT_TOKEN`, setiap render harus mengirim `Authorization: Bearer <token>` (tanpa itu jawabannya `401`); designer di `/` tetap terbuka, dan preview-nya memakai token dari alamat halaman: `http://server:8080/#token=rahasia-panjang`. Tanpa token, siapa pun yang bisa menjangkau port itu bisa me-render, jadi `ddreport -serve` memberi peringatan bila alamatnya terbuka ke jaringan. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran. Permintaan dari halaman situs lain di browser (header `Origin` yang berbeda) ditolak; panggil dari backend Anda, bukan langsung dari browser. Tanpa token, server hanya melayani alamat `localhost` atau alamat IP (misalnya `http://192.168.1.5:8080`), agar situs lain yang mengarahkan namanya ke mesin Anda (DNS rebinding) tidak bisa membaca atau menghapus My templates; untuk memakai nama domain, isi `DDREPORT_TOKEN`.
+Dengan `DDREPORT_TOKEN`, setiap render harus mengirim `Authorization: Bearer <token>` (tanpa itu jawabannya `401`); designer di `/` tetap terbuka, dan preview-nya memakai token dari alamat halaman: `http://server:8080/#token=rahasia-panjang`. Tanpa token, siapa pun yang bisa menjangkau port itu bisa me-render, jadi `ddreport -serve` memberi peringatan bila alamatnya terbuka ke jaringan. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran, dan bila sudah empat kali jumlah prosesor yang menunggu atau berjalan, render berikutnya dijawab `503` dengan `Retry-After: 5` agar tidak menunggu bermenit-menit. `GET /healthz` menjawab `ok` tanpa token, untuk load balancer atau pemantauan. Setiap render, impor, dan akses My templates dicatat satu baris di stderr: `POST /render?format=pdf 200 48213B 85ms` (tanpa token dan tanpa isi laporan). `DDREPORT_MAX_ROWS=50000` menolak laporan yang barisnya lebih dari itu dengan pesan error, alih-alih menghabiskan memori server (lihat [Performa](#performa)). Image Docker punya HEALTHCHECK bawaan: `ddreport -healthcheck 127.0.0.1:8080` meminta `/healthz` dan keluar dengan kode 1 bila server tidak menjawab `ok`. Permintaan dari halaman situs lain di browser (header `Origin` yang berbeda) ditolak; panggil dari backend Anda, bukan langsung dari browser. Tanpa token, server hanya melayani alamat `localhost` atau alamat IP (misalnya `http://192.168.1.5:8080`), agar situs lain yang mengarahkan namanya ke mesin Anda (DNS rebinding) tidak bisa membaca atau menghapus My templates; untuk memakai nama domain, isi `DDREPORT_TOKEN`.
 
 PHP (juga di shared hosting yang tidak boleh menjalankan program, selama server ddreport ada di mesin lain):
 
@@ -353,12 +369,16 @@ ddreport.Families["Inter"] = &ddreport.Family{Regular: regular, Bold: bold}
 
 Untuk binary (Java, Kotlin, Node.js, `-serve`): set `DDREPORT_FONTS` ke folder berisi file-file itu. Agar namanya muncul di designer, berikan opsi `fonts: ['Inter']`. Aplikasi standalone (`-serve`) melakukannya sendiri: semua font di `DDREPORT_FONTS` muncul di menu font dan tergambar di kanvas.
 
-**Paket 100 font tambahan.** Sans, serif, display, tulisan tangan, dan monospace dari Google Fonts (lisensi SIL OFL atau Apache), misalnya Inter, Poppins, Merriweather, Oswald, Dancing Script, dan Roboto Mono. Paket ini tidak ikut di binary (sekitar 39 MB). Unduh sekali, lalu arahkan `DDREPORT_FONTS` ke foldernya:
+**Paket 100 font tambahan.** Sans, serif, display, tulisan tangan, dan monospace dari Google Fonts (lisensi SIL OFL atau Apache), misalnya Inter, Poppins, Merriweather, Oswald, Dancing Script, dan Roboto Mono. Paket ini tidak ikut di binary (sekitar 39 MB). Unduh sekali ke folder `ddreport-fonts`. Binary memakai folder itu dengan sendirinya bila dijalankan dari folder yang sama dan `DDREPORT_FONTS` tidak di-set:
 
 ```sh
 node fontpack/download.mjs ddreport-fonts           # daftarnya ada di skrip itu
-DDREPORT_FONTS=ddreport-fonts ./ddreport -serve 127.0.0.1:8080
+./ddreport -serve 127.0.0.1:8080                    # 100 font itu langsung ada di menu font
 ```
+
+Folder lain: `DDREPORT_FONTS=/path/ke/folder`. Font yang baru diunduh muncul setelah `ddreport` dijalankan ulang.
+
+**Memilih font di menu.** Tombol **⋯** di sebelah menu font membuka daftar semua font, masing-masing dengan centang. Hilangkan centangnya agar font itu tidak tampil di menu, centang lagi untuk memunculkannya kembali; ada kolom cari dan tombol **Semua** / **Tidak ada**. Pilihan disimpan di browser. Elemen yang memakai font tersembunyi tetap menampilkan fontnya.
 
 Font hanya dibaca saat sebuah laporan memakainya, jadi folder berisi 100 font tidak memperlambat laporan yang tidak memakainya.
 
@@ -394,7 +414,7 @@ Laporan penjualan siap pakai (berkelompok per kategori, dengan subtotal dan dua 
 | 10 000 (±250 halaman) | ±1 dtk | ±0,8 dtk | 0,2 dtk | 0,2 dtk | 0,2 dtk |
 | 100 000 (±2 500 halaman) | ±12 dtk, memori puncak ±1 GB | ±7 dtk | 2,2 dtk, ±220 MB | 1,8 dtk | 1,6 dtk |
 
-Untuk PDF dan HTML, seluruh halaman disusun di memori sebelum ditulis, jadi laporan ratusan ribu baris butuh memori sebanding; pecah per periode atau per kelompok bila perlu, atau pakai XLSX/CSV untuk ekspor data mentah. Ukur sendiri:
+Untuk PDF dan HTML, seluruh halaman disusun di memori sebelum ditulis, jadi laporan ratusan ribu baris butuh memori sebanding; pecah per periode atau per kelompok bila perlu, atau pakai XLSX/CSV untuk ekspor data mentah. Di server, `DDREPORT_MAX_ROWS` membatasi jumlah baris per laporan; dari Go, `ddreport.MaxRows`. Ukur sendiri:
 
 ```sh
 go test -run '^$' -bench Large -benchmem                       # 10 000 baris, semua format

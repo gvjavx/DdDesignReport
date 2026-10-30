@@ -4,6 +4,8 @@
 
 A reporting library with a drag-and-drop designer. Templates are designed in the browser, saved as JSON, and rendered by one Go core to **PDF, HTML, XLSX, XLS or CSV** from Go, Java, Kotlin, Node.js, or any language over HTTP. Templates also go to and from JasperReports (`.jrxml`). MIT licensed.
 
+**For software houses:** embed the designer in your application and your customers change their own invoice header, payslip columns or report-card layout, with no ticket to you. Easy mode, hideable buttons and replaceable interface text suit admins and staff who do not program.
+
 The full documentation is in Indonesian: [README.md](README.md). This page covers what you need to start; the template format is described by its [JSON Schema](designer/template.schema.json) and summarised, with a tested example, in [llms.txt](llms.txt). What is new in each version: [CHANGELOG.md](CHANGELOG.md) (Indonesian).
 
 ## The designer
@@ -72,7 +74,7 @@ curl -X POST "http://localhost:8080/render?format=pdf" \
   -d '{"template": {...}, "data": {...}}' -o report.pdf
 ```
 
-The answer is the document, `400` with the error message, or `401` without the right token. Without `DDREPORT_TOKEN` anyone who can reach the port can render, so keep such a server on `127.0.0.1`; it then only answers to `localhost` and IP addresses, so a site that points its own name at your machine cannot use it. To reach it by a domain name, set the token. The designer on `/` takes the token from its address for preview and export: `http://server:8080/#token=a-long-secret`. PHP, Python and C# examples are in the [README](README.md#backend); PHP templates read with `json_decode($json, true)` work as they are.
+The answer is the document, `400` with the error message, or `401` without the right token. Without `DDREPORT_TOKEN` anyone who can reach the port can render, so keep such a server on `127.0.0.1`; it then only answers to `localhost` and IP addresses, so a site that points its own name at your machine cannot use it. To reach it by a domain name, set the token. The designer on `/` takes the token from its address for preview and export: `http://server:8080/#token=a-long-secret`. Past four renders per processor waiting or running, the next gets `503` with `Retry-After: 5`. `GET /healthz` answers `ok` without the token. Every render, import and My templates request is logged to stderr in one line: `POST /render?format=pdf 200 48213B 85ms`. PHP, Python and C# examples are in the [README](README.md#backend); PHP templates read with `json_decode($json, true)` work as they are.
 
 ## Templates in short
 
@@ -83,10 +85,12 @@ The answer is the document, `400` with the error message, or `401` without the r
 - Colours can follow the data: `"color": "{{if(total < 0, '#dc2626', '#000000')}}"`; in the designer, *colour from data* in the properties panel.
 - JasperReports: `ddreport -format jrxml` writes a template as a JasperReports 6 `.jrxml` (Groovy expressions, fields filled by a `JsonDataSource`), and `ddreport -from-jrxml` reads one back as a template, noting what did not come over. Also `ToJRXML` / `FromJRXML` in Go, `"jrxml"` in `render`, and `POST /import/jrxml`.
 - In XLSX and XLS, bold text, number formats, alignment, cell colours, borders and merged cells (across and down) carry over; one sheet per group is an option. XLSX also carries pictures and barcodes; charts are in PDF and HTML only.
-- Bundled fonts (Roboto, Open Sans, Lato, Montserrat, Lora, Playfair Display, Great Vibes) are embedded in PDF and HTML; your own TrueType fonts can be added (`DDREPORT_FONTS`), and `node fontpack/download.mjs` fetches 100 more from Google Fonts. They are read only when a report uses them.
+- Bundled fonts (Roboto, Open Sans, Lato, Montserrat, Lora, Playfair Display, Great Vibes) are embedded in PDF and HTML; your own TrueType fonts can be added (`DDREPORT_FONTS`), and `node fontpack/download.mjs` fetches 100 more from Google Fonts into `ddreport-fonts`, which the binary uses by itself when `DDREPORT_FONTS` is not set. They are read only when a report uses them. The **⋯** button next to the designer's font menu chooses which fonts it lists (kept in the browser).
 - Arabic and Hebrew print right to left in PDF, Arabic letters joined (use a font such as Amiri from the font pack), and Thai with its marks.
 - PDF/A-2b with `"pdfA": true`. Every PDF is digitally signed when `DDREPORT_SIGN_CERT` and `DDREPORT_SIGN_KEY` name a PEM certificate and key (`ddreport.SignPDF` in Go).
 - Large reports: 100 000 rows print to PDF in about 12 seconds on a 2017 laptop (`go test -bench Large`).
+- AI assistants: `ddreport -mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio with `template_guide` (llms.txt and the schema), `check_template` (misspelt properties, then a trial render) and `render_template`. Claude Code: `claude mcp add ddreport -- /path/to/ddreport -mcp`.
+- Servers: `DDREPORT_MAX_ROWS` refuses reports with more rows than that (`ddreport.MaxRows` in Go); the Docker image has a HEALTHCHECK (`ddreport -healthcheck 127.0.0.1:8080`).
 - Templates from the community are welcome: see "Menyumbang template" in the [README](README.md#menyumbang-template).
 
 ## Tests

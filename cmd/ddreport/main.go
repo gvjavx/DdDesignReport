@@ -26,6 +26,13 @@
 // built-in Latin-only PDF font. DDREPORT_FONTS names a folder of Family-Face.ttf
 // files (Inter-Regular.ttf, Inter-Bold.ttf, ...) that templates can use by name;
 // -serve hands them to the designer too, and lists every font at GET /fonts.json.
+// Without DDREPORT_FONTS, a ddreport-fonts folder in the current folder is used,
+// the one node fontpack/download.mjs fills. DDREPORT_MAX_ROWS caps the rows of
+// one report.
+//
+// -healthcheck asks a server on this machine for GET /healthz and exits 1 when it
+// does not answer ok: a HEALTHCHECK for the image, which has no curl. With -mcp
+// it is an MCP server on stdin and stdout for AI assistants (mcp.go).
 package main
 
 import (
@@ -114,6 +121,18 @@ func loadSigner() error {
 // handler serves the designer on / and renders on POST /render?format=...
 // A token, when not empty, is what every render must send as its bearer token.
 // dir is where the designer's own templates (My templates) are kept.
+// fontsFolder is DDREPORT_FONTS, or else ddreport-fonts when that folder is here:
+// the font pack is used as soon as it is downloaded.
+func fontsFolder() string {
+	if d := os.Getenv("DDREPORT_FONTS"); d != "" {
+		return d
+	}
+	if st, err := os.Stat("ddreport-fonts"); err == nil && st.IsDir() {
+		return "ddreport-fonts"
+	}
+	return ""
+}
+
 func handler(token, dir string) http.Handler {
 	mux := http.NewServeMux()
 	// allowed refuses a request from a page of another site, or without the token
@@ -143,7 +162,7 @@ func handler(token, dir string) http.Handler {
 	mux.Handle("/", http.FileServerFS(designer.Files))
 	// so the designer draws the bundled fonts, and those of DDREPORT_FONTS before them
 	fonts := http.FileServerFS(ddreport.BundledFonts)
-	if d := os.Getenv("DDREPORT_FONTS"); d != "" {
+	if d := fontsFolder(); d != "" {
 		dir, bundled := os.DirFS(d), fonts
 		own := http.FileServerFS(dir)
 		fonts = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -172,9 +191,14 @@ func handler(token, dir string) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(list)
 	})
+	// for a load balancer or docker: no token, nothing but that the server answers
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "ok\n") })
 	// as many renders at a time as there are processors; the others wait their
-	// turn, or give up when their client does, so a burst cannot exhaust the machine
+	// turn, or give up when their client does, so a burst cannot exhaust the machine.
+	// Past queue renders, waiting or running, the next is told to come back (503)
+	// instead of waiting minutes for its turn.
 	busy := make(chan struct{}, runtime.NumCPU())
+	queue := make(chan struct{}, 4*runtime.NumCPU())
 	// a JasperReports report read as a template: {"template": ..., "notes": [...]}
 	mux.HandleFunc("POST /import/jrxml", func(w http.ResponseWriter, r *http.Request) {
 		if !allowed(w, r) {
@@ -198,6 +222,14 @@ func handler(token, dir string) http.Handler {
 			return
 		}
 		select {
+		case queue <- struct{}{}:
+			defer func() { <-queue }()
+		default:
+			w.Header().Set("Retry-After", "5")
+			http.Error(w, "ddreport: too many reports at once, try again shortly", http.StatusServiceUnavailable)
+			return
+		}
+		select {
 		case busy <- struct{}{}:
 			defer func() { <-busy }()
 		case <-r.Context().Done():
@@ -213,7 +245,34 @@ func handler(token, dir string) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Write(out)
 	})
-	return mux
+	return logged(mux)
+}
+
+// logged writes a line to stderr for every request that does work: renders,
+// imports and My templates, not the designer's own files and fonts.
+// POST /render?format=pdf 200 48213B 85ms
+func logged(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && !strings.HasPrefix(r.URL.Path, "/mine") {
+			h.ServeHTTP(w, r)
+			return
+		}
+		start, sw := time.Now(), &status{ResponseWriter: w, code: http.StatusOK}
+		h.ServeHTTP(sw, r)
+		log.Printf("%s %s %d %dB %dms", r.Method, r.URL.RequestURI(), sw.code, sw.n, time.Since(start).Milliseconds())
+	})
+}
+
+type status struct {
+	http.ResponseWriter
+	code, n int
+}
+
+func (s *status) WriteHeader(code int) { s.code = code; s.ResponseWriter.WriteHeader(code) }
+func (s *status) Write(b []byte) (int, error) {
+	n, err := s.ResponseWriter.Write(b)
+	s.n += n
+	return n, err
 }
 
 // an id names a template's file, so it can never be a path
@@ -437,16 +496,34 @@ func main() {
 	fromJRXML := flag.Bool("from-jrxml", false, "read a JasperReports .jrxml on stdin and write it as a template; what did not come over goes to stderr")
 	serve := flag.String("serve", "", "serve the designer and POST /render on this address, e.g. 127.0.0.1:8080")
 	templates := flag.String("templates", "ddreport-templates", "with -serve: the folder the designer's My templates are kept in")
+	healthcheck := flag.String("healthcheck", "", "ask the server on this address (e.g. 127.0.0.1:8080) for /healthz; exit 1 unless it answers ok")
+	mcp := flag.Bool("mcp", false, "be an MCP server on stdin and stdout, so AI assistants can check and render templates")
 	flag.Parse()
+	if *healthcheck != "" {
+		c := http.Client{Timeout: 5 * time.Second}
+		res, err := c.Get("http://" + *healthcheck + "/healthz")
+		if err == nil && res.StatusCode != http.StatusOK {
+			err = errors.New(res.Status)
+		}
+		if err != nil {
+			log.Fatal("ddreport: not healthy: ", err)
+		}
+		return
+	}
 	var err error
 	if ddreport.Font, err = font("DDREPORT_FONT"); err == nil {
 		ddreport.FontBold, err = font("DDREPORT_FONT_BOLD")
 	}
-	if dir := os.Getenv("DDREPORT_FONTS"); dir != "" && err == nil {
+	if dir := fontsFolder(); dir != "" && err == nil {
 		err = ddreport.AddFonts(os.DirFS(dir))
 	}
 	if err == nil {
 		err = loadSigner()
+	}
+	if n := os.Getenv("DDREPORT_MAX_ROWS"); n != "" && err == nil {
+		if ddreport.MaxRows, err = strconv.Atoi(n); err != nil {
+			err = fmt.Errorf("ddreport: DDREPORT_MAX_ROWS: %w", err)
+		}
 	}
 	if err != nil {
 		log.Fatal(err)
@@ -465,6 +542,12 @@ func main() {
 			fmt.Fprintln(os.Stderr, "note: "+n)
 		}
 		os.Stdout.Write(tpl)
+		return
+	}
+	if *mcp {
+		if err := serveMCP(os.Stdin, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
 		return
 	}
 	if *stdio {

@@ -13,7 +13,7 @@
 
 ## Writing a template
 
-- JSON Schema: `designer/template.schema.json` in the repository, also served by `ddreport -serve` at `/template.schema.json` and shipped as `ddreport-designer/template.schema.json`. Validate against it: unknown properties are mistakes.
+- JSON Schema: `designer/template.schema.json` in the repository, also served by `ddreport -serve` at `/template.schema.json` and shipped as `ddreport-designer/template.schema.json`. Validate against it: unknown properties are mistakes. If you can run tools, `ddreport -mcp` is an MCP server whose `check_template` tool names misspelt properties and tries a render. Write `"version": 1` (the template format); a ddreport that reads an older format refuses the template instead of printing it wrongly.
 - Sizes are in points (1/72 inch). A4 is `595 x 842`, Letter `612 x 792`. Element `x`, `y` are relative to their band, inside the page margins.
 - Bands, top to bottom: `header` and `columnHeader` (every page), `groupHeader` (before each group), `detail` (once per data row), `groupFooter` (after each group), `summary` (once, after the last row), `footer` (every page). Grouping needs `groupBy`; up to six levels with `groupHeader2`/`groupFooter2` through `groupHeader6`/`groupFooter6`.
 - Data rows are `data.rows` (or `dataKey`), or the data itself when it is a list. Other top-level fields are available everywhere: `{{customer.name}}`.
@@ -35,6 +35,7 @@ An invoice with its items, a total and a red balance when it is negative. This e
 ```json
 {
   "template": {
+    "version": 1,
     "page": { "width": 595, "height": 842, "margin": 40 },
     "thousands": ".", "decimal": ",", "locale": "id",
     "bands": {

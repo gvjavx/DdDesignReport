@@ -2,6 +2,17 @@
 
 ## Belum dirilis
 
+**Template**: `"version"` (versi format template, sekarang 1). Designer menulisnya di setiap template. Ddreport menolak template yang versinya lebih baru dari yang bisa dibacanya, dengan pesan yang jelas, alih-alih mencetaknya tanpa bagian yang belum dikenalnya. Template tanpa `version` tetap dibaca seperti biasa. Dari Go: `ddreport.FormatVersion`.
+
+**Server**:
+- `GET /healthz` menjawab `ok` tanpa token, untuk load balancer dan pemantauan.
+- Bila render yang menunggu dan berjalan sudah empat kali jumlah prosesor, render berikutnya langsung dijawab `503` dengan `Retry-After: 5`, bukan menunggu sampai batas waktu 5 menit.
+- Satu baris log di stderr untuk setiap render, impor, dan akses My templates: metode, alamat, status, ukuran, dan lama (`POST /render?format=pdf 200 48213B 85ms`). Token dan isi laporan tidak dicatat.
+- `DDREPORT_MAX_ROWS` (dari Go: `ddreport.MaxRows`): laporan dengan baris lebih dari itu ditolak dengan pesan error, alih-alih menghabiskan memori server.
+- `ddreport -healthcheck 127.0.0.1:8080` keluar dengan kode 1 bila server tidak menjawab `/healthz`; image Docker memakainya sebagai HEALTHCHECK.
+
+**Asisten AI**: `ddreport -mcp` adalah server MCP (stdio) dengan tool `template_guide` (`llms.txt` dan JSON Schema), `check_template` (properti yang salah ketik, lalu dicoba dicetak), dan `render_template` (ke file). `ddreport.Guide` berisi `llms.txt` dari Go.
+
 **JasperReports**: semua 13 template siap pakai, diekspor ke `.jrxml`, kini dikompilasi, diisi data contohnya, dan diekspor ke PDF oleh JasperReports 6.21 sungguhan. Yang diperbaiki dari ekspornya:
 - Garis di tepi bawah band tidak lagi keluar dari band (JasperReports menolak laporan seperti itu).
 - Field bertipe `java.lang.String`, bukan `Object`: `JsonDataSource` memberi `Object` berupa node JSON yang tidak bisa dihitung.
@@ -9,6 +20,10 @@
 - Sel tabel tidak lagi bergaris ganda.
 - Baris diurutkan menurut field grup lebih dulu, karena JasperReports hanya menggabungkan baris yang berurutan.
 - Kotak teks yang terlalu pendek untuk satu baris (menurut ukuran JasperReports, sekitar 1,3 kali ukuran font) dipertinggi seperlunya, agar isinya tidak hilang.
+
+**Font**:
+- Folder `ddreport-fonts` (hasil `node fontpack/download.mjs`) dipakai dengan sendirinya bila `DDREPORT_FONTS` tidak di-set, jadi 100 font itu langsung muncul di designer.
+- Designer: tombol **⋯** di sebelah menu font memilih font mana yang tampil di menu, dengan centang, cari, dan Semua / Tidak ada. Pilihan disimpan di browser (`localStorage`).
 
 **PDF/A**: PDF/A-2b dari `"pdfA": true`, juga yang ditandatangani dan yang berisi teks Arab, lulus validasi veraPDF 1.30.
 

@@ -16,5 +16,7 @@ COPY --from=build --chown=65534:65534 /data /data
 VOLUME /data
 USER 65534:65534
 EXPOSE 8080
+# no curl in a scratch image: the binary asks itself
+HEALTHCHECK --interval=30s --timeout=6s CMD ["/ddreport", "-healthcheck", "127.0.0.1:8080"]
 ENTRYPOINT ["/ddreport"]
 CMD ["-serve", "0.0.0.0:8080", "-templates", "/data"]

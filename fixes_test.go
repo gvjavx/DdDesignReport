@@ -2,6 +2,7 @@ package ddreport
 
 import (
 	"bytes"
+	"fmt"
 	"io/fs"
 	"strings"
 	"testing"
@@ -80,5 +81,30 @@ func TestFromJRXMLWhatHasNoCounterpart(t *testing.T) {
 	}
 	if !strings.Contains(s, `"groupBy": "f1, f2, f3, f4, f5, f6"`) {
 		t.Errorf("six groups on fields after one that is not: %s", s)
+	}
+}
+
+// more rows than MaxRows is an error, not a report that takes all the memory
+func TestMaxRows(t *testing.T) {
+	defer func() { MaxRows = 0 }()
+	tpl := []byte(`{"bands": {"detail": {"height": 20}}}`)
+	MaxRows = 2
+	if _, err := Render(tpl, []any{1, 2}, "csv"); err != nil {
+		t.Errorf("2 rows: %v", err)
+	}
+	if _, err := Render(tpl, []any{1, 2, 3}, "csv"); err == nil || !strings.Contains(err.Error(), "DDREPORT_MAX_ROWS") {
+		t.Errorf("3 rows: err = %v", err)
+	}
+}
+
+// a template written for a newer format is refused, not printed with parts left out
+func TestTemplateVersion(t *testing.T) {
+	ok := `{"version": 1, "bands": {"detail": {"height": 20}}}`
+	if _, err := Render([]byte(ok), []any{}, "csv"); err != nil {
+		t.Errorf("version 1: %v", err)
+	}
+	newer := fmt.Sprintf(`{"version": %d, "bands": {"detail": {"height": 20}}}`, FormatVersion+1)
+	if _, err := Render([]byte(newer), []any{}, "pdf"); err == nil || !strings.Contains(err.Error(), "newer ddreport") {
+		t.Errorf("newer version: err = %v", err)
 	}
 }

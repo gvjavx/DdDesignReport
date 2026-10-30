@@ -2,6 +2,8 @@
 
 A drag-and-drop report designer with a word-processor style ribbon, for [DdDesignReport](https://github.com/gvjavx/DdDesignReport). No dependencies, no build step. TypeScript types included.
 
+Embed it in your application and let your customers change their own invoice, payslip or report layouts, with no ticket to you: `simple: true` for non-programmers, `hide` for the tools they should not see, `messages` for your own wording.
+
 ```sh
 npm install ddreport-designer
 ```

@@ -129,6 +129,7 @@ const ID = {
   'Excel (xlsx, xls): a worksheet for each group of the first Group by field': 'Excel (xlsx, xls): satu sheet untuk setiap grup dari field Group by pertama',
   'header line': 'garis judul', 'total line': 'garis total', frame: 'bingkai',
   'Sub-report': 'Sub-laporan', 'Edit sub-report…': 'Ubah sub-laporan…', 'list in the data': 'daftar di data', Done: 'Selesai',
+  'Choose fonts…': 'Pilih font…', 'Fonts in the list': 'Font di daftar', Search: 'Cari', All: 'Semua', None: 'Tidak ada',
   'A report of its own for each item of a list in the data: header, column header, groups, detail and summary. Its footer is not used.':
     'Laporan tersendiri untuk setiap item daftar di data: kepala, judul kolom, grup, detail, dan ringkasan. Kaki halamannya tidak dipakai.',
   'show when': 'tampil jika', 'picture from data': 'gambar dari data', 'colour from data': 'warna dari data', 'fill from data': 'isi dari data',
@@ -342,6 +343,14 @@ const CSS = `
 .ddr-subdialog .ddr-primary{background:var(--a);border-color:var(--a);color:var(--a-text);font-weight:600}
 .ddr-subdialog>div{flex:1;min-height:0;border:0;border-radius:0}
 .ddr-preview form{display:flex;align-items:center;gap:12px}
+.ddr-fonts{width:min(92vw,560px)}
+.ddr-fonts form:last-child{justify-content:flex-end;margin-top:10px}
+.ddr-fonts input[type=search]{flex:1;height:28px;padding:0 8px;border:1px solid var(--line);border-radius:var(--r);background:var(--bg);color:var(--text)}
+.ddr-fonts button{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--text);cursor:pointer}
+.ddr-fonts .ddr-primary{background:var(--a);border-color:var(--a);color:var(--a-text);font-weight:600}
+.ddr-fonts>div{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:2px 12px;max-height:60vh;overflow:auto;margin-top:10px;font-size:15px}
+.ddr-fonts label{display:flex;align-items:center;gap:6px;padding:3px 0}
+.ddr-fonts label[hidden]{display:none}
 .ddr-preview [role=status]{color:var(--muted)}
 .ddr-sheet{position:relative;display:grid;place-items:center;width:min(92vw,900px);height:80vh;margin-top:8px;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:#e5e7eb}
 .ddr-sheet p{margin:0;padding:16px;max-width:60ch;color:#475569;text-align:center;white-space:pre-wrap}
@@ -830,6 +839,11 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
   const off = [] // undoes what reaches outside the designer, for destroy()
   const listen = (target, type, fn) => { target.addEventListener(type, fn); off.push(() => target.removeEventListener(type, fn)) }
   const fontList = { ...FONTS, ...Object.fromEntries(fonts.filter(f => !FONTS[f]).map(f => [f, `'${f}',sans-serif`])) }
+  // the fonts left out of the font menu, chosen with the button next to it and kept in this browser
+  const HIDDEN_FONTS = 'ddreport-hidden-fonts'
+  let hiddenFonts = new Set()
+  try { hiddenFonts = new Set(JSON.parse(localStorage.getItem(HIDDEN_FONTS)) ?? []) } catch {}
+  const fontOption = f => `<option value="${f}" style="font-family:${fontList[f].replaceAll('"', '&quot;')}">${f}</option>`
   // Great Vibes comes with a regular face only
   const faces = fontBase ? BUNDLED.flatMap(f => FACES.slice(0, f === 'Great Vibes' ? 1 : 4).map(([face, weight, style]) =>
     `@font-face{font-family:'${f}';font-weight:${weight};font-style:${style};src:url("${fontBase}${f.replaceAll(' ', '')}-${face}.ttf")}`)).join('') : ''
@@ -851,7 +865,7 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
       group('Undo', ib('undo', 'undo', 'Undo (Ctrl+Z)') + ib('redo', 'redo', 'Redo (Ctrl+Y)')) +
       group('Clipboard', ib('cut', 'cut', 'Cut (Ctrl+X)') + ib('copy', 'copy', 'Copy (Ctrl+C)') + ib('paste', 'paste', 'Paste (Ctrl+V)') + ib('duplicate', 'duplicate', 'Duplicate (Ctrl+D)') + ib('delete', 'delete', 'Delete (Del)')) +
       group('Font',
-        `<select data-prop="font" title="${L('Font')}" aria-label="${L('Font')}">${Object.entries(fontList).map(([f, css]) => `<option value="${f}" style="font-family:${css.replaceAll('"', '&quot;')}">${f}</option>`).join('')}</select>` +
+        `<select data-prop="font" title="${L('Font')}" aria-label="${L('Font')}"></select>` + lb('fonts', '⋯', 'Choose fonts…') +
         `<input data-prop="fontSize" type="number" min="4" max="200" title="${L('Font size')}" aria-label="${L('Font size')}">` +
         lb('bold', '<b>B</b>', 'Bold (Ctrl+B)') + lb('italic', '<i>I</i>', 'Italic (Ctrl+I)') + lb('underline', '<u>U</u>', 'Underline (Ctrl+U)') +
         swatch('color', 'A', 'Text colour') + swatch('fill', '▰', 'Highlight / fill colour') + ib('noFill', 'noFill', 'No fill')) +
@@ -941,6 +955,7 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
       if (dialog.returnValue === 'done') {
         const t = inner.getTemplate()
         delete t.page // the box of the element is its page
+        delete t.version // the report's own version covers it
         e.report = t
         redraw()
       }
@@ -952,6 +967,40 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
     return inner
   }
 
+  // the font menu: every font but those left out
+  function fillFonts() {
+    $('[data-prop=font]').innerHTML = Object.keys(fontList).filter(f => !hiddenFonts.has(f)).map(fontOption).join('')
+  }
+
+  // choosing the fonts in the menu: each with a tick, all or none at once, and a search for a long list
+  function chooseFonts() {
+    const dialog = root.appendChild(document.createElement('dialog'))
+    dialog.className = 'ddr-preview ddr-fonts'
+    for (const type of ['click', 'mousedown', 'keydown', 'change', 'input']) dialog.addEventListener(type, ev => ev.stopPropagation())
+    dialog.innerHTML = `<form method="dialog"><b>${L('Fonts in the list')}</b><input type="search" placeholder="${L('Search')}" aria-label="${L('Search')}">` +
+      `<button type="button" data-all="1">${L('All')}</button><button type="button" data-all="">${L('None')}</button></form><div></div>` +
+      `<form method="dialog"><button value="cancel">${L('Close')}</button><button value="done" class="ddr-primary">${L('Done')}</button></form>`
+    const list = dialog.querySelector('div'), search = dialog.querySelector('input')
+    list.innerHTML = Object.entries(fontList).map(([f, css]) =>
+      `<label style="font-family:${css.replaceAll('"', '&quot;')}"><input type="checkbox" value="${f}"${hiddenFonts.has(f) ? '' : ' checked'}>${f}</label>`).join('')
+    const boxes = [...list.querySelectorAll('input')]
+    search.oninput = () => { const q = search.value.toLowerCase(); for (const b of boxes) b.parentNode.hidden = !b.value.toLowerCase().includes(q) }
+    // All and None act on what the search shows
+    for (const b of dialog.querySelectorAll('[data-all]')) b.onclick = () => { for (const x of boxes) if (!x.parentNode.hidden) x.checked = !!b.dataset.all }
+    dialog.onclose = () => {
+      if (dialog.returnValue === 'done') {
+        hiddenFonts = new Set(boxes.filter(b => !b.checked).map(b => b.value))
+        try { localStorage.setItem(HIDDEN_FONTS, JSON.stringify([...hiddenFonts])) } catch {}
+        fillFonts()
+        sync()
+      }
+      dialog.remove()
+      keepFocus()
+    }
+    dialog.showModal()
+    search.focus()
+  }
+
   // the Field menu: the data's own fields first, so a name is picked rather than typed (and mistyped)
   function fillFields() {
     const opt = v => `<option value="${v.replaceAll('&', '&amp;').replaceAll('"', '&quot;')}">${v.replaceAll('&', '&amp;').replaceAll('<', '&lt;')}</option>`
@@ -960,6 +1009,7 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
       `<optgroup label="${L('Expressions')}">${FIELD_TOKENS.map(opt).join('')}</optgroup>`
   }
   fillFields()
+  fillFonts()
 
   const px = v => v + 'px'
   const bandOf = e => BANDS.find(b => tpl.bands[b].elements.includes(e))
@@ -1004,7 +1054,7 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
   // load replaces the template. Except for the very first one this is a step
   // in the history like any other, so starting over can be undone.
   function load(t, first) {
-    tpl = clean(t)
+    tpl = { version: 1, ...clean(t) } // the template format; ddreport.FormatVersion
     sel = []
     if (first) { history = []; at = -1 }
     draw()
@@ -1352,6 +1402,7 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
     underline: () => toggle('underline'),
     align: v => apply('align', v),
     noFill: () => apply('fill', ''),
+    fonts: chooseFonts,
     arrange: (axis, mode) => arrange(axis, +mode),
     distribute,
     front: () => order(true),
@@ -1556,6 +1607,7 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
       const key = c.dataset.prop, e = sel.find(s => STYLE[s.type]?.includes(key))
       c.disabled = !e
       const v = (e && e[propOf(e, key)]) || DEFAULT[key]
+      if (key === 'font' && v && ![...c.options].some(o => o.value === v)) c.insertAdjacentHTML('beforeend', fontList[v] ? fontOption(v) : `<option>${v.replaceAll('<', '&lt;')}</option>`)
       if (c.type === 'checkbox') c.checked = !!v
       else c.value = v
     }

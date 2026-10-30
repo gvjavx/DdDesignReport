@@ -9,9 +9,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 const request = `{"template":{"bands":{"detail":{"height":20,"elements":[{"type":"text","x":0,"y":0,"w":100,"h":14,"text":"{{name}}"}]}}},"data":[{"name":"Kopi"},{"name":"Teh"}]}`
@@ -372,5 +374,90 @@ func TestFontsInFontsFolder(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != 200 || string(b) != "in fonts/" {
 		t.Errorf("a font in fonts/: %d %q", res.StatusCode, b)
+	}
+}
+
+func TestFontPackFolder(t *testing.T) {
+	t.Setenv("DDREPORT_FONTS", "")
+	t.Chdir(t.TempDir())
+	if d := fontsFolder(); d != "" {
+		t.Errorf("no folder: %q", d)
+	}
+	os.Mkdir("ddreport-fonts", 0o755)
+	if d := fontsFolder(); d != "ddreport-fonts" {
+		t.Errorf("the downloaded font pack: %q", d)
+	}
+	t.Setenv("DDREPORT_FONTS", "elsewhere")
+	if d := fontsFolder(); d != "elsewhere" {
+		t.Errorf("DDREPORT_FONTS first: %q", d)
+	}
+}
+
+func TestHealthAndFullQueue(t *testing.T) {
+	srv := httptest.NewServer(handler("s3cret", t.TempDir()))
+	defer srv.Close()
+	if res, err := http.Get(srv.URL + "/healthz"); err != nil || res.StatusCode != 200 {
+		t.Fatalf("/healthz without the token: %v %v", res, err)
+	}
+
+	// renders whose body never ends hold every place in the queue
+	var pipes []*io.PipeWriter
+	defer func() {
+		for _, p := range pipes {
+			p.Close()
+		}
+	}()
+	for range 4 * runtime.NumCPU() {
+		pr, pw := io.Pipe()
+		pipes = append(pipes, pw)
+		req, _ := http.NewRequest("POST", srv.URL+"/render?format=csv", pr)
+		req.Header.Set("Authorization", "Bearer s3cret")
+		go http.DefaultClient.Do(req)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		req, _ := http.NewRequest("POST", srv.URL+"/render?format=csv", strings.NewReader(request))
+		req.Header.Set("Authorization", "Bearer s3cret")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode == 503 && res.Header.Get("Retry-After") != "" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("full queue: status %d, want 503 with Retry-After", res.StatusCode)
+		}
+	}
+}
+
+func TestMCP(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.pdf")
+	tpl := `{"version":1,"bands":{"detail":{"height":20,"elements":[{"type":"text","x":0,"y":0,"w":100,"h":14,"text":"{{name}}"}]}}}`
+	in := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check_template","arguments":{"template":` + tpl + `}}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"check_template","arguments":{"template":{"bands":{"detail":{"hieght":20}}}}}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"render_template","arguments":{"template":` + tpl + `,"data":[{"name":"Kopi"}],"format":"pdf","path":` + strconv.Quote(path) + `}}}`,
+		`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"template_guide","arguments":{}}}`,
+	}, "\n")
+	var out bytes.Buffer
+	if err := serveMCP(strings.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 6 { // the notification gets no answer
+		t.Fatalf("%d answers, want 6:\n%s", len(lines), out.String())
+	}
+	for i, want := range []string{`"protocolVersion":"2025-06-18"`, `"check_template"`, `ok: the template is valid`, `unknown field \"hieght\"`, `wrote `, `## JSON Schema`} {
+		if !strings.Contains(lines[i], want) {
+			t.Errorf("answer %d lacks %s: %s", i+1, want, lines[i][:min(len(lines[i]), 300)])
+		}
+	}
+	if b, err := os.ReadFile(path); err != nil || !bytes.HasPrefix(b, []byte("%PDF")) {
+		t.Errorf("rendered file: %v", err)
 	}
 }

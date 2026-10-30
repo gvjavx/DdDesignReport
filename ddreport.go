@@ -28,8 +28,19 @@ import (
 // other scripts. FontBold falls back to Font.
 var Font, FontBold []byte
 
+// FormatVersion is the template format this engine reads. It goes up only when an
+// older engine would print a newer template wrongly, for instance by leaving out an
+// element it does not know; the designer writes it as "version".
+const FormatVersion = 1
+
+// MaxRows, when above 0, is the most rows a report may have; more is an error
+// instead of a report that takes all the memory (PDF and HTML lay out every page
+// in memory: 100 000 rows take about 1 GB). The binary reads DDREPORT_MAX_ROWS.
+var MaxRows int
+
 // Template is the JSON document produced by the designer. All sizes are in points.
 type Template struct {
+	Version        int // template format version it was written for; newer than FormatVersion is refused
 	Page           Page
 	DataKey        string // key of the row array in the data, default "rows"
 	SortBy         string // row fields to sort by, "-" for descending: "category, -total"
@@ -338,6 +349,9 @@ func newReport(template []byte, data any) (*report, error) {
 			return nil, fmt.Errorf("ddreport: template: %w", err)
 		}
 	}
+	if t.Version > FormatVersion {
+		return nil, fmt.Errorf("ddreport: template version %d needs a newer ddreport (this one reads up to version %d)", t.Version, FormatVersion)
+	}
 	if t.Page.Width <= 0 || t.Page.Height <= 0 {
 		t.Page.Width, t.Page.Height = 595, 842 // A4
 	}
@@ -384,6 +398,9 @@ func newReport(template []byte, data any) (*report, error) {
 				}
 			}
 		}
+	}
+	if MaxRows > 0 && len(r.rows) > MaxRows {
+		return nil, fmt.Errorf("ddreport: data: %d rows, more than the %d allowed (DDREPORT_MAX_ROWS); split the report, by period or by group", len(r.rows), MaxRows)
 	}
 	t.sort(r.rows)
 	return r, nil
