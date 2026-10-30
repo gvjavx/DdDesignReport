@@ -2,7 +2,7 @@
 
 # DdDesignReport
 
-Library reporting dengan designer drag and drop. Template didesain di browser, disimpan sebagai JSON, lalu di-render oleh satu core (Go) menjadi **PDF, HTML, XLSX, XLS, atau CSV** dari backend Go, Java, Kotlin, Node.js, atau bahasa apa pun lewat HTTP. Template juga bisa dibawa ke dan dari JasperReports (`.jrxml`).
+Library reporting dengan designer drag and drop. Template didesain di browser, disimpan sebagai JSON, lalu di-render oleh satu core (Go) menjadi **PDF, HTML, XLSX, XLS, CSV, atau perintah printer struk (ESC/POS)** dari backend Go, Java, Kotlin, Node.js, atau bahasa apa pun lewat HTTP. Template juga bisa dibawa ke dan dari JasperReports (`.jrxml`).
 
 **Untuk software house:** pasang designer-nya di aplikasi Anda, dan klien bisa mengubah sendiri kop faktur, kolom slip gaji, atau tata letak rapor mereka. Tidak ada lagi tiket "tolong geser logonya" untuk Anda. Mode mudah, tombol yang bisa disembunyikan, dan teks antarmuka yang bisa diganti membuatnya cocok untuk admin dan staf yang bukan programmer, dan dokumen lokal sudah ada: kuitansi dengan terbilang, kertas F4, nama bulan Indonesia, slip gaji, surat jalan, dan rapor.
 
@@ -202,11 +202,29 @@ Di designer: klik sebuah sel, lalu bagian **Sel** di panel kanan mengatur warna,
 
 **Sub-laporan**: elemen `subreport` dengan `data` (nama daftar, misalnya `lines`) dan `report` (template dengan band sendiri: `header`, `columnHeader`, `groupHeader`... sampai enam tingkat, `detail`, `summary`; `footer` tidak dipakai, dan `sortBy` / `groupBy` boleh diisi). Laporan itu dicetak untuk setiap item di dalam kotak elemen, dan band induknya ikut memanjang. Di band `detail` setiap baris mendapat sub-laporannya sendiri, misalnya setiap pesanan dengan rincian per jenisnya. Field induk tetap bisa dipakai di dalamnya (`{{number}}`), `{{index}}` adalah nomor item. Sub-laporan yang lebih panjang dari satu halaman berlanjut tanpa memotong band, dengan header dan judul kolomnya diulang. Di designer: tab Insert > **Sub-report**, lalu **Edit sub-report…** (atau klik ganda) membuka designer untuk band-bandnya, selebar kotaknya.
 
-**CSV, XLSX, dan XLS**: elemen teks dan sel tabel di band `detail` menjadi kolom. Teks di band lain (judul kolom, subtotal, total) masuk ke kolom yang sejajar dengannya. Di XLSX dan XLS, teks bold tetap bold, `{{f:2}}` menjadi format angka, teks rata tengah atau kanan tetap begitu, sel tabel bergaris tetap bergaris, sel yang digabung ke kanan (`colSpan`) atau ke bawah (`rowSpan`) tetap tergabung, dan lebar kolom mengikuti desain. Sel hanya digabung bila kolom dan baris yang ditutupnya jelas, agar tidak ada nilai yang tersembunyi; CSV tidak mengenal gabungan. Di XLSX, gambar dan barcode/QR ikut sebagai gambar di baris dan kolom yang sejajar dengannya, dan baris itu setinggi gambarnya. Chart hanya ada di PDF dan HTML, dan XLS (format 2003) tidak bisa membawa gambar. `xls` ditulis sebagai XML Spreadsheet 2003; Excel menampilkan satu peringatan format saat membukanya. CSV diawali BOM UTF-8 agar Excel membaca huruf seperti `é` dengan benar; `"csvSeparator": ";"` untuk Excel berbahasa Indonesia atau Eropa yang memakai `;`. Di CSV, teks yang berawalan seperti formula (`=`, `@`, `+`, `-`) diberi tanda kutip tunggal di depan agar tidak dijalankan spreadsheet.
+**CSV, XLSX, dan XLS**: elemen teks dan sel tabel di band `detail` menjadi kolom. Teks di band lain (judul kolom, subtotal, total) masuk ke kolom yang sejajar dengannya. Di XLSX dan XLS, teks bold tetap bold, `{{f:2}}` menjadi format angka, teks rata tengah atau kanan tetap begitu, sel tabel bergaris tetap bergaris, sel yang digabung ke kanan (`colSpan`) atau ke bawah (`rowSpan`) tetap tergabung, dan lebar kolom mengikuti desain. Sel hanya digabung bila kolom dan baris yang ditutupnya jelas, agar tidak ada nilai yang tersembunyi; CSV tidak mengenal gabungan. Di XLSX, gambar dan barcode/QR ikut sebagai gambar di baris dan kolom yang sejajar dengannya, dan baris itu setinggi gambarnya. Chart ikut ke XLSX sebagai chart Excel sungguhan (batang, batang mendatar, garis, pie, donut) dengan datanya di dalam chart, jadi bisa diubah di Excel; chart yang berdampingan atau bertumpuk tetap begitu. Format XLS (XML Spreadsheet 2003) memang tidak punya tempat untuk gambar maupun chart: pakai XLSX bila keduanya dibutuhkan. `xls` ditulis sebagai XML Spreadsheet 2003; Excel menampilkan satu peringatan format saat membukanya. CSV diawali BOM UTF-8 agar Excel membaca huruf seperti `é` dengan benar; `"csvSeparator": ";"` untuk Excel berbahasa Indonesia atau Eropa yang memakai `;`. Di CSV, teks yang berawalan seperti formula (`=`, `@`, `+`, `-`) diberi tanda kutip tunggal di depan agar tidak dijalankan spreadsheet.
 
 ```json
 { "number": "INV-001", "customer": { "name": "Budi" }, "rows": [{ "name": "Kopi", "qty": 2 }] }
 ```
+
+## Printer struk (ESC/POS) dan teks biasa
+
+Format `escpos` mencetak langsung ke printer struk thermal 58 mm dan 80 mm (USB, jaringan, atau Bluetooth) tanpa PDF: hasilnya byte perintah ESC/POS yang dikirim apa adanya ke printer. Format `txt` adalah tata letak yang sama sebagai teks biasa, untuk pratinjau, log, atau printer dot matrix.
+
+- Setiap teks ditaruh di kolom karakter yang ditutupi kotaknya, dengan perataan seperti di desain, dan dibungkus di dalam kolom itu. Teks tebal tetap tebal, teks 11 pt ke atas dicetak dua kali lebih tinggi, dan garis mendatar menjadi deretan `-`.
+- Jumlah karakter per baris mengikuti lebar kertas: 32 untuk kertas sampai 60 mm (printer 58 mm), 48 sampai 92 mm (printer 80 mm), dan 80 untuk yang lebih lebar (dot matrix). Ubah dengan `"textColumns": 42` di template, atau **Karakter per baris** di tab Layout. Tab Layout juga punya ukuran kertas **Struk 58 mm** dan **Struk 80 mm**.
+- QR code dan Code 128 digambar oleh printer sendiri (tajam di kertas thermal), gambar seperti logo dicetak sebagai titik hitam-putih, lalu kertas didorong dan dipotong (printer tanpa pemotong mengabaikannya). Di `txt`, barcode ditulis sebagai isinya dan gambar dilewati. Chart tidak ikut.
+- Kertasnya satu gulungan panjang: header sekali di atas, footer sekali di bawah, tanpa ganti halaman; `{{page}}` dan `{{pages}}` bernilai 1. Huruf dikirim dalam code page Windows-1252 (`é`, `€`); huruf di luarnya menjadi `?`.
+
+```sh
+ddreport -format escpos < struk.json > struk.bin
+cat struk.bin > /dev/usb/lp0                 # Linux, printer USB
+nc 192.168.1.50 9100 < struk.bin             # printer jaringan (port 9100)
+copy /b struk.bin \localhostPrinterStruk   # Windows, printer yang di-share
+```
+
+Dari kode: `render(template, data, 'escpos')` di Node.js, `DdReport.render(..., "escpos")` di Java, atau `POST /render?format=escpos`, lalu kirim byte-nya ke printer, misalnya lewat socket ke port 9100 atau lewat library printer Bluetooth di aplikasi Android (fungsi yang menulis byte mentah). Template **Struk kasir** siap pakai sudah selebar kertas 80 mm.
 
 ## PDF/A dan tanda tangan digital
 
@@ -232,9 +250,11 @@ ddreport -from-jrxml < report.jrxml > template.json        # dari JasperReports;
 
 Dari kode: `ddreport.ToJRXML(template)` dan `ddreport.FromJRXML(jrxml)` di Go, format `"jrxml"` di `render` Java/Node.js dan di `POST /render?format=jrxml`, serta `POST /import/jrxml` (balasannya `{"template": ..., "notes": [...]}`). Di aplikasi standalone: **Export > JRXML**, dan **Open…** menerima file `.jrxml`.
 
-**Ke JasperReports**: ekspresi ditulis dalam Groovy (`language="groovy"`, jadi Groovy perlu ada di classpath JasperReports). Ketiga belas template siap pakai diuji di JasperReports 6.21: semuanya dikompilasi, diisi, dan diekspor ke PDF. Field baris menjadi `<field>` bertipe `java.lang.String` dengan path-nya sebagai field description, jadi `JsonDataSource` atas `rows` langsung mengisinya; nilai data di luar baris (`{{title}}`) menjadi parameter. Agregat menjadi variabel yang di-reset per grup, `{{page}}` / `{{pages}}` menjadi nomor halaman, format `:2` dan tanggal ikut, begitu juga teks, tabel (sel per sel), gambar, kotak, garis, barcode/QR (komponen `jr:QRCode` dan `jr:Code128`), grup, urutan, dan opsi band. Chart, sub-laporan, `terbilang`, dan baris berulang tabel dari data tidak punya padanan langsung: semuanya dicatat di komentar di awal file.
+**Ke JasperReports**: ekspresi ditulis dalam Groovy (`language="groovy"`, jadi Groovy perlu ada di classpath JasperReports). Ketiga belas template siap pakai diuji di JasperReports 6.21: semuanya dikompilasi, diisi, dan diekspor ke PDF. Field baris menjadi `<field>` bertipe `java.lang.String` dengan path-nya sebagai field description, jadi `JsonDataSource` atas `rows` langsung mengisinya; nilai data di luar baris (`{{title}}`) menjadi parameter. Agregat menjadi variabel yang di-reset per grup, `{{page}}` / `{{pages}}` menjadi nomor halaman, format `:2` dan tanggal ikut, begitu juga teks, tabel (sel per sel), gambar, kotak, garis, barcode/QR (komponen `jr:QRCode` dan `jr:Code128`), grup, urutan, dan opsi band. `terbilang` menjadi closure Groovy, jadi angka tetap dieja tanpa tambahan apa pun di JasperReports. Tabel dengan baris dari data dan sub-laporan menjadi komponen `jr:list` atas daftarnya: baris judul di atas, baris per item di dalam list, dan total atau summary di bawahnya, ikut turun bila list memanjang; agregat di baris total menghitung item-itemnya. Daftar itu adalah parameter laporan (`java.util.List` berisi `Map`), atau di band detail field baris yang berisi daftar JSON (dibaca dengan Jackson yang sudah ada di JasperReports). Field yang tidak ada di item diambil dari baris induknya, seperti di sini. Chart menjadi chart Jasper (butuh JFreeChart di classpath, seperti semua chart Jasper) yang menjumlahkan nilai per label seperti chart di sini; donut dicetak sebagai pie karena JasperReports 6 tidak punya donut. Crosstab ditulis sebagai tabel yang dicetaknya. Yang tidak punya padanan dicatat di komentar di awal file.
 
-**Dari JasperReports**: band, grup (pada field, sampai enam), urutan, static text, text field, kotak, elips (menjadi kotak), garis, frame (isinya dan garisnya), barcode, dan gambar Base64 ikut, dengan font, warna, perataan, dan garis. Ekspresi text field ikut bila terdiri dari teks, field (`$F{}`, `$P{}`), nomor halaman, nomor baris, variabel Sum/Average/Lowest/Highest/Count, dan aritmetika; `pattern` menjadi format angka atau tanggal. Java lain disimpan apa adanya di dalam [kurung] dan dicatat, begitu juga chart, sub-laporan, crosstab, list, dan gambar dari file.
+Properti `ddreport.*` di dalam file menyimpan apa yang tidak punya tempat di JasperReports (pemisah angka, urutan asli, tabel dan sub-laporan utuh), jadi `.jrxml` buatan ddreport kembali menjadi template yang sama persis: ketiga belas template siap pakai dicetak identik setelah bolak-balik.
+
+**Dari JasperReports**: band, grup (pada field, sampai enam), urutan, static text, text field, kotak, elips (menjadi kotak), garis, frame (isinya dan garisnya), barcode, dan gambar Base64 ikut, dengan font, warna, perataan, dan garis. Ekspresi text field ikut bila terdiri dari teks, field (`$F{}`, `$P{}`), nomor halaman, nomor baris, variabel Sum/Average/Lowest/Highest/Count, aritmetika, perbandingan, `&&` `||` `!`, dan `kondisi ? a : b` (menjadi `if`); `pattern` menjadi format angka atau tanggal. Chart batang, garis, dan pie atas sebuah field ikut sebagai chart, list (`jr:list`) menjadi sub-laporan atas daftar yang disebut data source-nya, dan crosstab menjadi crosstab (grup baris, grup kolom, dan measure pertamanya). Java lain disimpan apa adanya di dalam [kurung] dan dicatat, begitu juga file `.jrxml` milik sub-laporan (impor terpisah lalu salin band-nya) dan gambar dari file.
 
 ## Backend
 
@@ -243,7 +263,7 @@ Dari kode: `ddreport.ToJRXML(template)` dan `ddreport.FromJRXML(jrxml)` di Go, f
 ```go
 import ddreport "github.com/gvjavx/DdDesignReport"
 
-pdf, err := ddreport.Render(templateJSON, data, "pdf") // "pdf" | "html" | "xlsx" | "xls" | "csv"
+pdf, err := ddreport.Render(templateJSON, data, "pdf") // "pdf" | "html" | "xlsx" | "xls" | "csv" | "jrxml" | "escpos" | "txt"
 ```
 
 Java, Kotlin, dan Node.js memanggil binary `ddreport`. Paketnya membawa binary untuk Windows, Linux, dan macOS (x64 dan arm64); `DDREPORT_BIN` menunjuk binary lain bila perlu. Binary-nya juga ada di setiap [GitHub Release](https://github.com/gvjavx/DdDesignReport/releases).
@@ -251,14 +271,14 @@ Java, Kotlin, dan Node.js memanggil binary `ddreport`. Paketnya membawa binary u
 **Java** (Maven Central, `io.github.gvjavx:ddreport`): tambahkan wrapper-nya dan binary untuk sistem tempat aplikasi berjalan, dengan classifier `linux-x64`, `linux-arm64`, `windows-x64`, `windows-arm64`, `darwin-x64`, atau `darwin-arm64`.
 
 ```xml
-<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.4.1</version></dependency>
-<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.4.1</version><classifier>linux-x64</classifier></dependency>
+<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.4.2</version></dependency>
+<dependency><groupId>io.github.gvjavx</groupId><artifactId>ddreport</artifactId><version>0.4.2</version><classifier>linux-x64</classifier></dependency>
 ```
 
 ```kotlin
 // Gradle
-implementation("io.github.gvjavx:ddreport:0.4.1")
-runtimeOnly("io.github.gvjavx:ddreport:0.4.1:linux-x64")
+implementation("io.github.gvjavx:ddreport:0.4.2")
+runtimeOnly("io.github.gvjavx:ddreport:0.4.2:linux-x64")
 ```
 
 Package Java-nya tetap `io.ddreport` (`import io.ddreport.DdReport`).
@@ -412,9 +432,9 @@ Laporan penjualan siap pakai (berkelompok per kategori, dengan subtotal dan dua 
 | Baris | PDF | HTML | XLSX | XLS | CSV |
 | --- | --- | --- | --- | --- | --- |
 | 10 000 (±250 halaman) | ±1 dtk | ±0,8 dtk | 0,2 dtk | 0,2 dtk | 0,2 dtk |
-| 100 000 (±2 500 halaman) | ±12 dtk, memori puncak ±1 GB | ±7 dtk | 2,2 dtk, ±220 MB | 1,8 dtk | 1,6 dtk |
+| 100 000 (±2 500 halaman) | ±12 dtk, memori puncak ±500 MB | ±9 dtk, ±400 MB | 2,2 dtk, ±220 MB | 1,8 dtk | 1,6 dtk |
 
-Untuk PDF dan HTML, seluruh halaman disusun di memori sebelum ditulis, jadi laporan ratusan ribu baris butuh memori sebanding; pecah per periode atau per kelompok bila perlu, atau pakai XLSX/CSV untuk ekspor data mentah. Di server, `DDREPORT_MAX_ROWS` membatasi jumlah baris per laporan; dari Go, `ddreport.MaxRows`. Ukur sendiri:
+PDF dan HTML digambar halaman demi halaman begitu tiap halaman selesai disusun, jadi yang tersisa di memori hanya data dan dokumen jadinya (sebelumnya semua halaman disusun dulu: ±1 GB untuk PDF dan ±1,4 GB untuk HTML pada 100 000 baris). Untuk ekspor data mentah, XLSX dan CSV tetap paling hemat. Di server, `DDREPORT_MAX_ROWS` membatasi jumlah baris per laporan; dari Go, `ddreport.MaxRows`. Ukur sendiri:
 
 ```sh
 go test -run '^$' -bench Large -benchmem                       # 10 000 baris, semua format

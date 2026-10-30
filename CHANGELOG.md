@@ -1,5 +1,21 @@
 # Riwayat versi
 
+## 0.4.2 · 30 Okt 2026
+
+**Printer struk**: format `escpos` mencetak langsung ke printer thermal 58 dan 80 mm (ESC/POS): teks di kolom karakter sesuai kotaknya, rata dan dibungkus seperti di desain, tebal dan tinggi ganda (11 pt ke atas), garis menjadi `-`, QR dan Code 128 digambar printer, gambar sebagai titik, lalu kertas dipotong. Format `txt` adalah tata letak yang sama sebagai teks biasa, untuk pratinjau dan printer dot matrix. `"textColumns"` mengubah jumlah karakter per baris (default 32, 48, atau 80 menurut lebar kertas). Designer: ukuran kertas **Struk 58 mm** dan **Struk 80 mm**, **Karakter per baris** di tab Layout, dan ekspor TXT dan ESC/POS di aplikasi standalone.
+
+**Excel**: chart ikut ke XLSX sebagai chart Excel sungguhan (batang, batang mendatar, garis, pie, donut), dengan datanya di dalam chart, sehingga bisa diubah di Excel. Gambar, barcode, dan chart yang berdampingan atau bertumpuk tetap berdampingan atau bertumpuk.
+
+**JasperReports**:
+- Ke `.jrxml`: `terbilang` menjadi closure Groovy; tabel dengan baris dari data dan sub-laporan menjadi `jr:list` atas daftarnya, dengan total di bawahnya yang menghitung item-itemnya dan ikut turun bila list memanjang; chart menjadi chart Jasper yang menjumlahkan nilai per label. Semuanya diuji di JasperReports 6.21.
+- "Halaman X dari Y" benar di setiap halaman (sebelumnya nomor halaman kosong bila laporan tidak punya baris data), dan header serta footer halaman juga tercetak di halaman lanjutan band summary.
+- Dari `.jrxml`: chart batang, garis, dan pie, list (menjadi sub-laporan), crosstab, perbandingan, `&& || !`, dan `kondisi ? a : b` ikut.
+- `.jrxml` buatan ddreport kembali menjadi template yang sama persis (lewat properti `ddreport.*`): ketiga belas template siap pakai dicetak identik setelah bolak-balik. Sebelumnya setiap placeholder kembali sebagai Java dalam [kurung].
+
+**Laporan besar**: PDF dan HTML digambar halaman demi halaman begitu tiap halaman selesai disusun. Memori puncak untuk 100 000 baris turun dari ±1,1 GB menjadi ±500 MB (PDF) dan dari ±1,4 GB menjadi ±400 MB (HTML), dengan hasil yang sama.
+
+**Perbaikan**: tabel di bawah tabel data yang memanjang ikut turun di XLSX, XLS, dan CSV (sebelumnya baris tabel kehadiran di rapor terselip di antara baris nilai).
+
 ## 0.4.1 · 30 Okt 2026
 
 **Template**: `"version"` (versi format template, sekarang 1). Designer menulisnya di setiap template. Ddreport menolak template yang versinya lebih baru dari yang bisa dibacanya, dengan pesan yang jelas, alih-alih mencetaknya tanpa bagian yang belum dikenalnya. Template tanpa `version` tetap dibaca seperti biasa. Dari Go: `ddreport.FormatVersion`.
