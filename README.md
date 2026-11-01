@@ -463,4 +463,4 @@ Designer: sajikan folder `designer/` dengan web server (`npx serve designer`) la
 
 ## Pembuat
 
-DdDesignReport dibuat oleh Naufal Hilmi Abdurrahman. Proyek lain dan jasa pembuatan website serta aplikasi (web, Android, desktop, AI): [aufal-tech.vercel.app](https://aufal-tech.vercel.app/).
+DdDesignReport dibuat oleh Naufal Hilmi Abdurrahman. Proyek lain dan jasa pembuatan website serta aplikasi (web, Android, desktop, AI): [aufaltech.my.id](https://aufaltech.my.id/).

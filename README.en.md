@@ -108,4 +108,4 @@ node designer/run-tests.mjs   # the designer in Chromium, Firefox and WebKit (ne
 
 ## Author
 
-DdDesignReport is made by Naufal Hilmi Abdurrahman. Other projects, and websites and apps built to order (web, Android, desktop, AI): [aufal-tech.vercel.app](https://aufal-tech.vercel.app/).
+DdDesignReport is made by Naufal Hilmi Abdurrahman. Other projects, and websites and apps built to order (web, Android, desktop, AI): [aufaltech.my.id](https://aufaltech.my.id/).
