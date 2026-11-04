@@ -1,5 +1,9 @@
 # Riwayat versi
 
+## Belum dirilis
+
+**QRIS dinamis**: `{{qris(toko.qris, sum(qty * price))}}` sebagai isi barcode `qr` mengubah kode QRIS statis toko menjadi QRIS dinamis untuk nominal itu (tag 01 `12`, nominal di tag 54, CRC dihitung ulang), jadi pembeli tidak perlu mengetik nominal. Kode yang bukan QRIS atau CRC-nya salah, dan nominal nol atau minus, tercetak kosong.
+
 ## 0.4.3 · 30 Okt 2026
 
 **Integrasi**: [INTEGRASI.md](INTEGRASI.md), panduan memasang ddreport sebagai fitur aplikasi (designer, template per pelanggan, bentuk data, render dari Node.js dan Laravel, printer struk, dan masalah yang sering muncul), dengan contoh aplikasi lengkap yang bisa dijalankan di `examples/app`: server Node.js tanpa framework dan satu halaman, termasuk cetak struk ke printer jaringan (port 9100) dan ke printer USB/Bluetooth dari browser lewat Web Serial.

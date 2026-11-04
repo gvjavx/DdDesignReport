@@ -112,3 +112,58 @@ func TestTerbilang(t *testing.T) {
 		t.Errorf("in a report: %s", out)
 	}
 }
+
+func TestQRIS(t *testing.T) {
+	if got := crc16("123456789"); got != "29B1" { // the published check value of CRC-16/CCITT-FALSE
+		t.Fatalf("crc16 = %s, want 29B1", got)
+	}
+	signed := func(s string) string { return s + "6304" + crc16(s+"6304") }
+	// a static merchant code: tag 01 is 11, no amount
+	body := "000201" + "010211" +
+		"26570011ID.DANA.WWW011893600915302259148102090225914810303UMI" +
+		"51440014ID.CO.QRIS.WWW0215ID10200176114730303UMI" +
+		"52045812" + "5303360" + "5802ID" + "5911Warung Sari" + "6007BANDUNG" + "610540111"
+	static := signed(body)
+	dynamic := signed(strings.Replace(strings.Replace(body, "010211", "010212", 1), "5802ID", "540515000"+"5802ID", 1))
+
+	for _, c := range []struct {
+		payload string
+		amount  float64
+		want    string
+	}{
+		{static, 15000, dynamic},
+		{" " + static + "\n", 15000, dynamic}, // pasted with spaces around it
+		{static[:len(static)-4] + strings.ToLower(crc16(static[:len(static)-4])), 15000, dynamic}, // CRC in lower-case hex
+		{dynamic, 15000, dynamic}, // already dynamic: the amount is replaced, not added twice
+		{signed(strings.Replace(body, "5802ID", "54039995802ID", 1)), 15000, dynamic},
+		{static, 1500.5, signed(strings.Replace(strings.Replace(body, "010211", "010212", 1), "5802ID", "54071500.50"+"5802ID", 1))},
+		{static, 0, ""},  // nothing to pay
+		{static, -5, ""}, // a refund is not a payment code
+		{static[:len(static)-1] + "0", 15000, ""},    // CRC does not match: a mistyped code
+		{static[:len(static)-8], 15000, ""},          // no CRC at all
+		{signed("0002020102115802ID"), 15000, ""},    // not payload format 01
+		{signed("000201010211599Warung"), 15000, ""}, // a length that runs past the end
+		{"", 15000, ""},
+		{static, 1e14, ""}, // more than the 13 characters tag 54 holds
+	} {
+		if got := qris(c.payload, c.amount); got != c.want {
+			t.Errorf("qris(%q, %v)\n got %q\nwant %q", c.payload, c.amount, got, c.want)
+		}
+	}
+	if !strings.Contains(dynamic, "5405150005802ID") || !strings.HasSuffix(dynamic, crc16(dynamic[:len(dynamic)-4])) {
+		t.Errorf("amount before country code, CRC over the code: %s", dynamic)
+	}
+
+	// in a report: from the data, with an aggregate as the amount
+	tpl := []byte(`{"bands":{"summary":{"height":20,"elements":[{"type":"text","w":500,"h":20,"text":"{{qris(shop.qris, sum(qty * price))}}"}]}}}`)
+	data := map[string]any{"shop": map[string]any{"qris": static}, "rows": []any{
+		map[string]any{"qty": 2.0, "price": 5000.0}, map[string]any{"qty": 1.0, "price": "5000"},
+	}}
+	if out := string(render(t, tpl, data, "csv")); !strings.Contains(out, dynamic) {
+		t.Errorf("in a report: %s", out)
+	}
+	data["shop"] = map[string]any{"qris": "not a qris code"}
+	if out := string(render(t, tpl, data, "csv")); strings.Contains(out, "5303360") || strings.Contains(out, "not a qris") {
+		t.Errorf("a bad code prints nothing: %s", out)
+	}
+}

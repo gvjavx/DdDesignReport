@@ -142,6 +142,7 @@ Untuk aplikasi lain, daftarkan perintah `ddreport` dengan argumen `-mcp` di peng
 | `{{date:dd MMMM yyyy}}`, `{{now:dd/MM/yyyy HH:mm}}` | tanggal dengan pola `yyyy yy MMMM MMM MM M dd d EEEE EEE HH H mm ss`, teks dalam `'kutip'`. `{{now}}` adalah waktu laporan dibuat. Nama bulan dan hari Indonesia dengan `"locale": "id"` |
 | `{{if(paid, 'LUNAS', 'BELUM')}}`, `{{upper(name)}}`, `{{round(x, 2)}}` | fungsi `if`, `upper`, `lower`, `round`; perbandingan `= != < > <= >=`, `and`, `or`, `not`, teks dalam `'kutip'` |
 | `{{terbilang(total)}}`, `{{upper(terbilang(total))}} RUPIAH` | angka dalam kata bahasa Indonesia: 2750000 menjadi "dua juta tujuh ratus lima puluh ribu" (desimal dibulatkan) |
+| `{{qris(toko.qris, sum(qty * price))}}` | QRIS dinamis untuk satu nominal, sebagai isi barcode `qr`: kode QRIS statis dari bank atau penyedia pembayaran (tag 01 jadi `12`, nominal di tag 54, CRC dihitung ulang). Kosong bila kode bukan QRIS dengan CRC yang benar atau nominalnya tidak di atas nol, jadi tidak pernah tercetak kode yang akan ditolak aplikasi pembayaran. Simpan kode statisnya di data, bukan di template |
 | `{{index}}` | nomor urut baris di band `detail`, mulai dari 1 lagi di setiap grup; di tabel data dan sub-laporan, nomor item |
 
 Angka yang dikirim sebagai teks (`"18000"`, seperti dari BigDecimal atau kolom numeric database) dihitung sebagai angka di rumus, agregat, format `:N`, dan chart. Hasil hitungan tanpa `:N` tidak menampilkan sisa pembulatan (`0.1 + 0.2` menjadi `0.3`).

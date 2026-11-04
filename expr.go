@@ -1,6 +1,7 @@
 package ddreport
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 	"strconv"
@@ -12,7 +13,7 @@ import (
 // number of decimals ({{price:2}}) or a date pattern ({{date:dd/MM/yyyy}}).
 // An expression is a field path (name, customer.city), a number, a 'text', an
 // aggregate over the rows (sum, avg, min, max, count), a function (if, upper,
-// lower, round), or any of those combined with + - * /, comparisons
+// lower, round, terbilang, qris), or any of those combined with + - * /, comparisons
 // (= != < > <= >=), and, or, not, and parentheses: {{qty * price:2}},
 // {{if(paid, 'LUNAS', 'BELUM')}}. A field whose name is not a plain word goes
 // in brackets: {{[unit-price] * qty}}. {{now}} is the time the report is made.
@@ -329,6 +330,16 @@ func function(name string, args []node) node {
 		return func(s scope) any {
 			if f, ok := num(args[0](s)); ok {
 				return terbilang(f)
+			}
+			return nil
+		}
+	case name == "qris" && len(args) == 2:
+		return func(s scope) any {
+			f, ok := num(args[1](s))
+			if v := args[0](s); v != nil && ok {
+				if q := qris(str(v), f); q != "" {
+					return q
+				}
 			}
 			return nil
 		}
@@ -724,4 +735,78 @@ func terbilang(f float64) string {
 		return "minus " + spell(int64(n))
 	}
 	return spell(int64(n))
+}
+
+// qris turns a merchant's static QRIS payload into a dynamic one for one
+// amount, as a receipt or invoice prints it to be paid: point of initiation
+// (tag 01) becomes 12, the amount goes in tag 54, and the CRC (tag 63) is
+// worked out again. It is "" when the payload is not QRIS with a valid CRC or
+// the amount is not above zero, so a payment app is never shown a code it
+// would refuse or one for the wrong amount.
+func qris(payload string, amount float64) string {
+	payload = strings.TrimSpace(payload)
+	if amount <= 0 || math.IsInf(amount, 0) || len(payload) < 8 ||
+		payload[len(payload)-8:len(payload)-4] != "6304" ||
+		!strings.EqualFold(payload[len(payload)-4:], crc16(payload[:len(payload)-4])) {
+		return ""
+	}
+	type tlv struct{ id, v string }
+	var tags []tlv
+	for rest := payload[:len(payload)-8]; rest != ""; {
+		if len(rest) < 4 {
+			return ""
+		}
+		n, err := strconv.Atoi(rest[2:4])
+		if err != nil || n < 0 || len(rest) < 4+n {
+			return ""
+		}
+		tags = append(tags, tlv{rest[:2], rest[4 : 4+n]})
+		rest = rest[4+n:]
+	}
+	if len(tags) == 0 || tags[0] != (tlv{"00", "01"}) {
+		return ""
+	}
+	a := strconv.FormatFloat(math.Round(amount*100)/100, 'f', 2, 64) // 1500.50
+	a = strings.TrimSuffix(a, ".00")                                 // 15000, as IDR is written
+	if len(a) > 13 {
+		return ""
+	}
+	var b strings.Builder
+	put := func(id, v string) { b.WriteString(id + fmt.Sprintf("%02d", len(v)) + v) }
+	done := false
+	for _, t := range tags {
+		switch {
+		case t.id == "01":
+			t.v = "12"
+		case t.id == "54":
+			continue
+		}
+		if !done && t.id > "54" {
+			put("54", a)
+			done = true
+		}
+		put(t.id, t.v)
+	}
+	if !done {
+		put("54", a)
+	}
+	b.WriteString("6304")
+	return b.String() + crc16(b.String())
+}
+
+// crc16 is CRC-16/CCITT-FALSE (polynomial 1021, start FFFF), the checksum
+// QRIS and EMV codes end with, as four upper-case hex digits.
+func crc16(s string) string {
+	c := uint16(0xFFFF)
+	for i := 0; i < len(s); i++ {
+		c ^= uint16(s[i]) << 8
+		for range 8 {
+			if c&0x8000 != 0 {
+				c = c<<1 ^ 0x1021
+			} else {
+				c <<= 1
+			}
+		}
+	}
+	return fmt.Sprintf("%04X", c)
 }
