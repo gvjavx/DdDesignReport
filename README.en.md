@@ -106,6 +106,8 @@ go test ./...                 # core, binary, templates, schema, regression test
 node designer/run-tests.mjs   # the designer in Chromium, Firefox and WebKit (needs Playwright)
 ```
 
+Sending changes: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Author
 
 DdDesignReport is made by Naufal Hilmi Abdurrahman. Other projects, and websites and apps built to order (web, Android, desktop, AI): [aufaltech.my.id](https://aufaltech.my.id/).
