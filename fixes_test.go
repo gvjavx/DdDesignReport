@@ -2,6 +2,8 @@ package ddreport
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"strings"
@@ -131,5 +133,24 @@ func TestLongTextLinear(t *testing.T) {
 	}
 	if d := time.Since(start); d > 5*time.Second {
 		t.Errorf("took %v", d)
+	}
+}
+
+// a render whose context is done stops with its error, in every format, and a later render is not affected
+func TestRenderContext(t *testing.T) {
+	tpl := []byte(`{"bands": {"detail": {"height": 20, "elements": [{"type": "text", "w": 100, "h": 20, "text": "{{n}}"}]}}}`)
+	rows := []map[string]any{}
+	for i := range 1000 {
+		rows = append(rows, map[string]any{"n": i})
+	}
+	done, cancel := context.WithCancel(context.Background())
+	cancel()
+	for _, f := range []string{"pdf", "html", "png", "xlsx", "xls", "csv", "txt", "escpos"} {
+		if _, err := RenderContext(done, tpl, rows, f); !errors.Is(err, context.Canceled) {
+			t.Errorf("%s: err = %v, want context.Canceled", f, err)
+		}
+	}
+	if out, err := Render(tpl, rows, "csv"); err != nil || !strings.Contains(string(out), "999") {
+		t.Errorf("after: %v", err)
 	}
 }

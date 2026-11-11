@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,11 +53,11 @@ var mcpTools = []map[string]any{
 		"inputSchema": map[string]any{"type": "object", "required": []string{"template"}, "properties": map[string]any{
 			"template": map[string]any{"type": "object", "description": "the template"},
 			"data":     map[string]any{"description": "sample data: an object with the rows under \"rows\", or a list of rows"}}}},
-	{"name": "render_template", "description": "Render a template with data to pdf, html, xlsx, xls, csv or jrxml, written to a file. html, csv and jrxml come back as text when no path is given.",
+	{"name": "render_template", "description": "Render a template with data to pdf, html, png, xlsx, xls, csv or jrxml, written to a file. html, csv and jrxml come back as text when no path is given.",
 		"inputSchema": map[string]any{"type": "object", "required": []string{"template", "format"}, "properties": map[string]any{
 			"template": map[string]any{"type": "object"},
 			"data":     map[string]any{},
-			"format":   map[string]any{"type": "string", "enum": []string{"pdf", "html", "xlsx", "xls", "csv", "jrxml"}},
+			"format":   map[string]any{"type": "string", "enum": []string{"pdf", "html", "png", "xlsx", "xls", "csv", "jrxml"}},
 			"path":     map[string]any{"type": "string", "description": "file to write the report to, ending in .<format>"}}}},
 }
 
@@ -99,7 +100,7 @@ func mcpCall(method string, params json.RawMessage) (any, error) {
 			text, err = checkTemplate(a.Template, a.Data)
 		case "render_template":
 			var doc []byte
-			if doc, err = renderSigned(a.Template, a.Data, a.Format); err == nil {
+			if doc, err = renderSigned(context.Background(), a.Template, a.Data, a.Format); err == nil {
 				switch {
 				// only a file of that format: an assistant misled by what it reads cannot overwrite .bashrc or a key
 				case a.Path != "" && !strings.EqualFold(filepath.Ext(a.Path), "."+a.Format):

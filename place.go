@@ -24,6 +24,7 @@ import (
 // past a grown text stretch, so frames stay closed. A table grows as a whole:
 // its rows are as tall as they need, and a data table has a row per item.
 func (r *report) place(b Band, sc scope) ([]Element, float64) {
+	r.check()
 	type grower struct{ top, bottom, grow, shift float64 }
 	// sized for the band up front: an Element is large, and a long report places bands many thousand times
 	els := make([]Element, 0, len(b.Elements))

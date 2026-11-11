@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,11 +20,11 @@ import (
 const request = `{"template":{"bands":{"detail":{"height":20,"elements":[{"type":"text","x":0,"y":0,"w":100,"h":14,"text":"{{name}}"}]}}},"data":[{"name":"Kopi"},{"name":"Teh"}]}`
 
 func TestRender(t *testing.T) {
-	out, err := render(strings.NewReader(request), "csv")
+	out, err := render(context.Background(), strings.NewReader(request), "csv")
 	if err != nil || string(out) != "\xef\xbb\xbfKopi\nTeh\n" {
 		t.Errorf("render = %q, %v", out, err)
 	}
-	if _, err := render(strings.NewReader("not json"), "csv"); err == nil {
+	if _, err := render(context.Background(), strings.NewReader("not json"), "csv"); err == nil {
 		t.Error("bad JSON: want error")
 	}
 }
@@ -469,5 +470,22 @@ func TestMCP(t *testing.T) {
 	}
 	if b, err := os.ReadFile(path); err != nil || !bytes.HasPrefix(b, []byte("%PDF")) {
 		t.Errorf("rendered file: %v", err)
+	}
+}
+
+// a render that takes longer than DDREPORT_TIMEOUT is stopped and answered with 503
+func TestRenderTimeout(t *testing.T) {
+	defer func(d time.Duration) { renderTimeout = d }(renderTimeout)
+	renderTimeout = time.Nanosecond
+	srv := httptest.NewServer(handler("", t.TempDir()))
+	defer srv.Close()
+	res, err := http.Post(srv.URL+"/render?format=pdf", "application/json", strings.NewReader(request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(body), "DDREPORT_TIMEOUT") {
+		t.Errorf("%d %s", res.StatusCode, body)
 	}
 }

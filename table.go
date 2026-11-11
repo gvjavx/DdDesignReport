@@ -340,6 +340,7 @@ func (r *report) grid(e Element, sc scope, measure, once bool) ([]Element, float
 // spreadsheets. As on the page, what is under a table or sub-report that came
 // out taller than designed moves down, so it is read after it.
 func (r *report) flat(b Band, sc scope, once bool) Band {
+	r.check()
 	type growth struct{ bottom, extra float64 } // where, as designed
 	var els []Element
 	var grown []growth

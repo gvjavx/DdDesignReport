@@ -27,7 +27,8 @@
 // files (Inter-Regular.ttf, Inter-Bold.ttf, ...) that templates can use by name;
 // -serve hands them to the designer too, and lists every font at GET /fonts.json.
 // Without DDREPORT_FONTS, a ddreport-fonts folder in the current folder is used,
-// the one node fontpack/download.mjs fills. DDREPORT_MAX_ROWS caps the rows of
+// the one node fontpack/download.mjs fills. DDREPORT_TIMEOUT (default 2m) stops a
+// render of -serve that takes longer, and one whose client left; DDREPORT_MAX_ROWS caps the rows of
 // one report. DDREPORT_STRICT=1 refuses a report whose template asks for fields
 // the data does not have (ddreport.Missing), naming them, instead of printing
 // them empty.
@@ -40,6 +41,7 @@ package main
 import (
 	"bufio"
 	"cmp"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -72,21 +74,26 @@ var mime = map[string]string{
 	"xls":    "application/vnd.ms-excel",
 	"jrxml":  "application/xml; charset=utf-8",
 	"escpos": "application/octet-stream",
+	"png":    "image/png",
 	"txt":    "text/plain; charset=utf-8",
 }
 
-func render(in io.Reader, format string) ([]byte, error) {
+func render(ctx context.Context, in io.Reader, format string) ([]byte, error) {
 	var req struct{ Template, Data json.RawMessage }
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
 		return nil, err
 	}
-	return renderSigned(req.Template, req.Data, format)
+	return renderSigned(ctx, req.Template, req.Data, format)
 }
 
 // signCert, signKey and signReason sign every PDF, when DDREPORT_SIGN_CERT and
 // DDREPORT_SIGN_KEY name a certificate and its key (PEM).
 var signCert, signKey []byte
 var signReason string
+
+// renderTimeout is DDREPORT_TIMEOUT: the longest one render of -serve may take.
+// Its default, 2 minutes, stays under the server's write timeout of 5.
+var renderTimeout = 2 * time.Minute
 
 // strict is DDREPORT_STRICT: a field the data lacks fails the report.
 var strict = os.Getenv("DDREPORT_STRICT") == "1"
@@ -101,13 +108,13 @@ func missing(template, data json.RawMessage) error {
 }
 
 // renderSigned renders, and signs a PDF when there is a key to sign with.
-func renderSigned(template, data json.RawMessage, format string) ([]byte, error) {
+func renderSigned(ctx context.Context, template, data json.RawMessage, format string) ([]byte, error) {
 	if strict && format != "jrxml" {
 		if err := missing(template, data); err != nil {
 			return nil, err
 		}
 	}
-	doc, err := ddreport.Render(template, data, format)
+	doc, err := ddreport.RenderContext(ctx, template, data, format)
 	if err != nil || format != "pdf" || signKey == nil {
 		return doc, err
 	}
@@ -257,7 +264,14 @@ func handler(token, dir string) http.Handler {
 			return
 		}
 		f := r.URL.Query().Get("format")
-		out, err := render(http.MaxBytesReader(w, r.Body, 32<<20), f)
+		// stops when its client leaves, or after DDREPORT_TIMEOUT, so it does not hold a processor for nothing
+		ctx, cancel := context.WithTimeout(r.Context(), renderTimeout)
+		defer cancel()
+		out, err := render(ctx, http.MaxBytesReader(w, r.Body, 32<<20), f)
+		if errors.Is(err, context.DeadlineExceeded) {
+			http.Error(w, fmt.Sprintf("ddreport: the report took longer than %v (DDREPORT_TIMEOUT); print less, or split it", renderTimeout), http.StatusServiceUnavailable)
+			return
+		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -512,7 +526,7 @@ func font(env string) ([]byte, error) {
 
 func main() {
 	log.SetFlags(0)
-	format := flag.String("format", "pdf", "pdf, html, xlsx, xls, csv, jrxml, escpos (receipt printers) or txt")
+	format := flag.String("format", "pdf", "pdf, html, png (all pages in one picture), xlsx, xls, csv, jrxml, escpos (receipt printers) or txt")
 	stdio := flag.Bool("stdio", false, "keep running and render one request after another from stdin (for the Java and Node.js renderers)")
 	fromJRXML := flag.Bool("from-jrxml", false, "read a JasperReports .jrxml on stdin and write it as a template; what did not come over goes to stderr")
 	serve := flag.String("serve", "", "serve the designer and POST /render on this address, e.g. 127.0.0.1:8080")
@@ -544,6 +558,14 @@ func main() {
 	if n := os.Getenv("DDREPORT_MAX_ROWS"); n != "" && err == nil {
 		if ddreport.MaxRows, err = strconv.Atoi(n); err != nil {
 			err = fmt.Errorf("ddreport: DDREPORT_MAX_ROWS: %w", err)
+		}
+	}
+	if d := os.Getenv("DDREPORT_TIMEOUT"); d != "" && err == nil { // 30s, 5m
+		if renderTimeout, err = time.ParseDuration(d); err == nil && renderTimeout <= 0 {
+			err = errors.New("must be above 0")
+		}
+		if err != nil {
+			err = fmt.Errorf("ddreport: DDREPORT_TIMEOUT: %w", err)
 		}
 	}
 	if err != nil {
@@ -593,7 +615,7 @@ func main() {
 		log.Fatal(srv.ListenAndServe())
 	}
 
-	out, err := render(os.Stdin, *format)
+	out, err := render(context.Background(), os.Stdin, *format)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -625,7 +647,7 @@ func serveStdio(in io.Reader, out io.Writer) error {
 		var req struct{ Template, Data json.RawMessage }
 		doc, err := []byte(nil), json.Unmarshal(body, &req)
 		if err == nil {
-			doc, err = renderSigned(req.Template, req.Data, format)
+			doc, err = renderSigned(context.Background(), req.Template, req.Data, format)
 		}
 		if err != nil {
 			fmt.Fprintf(w, "error %d\n%s", len(err.Error()), err.Error())

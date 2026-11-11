@@ -5,6 +5,7 @@ package ddreport
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
@@ -223,14 +224,31 @@ func (e Element) pieces() []run {
 }
 
 // Render fills template with data and returns the report in the given format:
-// "pdf", "html", "xlsx", "xls", "csv", "jrxml", "escpos" (receipt printers) or "txt". data is anything that marshals to a JSON
+// "pdf", "html", "png" (all pages in one picture), "xlsx", "xls", "csv", "jrxml", "escpos" (receipt printers) or "txt". data is anything that marshals to a JSON
 // object (fields plus a row array under DataKey) or to a JSON array of rows;
 // a []byte is read as JSON, as the template is.
 func Render(template []byte, data any, format string) ([]byte, error) {
+	return RenderContext(context.Background(), template, data, format)
+}
+
+// RenderContext is Render that stops with ctx's error once ctx is done: a
+// render server gives up on a report whose client left or that takes too long,
+// instead of keeping a processor busy with it.
+func RenderContext(ctx context.Context, template []byte, data any, format string) (out []byte, err error) {
 	r, err := newReport(template, data)
 	if err != nil {
 		return nil, err
 	}
+	r.ctx = ctx
+	defer func() {
+		if p := recover(); p != nil {
+			s, ok := p.(stopped)
+			if !ok {
+				panic(p)
+			}
+			out, err = nil, fmt.Errorf("ddreport: render stopped: %w", s.err)
+		}
+	}()
 	t := r.t
 	switch format {
 	case "csv":
@@ -246,10 +264,11 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 		return toEscpos(r.textLayout()), nil
 	case "txt":
 		return toText(r.textLayout()), nil
-	case "html", "pdf":
+	case "html", "pdf", "png":
 		if err := t.fits(); err != nil {
 			return nil, err
 		}
+		r.png = format == "png"
 		if err := r.initPDF(); err != nil {
 			return nil, fmt.Errorf("ddreport: font: %w", err)
 		}
@@ -259,6 +278,9 @@ func Render(template []byte, data any, format string) ([]byte, error) {
 		total := 0
 		if bytes.Contains(bytes.ToLower(template), []byte("pages")) { // JSON keys match in any case: "Pages" too
 			total = r.layPages(0, func([]Element) bool { return true })
+		}
+		if r.png {
+			return r.toPNG(r.paginate(total))
 		}
 		pages := func(yield func([]Element) bool) { r.layPages(total, yield) }
 		if format == "html" {
@@ -535,6 +557,20 @@ type report struct {
 	added    map[string]bool     // faces from Families already in the PDF
 	tables   int                 // numbers the tables laid out, so their rows know which table they belong to
 	units    int                 // numbers table rows that stay together on a page
+	ctx      context.Context     // RenderContext's: the render stops once it is done
+	png      bool                // drawn as a picture: texts measured with the bundled fonts it draws them with
+}
+
+// stopped is the panic check raises to unwind a render whose context is done; RenderContext recovers it.
+type stopped struct{ err error }
+
+// check stops the render once its context is done. It runs once per band and per text laid out.
+func (r *report) check() {
+	if r.ctx != nil {
+		if err := r.ctx.Err(); err != nil {
+			panic(stopped{err})
+		}
+	}
 }
 
 func (r *report) initPDF() error {
@@ -573,7 +609,7 @@ func (r *report) initPDF() error {
 }
 
 func (r *report) font(e Element, p run) {
-	if r.t.PDFA && Font == nil { // every font in the file
+	if (r.t.PDFA || r.png) && Font == nil { // every font in the file, or in the picture
 		e.Font = pdfaFont(e.Font)
 	}
 	// a family from Families, its faces added to the PDF the first time they are used
@@ -653,6 +689,7 @@ func (r *report) layout(e Element) []textLine {
 	if e.lines != nil {
 		return e.lines
 	}
+	r.check()
 	lines := []textLine{{}}
 	var space *span // spaces waiting for the next word; dropped at a line break
 	for _, p := range e.pieces() {

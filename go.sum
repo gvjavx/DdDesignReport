@@ -2,3 +2,7 @@ codeberg.org/go-pdf/fpdf v0.12.0 h1:g8E/1VqGqB2lZUUaqQrrTnA0IEJLPTTX1DZ0qS/ZmhU=
 codeberg.org/go-pdf/fpdf v0.12.0/go.mod h1:WJNJ2bvCj81rZBdhOf7lKOGoSl+OKMXcIcXqDcP8r5Y=
 github.com/boombuler/barcode v1.1.0 h1:ChaYjBR63fr4LFyGn8E8nt7dBSt3MiU3zMOZqFvVkHo=
 github.com/boombuler/barcode v1.1.0/go.mod h1:paBWMcWSl3LHKBqUq+rly7CNSldXjb2rDl3JlRe0mD8=
+golang.org/x/image v0.40.0 h1:Tw4GyDXMo+daZN1znreBRC3VayR1aLFUyUEOLUdW1a8=
+golang.org/x/image v0.40.0/go.mod h1:uIc348UZMSvS5Z65CVZ7iDPaNobNFEPeJ4kbqTOszmA=
+golang.org/x/text v0.37.0 h1:Cqjiwd9eSg8e0QAkyCaQTNHFIIzWtidPahFWR83rTrc=
+golang.org/x/text v0.37.0/go.mod h1:a5sjxXGs9hsn/AJVwuElvCAo9v8QYLzvavO5z2PiM38=

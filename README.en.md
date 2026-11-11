@@ -46,7 +46,7 @@ It comes with 13 ready-made templates (invoice, sales report, receipt, payslip, 
 ```go
 import ddreport "github.com/gvjavx/DdDesignReport"
 
-pdf, err := ddreport.Render(templateJSON, data, "pdf") // "pdf" | "html" | "xlsx" | "xls" | "csv" | "jrxml" | "escpos" | "txt"
+pdf, err := ddreport.Render(templateJSON, data, "pdf") // "pdf" | "html" | "png" | "xlsx" | "xls" | "csv" | "jrxml" | "escpos" | "txt"
 missing, err := ddreport.Missing(templateJSON, data)  // fields the template uses that the data lacks: they print empty
 ```
 
@@ -96,7 +96,8 @@ The answer is the document, `400` with the error message, or `401` without the r
 - Receipt printers: format `escpos` gives ESC/POS commands for 58 and 80 mm thermal printers (send the bytes as they are, e.g. to port 9100 or `/dev/usb/lp0`), and `txt` the same layout as plain text for previews and dot-matrix printers. Texts land in the character columns their boxes cover, aligned and wrapped; 11 pt and over prints double height; QR and Code 128 are drawn by the printer, pictures as dots, then the paper is cut. 32 characters a line up to 60 mm paper, 48 up to 92 mm, 80 wider, or `"textColumns"`.
 - AI assistants: `ddreport -mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio with `template_guide` (llms.txt and the schema), `check_template` (misspelt properties, then a trial render) and `render_template`. Claude Code: `claude mcp add ddreport -- /path/to/ddreport -mcp`.
 - A field the data does not have prints empty. `DDREPORT_STRICT=1` makes the binary and the server refuse such a report instead, naming the fields; the designer's preview names them too, given sample data.
-- Servers: `DDREPORT_MAX_ROWS` refuses reports with more rows than that (`ddreport.MaxRows` in Go); the Docker image has a HEALTHCHECK (`ddreport -healthcheck 127.0.0.1:8080`).
+- Pictures: format `png` draws all pages one under the other in one PNG (2 px per pt) to send in a chat such as WhatsApp; texts use the bundled fonts, as PDF/A does, and break where the PDF breaks them. Longer than about 12 A4 pages is refused.
+- Servers: `DDREPORT_TIMEOUT` (default `2m`) stops a render that takes longer, with `503`, and a render whose client left stops at once (`ddreport.RenderContext` in Go); `DDREPORT_MAX_ROWS` refuses reports with more rows than that (`ddreport.MaxRows` in Go); the Docker image has a HEALTHCHECK (`ddreport -healthcheck 127.0.0.1:8080`).
 - Templates from the community are welcome: see "Menyumbang template" in the [README](README.md#menyumbang-template).
 
 ## Tests

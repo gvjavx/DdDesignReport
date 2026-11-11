@@ -212,6 +212,14 @@ Di designer: klik sebuah sel, lalu bagian **Sel** di panel kanan mengatur warna,
 { "number": "INV-001", "customer": { "name": "Budi" }, "rows": [{ "name": "Kopi", "qty": 2 }] }
 ```
 
+## Gambar PNG (untuk WhatsApp)
+
+Format `png` menggambar laporan sebagai satu gambar (2 piksel per pt, 144 dpi), halaman demi halaman dari atas ke bawah, untuk dikirim lewat chat tanpa membuka PDF: struk, kuitansi, atau faktur. Teks memakai font bawaan seperti PDF/A (Helvetica dan Courier menjadi Roboto, Times menjadi Lora), jadi barisnya terputus di tempat yang sama dengan PDF. Laporan yang lebih panjang dari sekitar 12 halaman A4 ditolak dengan pesan error; kirim sebagai PDF.
+
+```sh
+curl -X POST "http://127.0.0.1:8080/render?format=png" -d @struk.json -o struk.png
+```
+
 ## Printer struk (ESC/POS) dan teks biasa
 
 Format `escpos` mencetak langsung ke printer struk thermal 58 mm dan 80 mm (USB, jaringan, atau Bluetooth) tanpa PDF: hasilnya byte perintah ESC/POS yang dikirim apa adanya ke printer. Format `txt` adalah tata letak yang sama sebagai teks biasa, untuk pratinjau, log, atau printer dot matrix.
@@ -267,7 +275,8 @@ Properti `ddreport.*` di dalam file menyimpan apa yang tidak punya tempat di Jas
 ```go
 import ddreport "github.com/gvjavx/DdDesignReport"
 
-pdf, err := ddreport.Render(templateJSON, data, "pdf") // "pdf" | "html" | "xlsx" | "xls" | "csv" | "jrxml" | "escpos" | "txt"
+pdf, err := ddreport.Render(templateJSON, data, "pdf") // "pdf" | "html" | "png" | "xlsx" | "xls" | "csv" | "jrxml" | "escpos" | "txt"
+// ddreport.RenderContext(ctx, ...) berhenti saat ctx selesai (klien putus, batas waktu)
 // data: map, struct, json.RawMessage, atau []byte berisi JSON
 ```
 
@@ -331,7 +340,7 @@ Keduanya memakai `ddreport -stdio`: binary terus berjalan dan membaca permintaan
 docker run -p 8080:8080 -e DDREPORT_TOKEN=rahasia-panjang ghcr.io/gvjavx/ddreport
 ```
 
-Dengan `DDREPORT_TOKEN`, setiap render harus mengirim `Authorization: Bearer <token>` (tanpa itu jawabannya `401`); designer di `/` tetap terbuka, dan preview-nya memakai token dari alamat halaman: `http://server:8080/#token=rahasia-panjang`. Tanpa token, siapa pun yang bisa menjangkau port itu bisa me-render, jadi `ddreport -serve` memberi peringatan bila alamatnya terbuka ke jaringan. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran, dan bila sudah empat kali jumlah prosesor yang menunggu atau berjalan, render berikutnya dijawab `503` dengan `Retry-After: 5` agar tidak menunggu bermenit-menit. `GET /healthz` menjawab `ok` tanpa token, untuk load balancer atau pemantauan. Setiap render, impor, dan akses My templates dicatat satu baris di stderr: `POST /render?format=pdf 200 48213B 85ms` (tanpa token dan tanpa isi laporan). `DDREPORT_STRICT=1` menolak laporan yang memakai field yang tidak ada di data (salah ketik, atau kolom yang tidak dikembalikan query) dengan nama field-nya, alih-alih mencetaknya kosong; dari Go: `ddreport.Missing(template, data)`. `DDREPORT_MAX_ROWS=50000` menolak laporan yang barisnya lebih dari itu dengan pesan error, alih-alih menghabiskan memori server (lihat [Performa](#performa)). Image Docker punya HEALTHCHECK bawaan: `ddreport -healthcheck 127.0.0.1:8080` meminta `/healthz` dan keluar dengan kode 1 bila server tidak menjawab `ok`. Permintaan dari halaman situs lain di browser (header `Origin` yang berbeda) ditolak; panggil dari backend Anda, bukan langsung dari browser. Tanpa token, server hanya melayani alamat `localhost` atau alamat IP (misalnya `http://192.168.1.5:8080`), agar situs lain yang mengarahkan namanya ke mesin Anda (DNS rebinding) tidak bisa membaca atau menghapus My templates; untuk memakai nama domain, isi `DDREPORT_TOKEN`.
+Dengan `DDREPORT_TOKEN`, setiap render harus mengirim `Authorization: Bearer <token>` (tanpa itu jawabannya `401`); designer di `/` tetap terbuka, dan preview-nya memakai token dari alamat halaman: `http://server:8080/#token=rahasia-panjang`. Tanpa token, siapa pun yang bisa menjangkau port itu bisa me-render, jadi `ddreport -serve` memberi peringatan bila alamatnya terbuka ke jaringan. Render berjalan paling banyak sejumlah prosesor sekaligus; permintaan lain menunggu giliran, dan bila sudah empat kali jumlah prosesor yang menunggu atau berjalan, render berikutnya dijawab `503` dengan `Retry-After: 5` agar tidak menunggu bermenit-menit. `GET /healthz` menjawab `ok` tanpa token, untuk load balancer atau pemantauan. Setiap render, impor, dan akses My templates dicatat satu baris di stderr: `POST /render?format=pdf 200 48213B 85ms` (tanpa token dan tanpa isi laporan). `DDREPORT_STRICT=1` menolak laporan yang memakai field yang tidak ada di data (salah ketik, atau kolom yang tidak dikembalikan query) dengan nama field-nya, alih-alih mencetaknya kosong; dari Go: `ddreport.Missing(template, data)`. `DDREPORT_TIMEOUT=30s` (default `2m`) menghentikan render yang lebih lama dari itu dengan `503`, dan render yang kliennya sudah memutus koneksi berhenti saat itu juga, jadi tidak ada prosesor yang terpakai sia-sia. `DDREPORT_MAX_ROWS=50000` menolak laporan yang barisnya lebih dari itu dengan pesan error, alih-alih menghabiskan memori server (lihat [Performa](#performa)). Image Docker punya HEALTHCHECK bawaan: `ddreport -healthcheck 127.0.0.1:8080` meminta `/healthz` dan keluar dengan kode 1 bila server tidak menjawab `ok`. Permintaan dari halaman situs lain di browser (header `Origin` yang berbeda) ditolak; panggil dari backend Anda, bukan langsung dari browser. Tanpa token, server hanya melayani alamat `localhost` atau alamat IP (misalnya `http://192.168.1.5:8080`), agar situs lain yang mengarahkan namanya ke mesin Anda (DNS rebinding) tidak bisa membaca atau menghapus My templates; untuk memakai nama domain, isi `DDREPORT_TOKEN`.
 
 PHP (juga di shared hosting yang tidak boleh menjalankan program, selama server ddreport ada di mesin lain):
 

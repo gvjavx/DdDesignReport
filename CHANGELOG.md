@@ -4,6 +4,10 @@
 
 **QRIS dinamis**: `{{qris(toko.qris, sum(qty * price))}}` sebagai isi barcode `qr` mengubah kode QRIS statis toko menjadi QRIS dinamis untuk nominal itu (tag 01 `12`, nominal di tag 54, CRC dihitung ulang), jadi pembeli tidak perlu mengetik nominal. Kode yang bukan QRIS atau CRC-nya salah, dan nominal nol atau minus, tercetak kosong.
 
+**Gambar PNG**: format `png` menggambar laporan sebagai satu gambar (2 piksel per pt), halaman demi halaman dari atas ke bawah, untuk dikirim lewat WhatsApp tanpa membuka PDF. Teks memakai font bawaan seperti PDF/A, jadi barisnya terputus di tempat yang sama dengan PDF. Tersedia di Go, CLI, `-serve`, Node.js, Java, MCP, dan tombol **PNG** di aplikasi designer. Laporan yang lebih panjang dari sekitar 12 halaman A4 ditolak dengan pesan error.
+
+**Batas waktu render**: `DDREPORT_TIMEOUT` (default `2m`) menghentikan render di `-serve` yang lebih lama dari itu, dijawab `503`. Render yang kliennya sudah memutus koneksi juga berhenti saat itu juga, sehingga tidak ada prosesor yang terpakai untuk laporan yang tidak ditunggu siapa pun. Dari Go: `ddreport.RenderContext(ctx, template, data, format)`.
+
 **Designer**: tombol **Preview** kini yang pertama di tab Home, tab yang terbuka saat designer dimuat. Sebelumnya hanya ada di tab View dan sebagai ikon mata kecil di bilah status, sehingga sering tidak terlihat. Di mode sederhana tab View yang jadi kosong ikut disembunyikan, dan tombol panah di deretan tab melewati tab yang disembunyikan. `designer/bootstrap.html` kini punya tombol Preview.
 
 **Perbaikan**:

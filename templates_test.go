@@ -48,7 +48,7 @@ func TestTemplates(t *testing.T) {
 			if file.Name != entry.Name || file.Description == "" {
 				t.Errorf("name %q / description %q do not match the index", file.Name, file.Description)
 			}
-			for _, format := range []string{"pdf", "html", "xlsx", "xls", "csv"} {
+			for _, format := range []string{"pdf", "html", "png", "xlsx", "xls", "csv"} {
 				if _, err := Render(file.Template, file.Data, format); err != nil {
 					t.Errorf("%s: %v", format, err)
 				}
