@@ -5,6 +5,7 @@
 - Template boleh berisi `"$schema": "https://cdn.jsdelivr.net/npm/ddreport-designer/template.schema.json"`, agar editor seperti VS Code memeriksa dan melengkapinya tanpa pengaturan. Sebelumnya JSON Schema dan `check_template` (MCP) menganggapnya properti yang salah ketik. Pemakaian lewat Go mendapat field `Template.Schema`.
 - Schema juga terdaftar di [SchemaStore](https://www.schemastore.org) (PR [#6624](https://github.com/SchemaStore/schemastore/pull/6624)), jadi editor bisa memilihnya dari daftar.
 - Deskripsi JSON Schema menyebut semua format output (PNG, TXT, ESC/POS).
+- `golang.org/x/image` v0.41.0 (peringatan Dependabot untuk dekoder TIFF; ddreport tidak memakai TIFF, jadi govulncheck menilainya tidak terjangkau).
 
 ## 0.4.5 · 11 Nov 2026
 
