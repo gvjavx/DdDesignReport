@@ -86,7 +86,7 @@ $('#lan').onclick = async () => {
 }
 
 const list = await (await call('/api/templates')).json()
-$('#report').innerHTML = list.map(t => `<option value="${t.id}">${t.name}</option>`).join('')
+$('#report').append(...list.map(t => new Option(t.name, t.id))) // names as text: in your app they come from users
 $('#report').onchange = () => open($('#report').value).catch(err => say(err.message))
 await open(list[0].id)
 </script>

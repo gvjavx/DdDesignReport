@@ -43,6 +43,9 @@ const types = { pdf: 'application/pdf', xlsx: 'application/vnd.openxmlformats-of
 async function handle(req, res) {
   const url = new URL(req.url, 'http://x')
   const customer = customerOf(req)
+  // a page of another site open in the same browser cannot save, preview or print here (browsers send Origin)
+  const origin = req.headers.origin
+  if (req.method !== 'GET' && origin && new URL(origin).host !== req.headers.host) return send(res, 403, 'requests from other sites are refused')
   const [, area, id, ext] = url.pathname.match(/^\/(api\/templates|api\/preview|reports|api\/print)\/([a-z0-9-]+)(?:\.(\w+))?$/) ?? []
   // ids name files: only the ready-made templates, nothing like ../
   if (id && !fs.existsSync(path.join(designerDir, 'templates', id + '.json'))) return send(res, 404, 'no such report')

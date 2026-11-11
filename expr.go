@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -745,7 +746,9 @@ func terbilang(f float64) string {
 // would refuse or one for the wrong amount.
 func qris(payload string, amount float64) string {
 	payload = strings.TrimSpace(payload)
-	if amount <= 0 || math.IsInf(amount, 0) || len(payload) < 8 ||
+	amount = math.Round(amount*100) / 100
+	// !(> 0) refuses NaN too, and an amount that rounds to nothing (0.001)
+	if !(amount > 0) || math.IsInf(amount, 0) || len(payload) < 8 ||
 		payload[len(payload)-8:len(payload)-4] != "6304" ||
 		!strings.EqualFold(payload[len(payload)-4:], crc16(payload[:len(payload)-4])) {
 		return ""
@@ -766,8 +769,12 @@ func qris(payload string, amount float64) string {
 	if len(tags) == 0 || tags[0] != (tlv{"00", "01"}) {
 		return ""
 	}
-	a := strconv.FormatFloat(math.Round(amount*100)/100, 'f', 2, 64) // 1500.50
-	a = strings.TrimSuffix(a, ".00")                                 // 15000, as IDR is written
+	// tag 01 is optional in EMV: a static code without it gets one, as dynamic needs 12
+	if !slices.ContainsFunc(tags, func(t tlv) bool { return t.id == "01" }) {
+		tags = slices.Insert(tags, 1, tlv{"01", "12"})
+	}
+	a := strconv.FormatFloat(amount, 'f', 2, 64) // 1500.50
+	a = strings.TrimSuffix(a, ".00")             // 15000, as IDR is written
 	if len(a) > 13 {
 		return ""
 	}

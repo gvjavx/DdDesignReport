@@ -449,19 +449,23 @@ func TestMCP(t *testing.T) {
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"check_template","arguments":{"template":{"bands":{"detail":{"hieght":20}}}}}}`,
 		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"render_template","arguments":{"template":` + tpl + `,"data":[{"name":"Kopi"}],"format":"pdf","path":` + strconv.Quote(path) + `}}}`,
 		`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"template_guide","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"render_template","arguments":{"template":` + tpl + `,"format":"html","path":` + strconv.Quote(path+".bashrc") + `}}}`,
 	}, "\n")
 	var out bytes.Buffer
 	if err := serveMCP(strings.NewReader(in), &out); err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 6 { // the notification gets no answer
-		t.Fatalf("%d answers, want 6:\n%s", len(lines), out.String())
+	if len(lines) != 7 { // the notification gets no answer
+		t.Fatalf("%d answers, want 7:\n%s", len(lines), out.String())
 	}
-	for i, want := range []string{`"protocolVersion":"2025-06-18"`, `"check_template"`, `ok: the template is valid`, `unknown field \"hieght\"`, `wrote `, `## JSON Schema`} {
+	for i, want := range []string{`"protocolVersion":"2025-06-18"`, `"check_template"`, `ok: the template is valid`, `unknown field \"hieght\"`, `wrote `, `## JSON Schema`, `must end in .html`} {
 		if !strings.Contains(lines[i], want) {
 			t.Errorf("answer %d lacks %s: %s", i+1, want, lines[i][:min(len(lines[i]), 300)])
 		}
+	}
+	if _, err := os.Stat(path + ".bashrc"); !os.IsNotExist(err) {
+		t.Error("wrote a file whose name is not of its format")
 	}
 	if b, err := os.ReadFile(path); err != nil || !bytes.HasPrefix(b, []byte("%PDF")) {
 		t.Errorf("rendered file: %v", err)

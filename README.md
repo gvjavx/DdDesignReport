@@ -71,10 +71,10 @@ Designer punya ribbon seperti pengolah kata:
 
 | Tab | Isi |
 | --- | --- |
-| **Home** | Undo/redo, cut/copy/paste/duplicate, font, ukuran, bold/italic/underline, warna teks, highlight, rata kiri/tengah/kanan/kanan-kiri, rata atas/tengah/bawah, spasi baris, wrap, perataan dan distribusi elemen, urutan depan/belakang |
+| **Home** | Preview, undo/redo, cut/copy/paste/duplicate, font, ukuran, bold/italic/underline, warna teks, highlight, rata kiri/tengah/kanan/kanan-kiri, rata atas/tengah/bawah, spasi baris, wrap, perataan dan distribusi elemen, urutan depan/belakang |
 | **Insert** | Text box, tabel (baris × kolom), gambar, kotak, garis, chart, barcode/QR, sub-laporan, crosstab, field data (nama field diambil dari data contoh) |
 | **Layout** | Ukuran kertas (A4, A5, Letter, Legal, F4), orientasi, margin per sisi, warna dan gambar latar halaman, urutan data, grouping, pemisah angka, bahasa tanggal, pemisah CSV |
-| **View** | Zoom, penggaris, snap, preview |
+| **View** | Zoom, penggaris, snap |
 
 Chart di kanvas digambar dari data contoh (opsi `data`) dengan skala nilai, label, dan format angka seperti hasil cetak. Barcode di kanvas adalah kode yang sama persis dengan hasil cetak (QR dan Code 128, modul demi modul), jadi bisa langsung dipindai; `{{field}}` di dalamnya diisi dari data contoh. Tampilannya menyesuaikan lebar tempat designer dipasang: di layar sempit panel properti pindah ke bawah dan halaman dipaskan ke lebar. Zoom ada di bilah status bawah, dan bisa langsung di kanvas: `Ctrl` + scroll (atau pinch di trackpad) memperbesar di titik kursor, cubit dua jari di layar sentuh, serta `Ctrl` + `=` / `-` / `0`.
 
@@ -88,7 +88,7 @@ Aplikasi standalone juga punya tombol ekspor PDF, HTML, XLSX, XLS, dan CSV, anta
 
 **My templates** menyimpan template Anda sendiri di samping yang siap pakai: simpan laporan yang sedang dirancang dengan nama, lalu buka, perbarui, ganti nama, atau hapus. Tiap template ikut membawa data contohnya. `ddreport -serve` menyimpannya sebagai satu file JSON per template di folder `ddreport-templates` (ubah dengan `-templates folder`), jadi semua yang membuka server itu melihat daftar yang sama. Setiap kali template ditimpa, versi sebelumnya disimpan (20 terakhir): tombol **History** membuka versi lama, lalu **Update** menjadikannya versi sekarang lagi. Lewat HTTP: `GET /mine`, `PUT /mine/{id}`, `DELETE /mine/{id}`, `GET /mine/{id}/history`, `GET /mine/{id}/history/{versi}`, dengan token yang sama seperti `/render` bila `DDREPORT_TOKEN` diisi. Di image Docker foldernya `/data`: `docker run -v ddreport:/data ...` agar tidak hilang. Halaman yang dibuka tanpa server menyimpannya di browser.
 
-**Preview** (tombol mata di bilah status, atau tab View) membuka hasil cetak HTML dengan data contoh: tiap halaman tampil sebagai lembar terpisah, dipaskan ke lebar jendela, dengan jumlah halamannya. Preview dan ekspor butuh halaman dibuka dari `ddreport -serve`; jika tidak, designer mengatakannya.
+**Preview** (tombol pertama di tab Home, atau tombol mata di bilah status) membuka hasil cetak HTML dengan data contoh: tiap halaman tampil sebagai lembar terpisah, dipaskan ke lebar jendela, dengan jumlah halamannya. Preview dan ekspor butuh halaman dibuka dari `ddreport -serve`; jika tidak, designer mengatakannya.
 
 ## Template siap pakai
 
@@ -110,7 +110,7 @@ Template adalah JSON. [`designer/template.schema.json`](designer/template.schema
 
 ### Asisten AI (MCP)
 
-`ddreport -mcp` menjadikan binary-nya server [MCP](https://modelcontextprotocol.io) lewat stdin/stdout, sehingga asisten AI (Claude, Cursor, dan lainnya) bisa membaca cara menulis template (`template_guide`: isi `llms.txt` dan JSON Schema), memeriksa template yang ditulisnya (`check_template`: properti yang salah ketik, yang diabaikan saat mencetak, lalu dicoba dicetak dengan data contoh), dan mencetaknya ke file (`render_template`). Contoh: minta asisten membuat template dari foto faktur lama Anda, lalu memeriksanya sendiri sampai valid.
+`ddreport -mcp` menjadikan binary-nya server [MCP](https://modelcontextprotocol.io) lewat stdin/stdout, sehingga asisten AI (Claude, Cursor, dan lainnya) bisa membaca cara menulis template (`template_guide`: isi `llms.txt` dan JSON Schema), memeriksa template yang ditulisnya (`check_template`: properti yang salah ketik, yang diabaikan saat mencetak, lalu dicoba dicetak dengan data contoh), dan mencetaknya ke file (`render_template`; nama file harus berakhiran format-nya, misalnya `.pdf`, agar asisten yang tertipu isi dokumen tidak bisa menimpa file lain). Contoh: minta asisten membuat template dari foto faktur lama Anda, lalu memeriksanya sendiri sampai valid.
 
 ```sh
 claude mcp add ddreport -- /path/ke/ddreport -mcp     # Claude Code
@@ -268,6 +268,7 @@ Properti `ddreport.*` di dalam file menyimpan apa yang tidak punya tempat di Jas
 import ddreport "github.com/gvjavx/DdDesignReport"
 
 pdf, err := ddreport.Render(templateJSON, data, "pdf") // "pdf" | "html" | "xlsx" | "xls" | "csv" | "jrxml" | "escpos" | "txt"
+// data: map, struct, json.RawMessage, atau []byte berisi JSON
 ```
 
 Java, Kotlin, dan Node.js memanggil binary `ddreport`. Paketnya membawa binary untuk Windows, Linux, dan macOS (x64 dan arm64); `DDREPORT_BIN` menunjuk binary lain bila perlu. Binary-nya juga ada di setiap [GitHub Release](https://github.com/gvjavx/DdDesignReport/releases).

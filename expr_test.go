@@ -1,6 +1,7 @@
 package ddreport
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -144,7 +145,10 @@ func TestQRIS(t *testing.T) {
 		{signed("0002020102115802ID"), 15000, ""},    // not payload format 01
 		{signed("000201010211599Warung"), 15000, ""}, // a length that runs past the end
 		{"", 15000, ""},
-		{static, 1e14, ""}, // more than the 13 characters tag 54 holds
+		{static, 1e14, ""},       // more than the 13 characters tag 54 holds
+		{static, math.NaN(), ""}, // not a number (Inf - Inf in the template)
+		{static, 0.001, ""},      // rounds to nothing: not a code to pay 0
+		{signed(strings.Replace(body, "010211", "", 1)), 15000, dynamic}, // tag 01 is optional: added
 	} {
 		if got := qris(c.payload, c.amount); got != c.want {
 			t.Errorf("qris(%q, %v)\n got %q\nwant %q", c.payload, c.amount, got, c.want)

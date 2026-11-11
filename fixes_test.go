@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 // A band for the last page prints when the template names "Pages" in capitals,
@@ -106,5 +107,29 @@ func TestTemplateVersion(t *testing.T) {
 	newer := fmt.Sprintf(`{"version": %d, "bands": {"detail": {"height": 20}}}`, FormatVersion+1)
 	if _, err := Render([]byte(newer), []any{}, "pdf"); err == nil || !strings.Contains(err.Error(), "newer ddreport") {
 		t.Errorf("newer version: err = %v", err)
+	}
+}
+
+// data as raw JSON bytes, like the template, prints its rows: it was marshalled to a base64 string, an empty report
+func TestDataAsBytes(t *testing.T) {
+	tpl := []byte(`{"bands": {"detail": {"height": 20, "elements": [{"type": "text", "w": 100, "h": 20, "text": "{{name}}"}]}}}`)
+	out, err := Render(tpl, []byte(`{"rows": [{"name": "Kopi"}]}`), "csv")
+	if err != nil || !strings.Contains(string(out), "Kopi") {
+		t.Errorf("got %q, %v", out, err)
+	}
+	if _, err := Render(tpl, []byte(`{not json`), "csv"); err == nil {
+		t.Error("bytes that are not JSON: no error")
+	}
+}
+
+// a long text over many pages is laid out once, not again on every page: 40 000 words took about 20 s, now well under 1 s
+func TestLongTextLinear(t *testing.T) {
+	tpl := []byte(`{"page": {"width": 200, "height": 200}, "bands": {"detail": {"height": 20, "elements": [{"type": "text", "grow": true, "w": 100, "h": 20, "text": "{{s}}"}]}}}`)
+	start := time.Now()
+	if _, err := Render(tpl, []map[string]any{{"s": strings.Repeat("kata ", 40000)}}, "pdf"); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("took %v", d)
 	}
 }

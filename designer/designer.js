@@ -1520,7 +1520,7 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
   $('[data-id=zoomrange]').oninput = ev => setZoom(ev.target.value / 100)
   // arrow keys walk the tabs
   $('.ddr-tabs').onkeydown = ev => {
-    const all = $$('[data-tab]'), step = { ArrowRight: 1, ArrowLeft: -1 }[ev.key]
+    const all = $$('[data-tab]').filter(t => !t.hidden), step = { ArrowRight: 1, ArrowLeft: -1 }[ev.key]
     if (!step) return
     const next = all[(all.indexOf(ev.target) + step + all.length) % all.length]
     next.focus()
@@ -1646,7 +1646,8 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
         note.classList.add('err')
       }
     }
-    $('[data-panel=View]').append(box.firstChild)
+    // first on the Home tab, the one that is open: in View it went unseen
+    $('[data-panel=Home]').prepend(box.firstChild)
     // and next to the zoom, where it is always in reach
     box.innerHTML = ib('preview', 'preview', 'Render the report with sample data')
     $('[data-id=status]').after(box.firstChild)
@@ -2148,6 +2149,8 @@ export function createDesigner(root, { template, onChange, onState, preview, lan
   }
   // a ribbon group with nothing left in it goes too, and the first tab still shown opens
   for (const g of $$('.ddr-group')) if (![...g.firstChild.children].some(c => !c.hidden)) g.hidden = true
+  // and a tab with no group left (View in simple mode)
+  for (const p of $$('[data-panel]')) if (![...p.children].some(g => !g.hidden)) $(`[data-tab="${p.dataset.panel}"]`).hidden = true
   if ($('[data-tab][aria-selected=true]').hidden) $$('[data-tab]').find(t => !t.hidden)?.click()
 
   load(template, true)

@@ -427,6 +427,7 @@ const tests = {
     const t = open(undefined, { preview: () => new Promise(r => { finish = r }) })
     const dialog = t.q('.ddr-preview'), frame = t.q('.ddr-preview iframe'), status = t.q('.ddr-preview [role=status]'), alert = t.q('.ddr-preview [role=alert]')
     check('a preview button in the status bar too', t.qa('[data-cmd=preview]').length === 2 && !!t.q('.ddr-status [data-cmd=preview]'))
+    check('and first on the Home tab, the one that is open', t.q('[data-panel=Home] .ddr-group').contains(t.q('[data-cmd=preview]')))
     t.q('.ddr-status [data-cmd=preview]').click()
     const note = t.q('.ddr-sheet [role=alert]'), loaded = () => new Promise(r => frame.addEventListener('load', r, { once: true }))
     check('opens at once and says it is rendering', dialog.open && note.textContent === 'Rendering…' && !frame.classList.contains('ready'))
@@ -756,7 +757,10 @@ const tests = {
   'simple mode keeps Preview'() {
     const t = open(undefined, { simple: true, preview: async () => '' })
     check('the sub-report button goes', t.q('[data-cmd="add:subreport"]').closest('.ddr-group').hidden)
-    check('Preview stays in the View tab', !t.q('[data-panel=View] [data-cmd=preview]').closest('.ddr-group').hidden)
+    check('Preview stays, on the Home tab', !t.q('[data-panel=Home] [data-cmd=preview]').closest('.ddr-group').hidden)
+    check('View, empty in simple mode, has no tab', t.q('[data-tab=View]').hidden)
+    t.q('[data-tab=Home]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+    check('and the arrow keys walk past it', t.q('[data-tab=Layout]').getAttribute('aria-selected') === 'true')
   },
   'hide leaves out tabs, groups, commands and settings'() {
     const t = open(undefined, { hide: ['Home', 'chart', 'Layout.Data', 'showIf', 'delete'] })

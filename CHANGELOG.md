@@ -4,6 +4,15 @@
 
 **QRIS dinamis**: `{{qris(toko.qris, sum(qty * price))}}` sebagai isi barcode `qr` mengubah kode QRIS statis toko menjadi QRIS dinamis untuk nominal itu (tag 01 `12`, nominal di tag 54, CRC dihitung ulang), jadi pembeli tidak perlu mengetik nominal. Kode yang bukan QRIS atau CRC-nya salah, dan nominal nol atau minus, tercetak kosong.
 
+**Designer**: tombol **Preview** kini yang pertama di tab Home, tab yang terbuka saat designer dimuat. Sebelumnya hanya ada di tab View dan sebagai ikon mata kecil di bilah status, sehingga sering tidak terlihat. Di mode sederhana tab View yang jadi kosong ikut disembunyikan, dan tombol panah di deretan tab melewati tab yang disembunyikan. `designer/bootstrap.html` kini punya tombol Preview.
+
+**Perbaikan**:
+- Teks panjang dengan `grow` yang berlanjut ke banyak halaman tidak lagi di-layout ulang dari awal di setiap halaman. Waktunya dulu naik kuadrat terhadap panjang teks: 40 ribu kata sekitar 20 detik, kini di bawah 1 detik, dengan hasil cetak yang sama. Request kecil ke `-serve` tidak bisa lagi menahan satu CPU selama bermenit-menit. PDF-nya juga lebih kecil, karena perintah ganti font tidak lagi ditulis berulang.
+- Go: `ddreport.Render(template, data, ...)` dan `ddreport.Missing` dengan `data` berupa `[]byte` membaca isinya sebagai JSON, sama seperti template. Sebelumnya `[]byte` menjadi string base64 dan laporannya kosong tanpa pesan error.
+- `qris()`: nominal yang bukan angka (NaN), atau yang dibulatkan menjadi 0 (misalnya 0,001), tercetak kosong, bukan kode QRIS yang ditolak aplikasi pembayaran. Kode statis tanpa tag 01 (tag ini opsional di EMV) kini tetap dijadikan dinamis.
+- Keamanan, `ddreport -mcp`: `render_template` hanya menulis ke file yang berakhiran format-nya (`.pdf`, `.html`, ...). Asisten AI yang tertipu isi dokumen yang dibacanya (prompt injection) tidak bisa lagi menimpa file lain seperti `.bashrc` atau kunci SSH.
+- `examples/app`: request dari situs lain yang dibuka di browser yang sama (header `Origin` berbeda) ditolak, jadi halaman lain tidak bisa diam-diam mencetak struk atau menyimpan layout. Nama template dimasukkan sebagai teks, bukan HTML.
+
 ## 0.4.3 · 30 Okt 2026
 
 **Integrasi**: [INTEGRASI.md](INTEGRASI.md), panduan memasang ddreport sebagai fitur aplikasi (designer, template per pelanggan, bentuk data, render dari Node.js dan Laravel, printer struk, dan masalah yang sering muncul), dengan contoh aplikasi lengkap yang bisa dijalankan di `examples/app`: server Node.js tanpa framework dan satu halaman, termasuk cetak struk ke printer jaringan (port 9100) dan ke printer USB/Bluetooth dari browser lewat Web Serial.

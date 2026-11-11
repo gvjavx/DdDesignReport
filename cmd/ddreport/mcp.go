@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
 	ddreport "github.com/gvjavx/DdDesignReport"
 	"github.com/gvjavx/DdDesignReport/designer"
@@ -55,7 +57,7 @@ var mcpTools = []map[string]any{
 			"template": map[string]any{"type": "object"},
 			"data":     map[string]any{},
 			"format":   map[string]any{"type": "string", "enum": []string{"pdf", "html", "xlsx", "xls", "csv", "jrxml"}},
-			"path":     map[string]any{"type": "string", "description": "file to write the report to"}}}},
+			"path":     map[string]any{"type": "string", "description": "file to write the report to, ending in .<format>"}}}},
 }
 
 func mcpCall(method string, params json.RawMessage) (any, error) {
@@ -99,6 +101,9 @@ func mcpCall(method string, params json.RawMessage) (any, error) {
 			var doc []byte
 			if doc, err = renderSigned(a.Template, a.Data, a.Format); err == nil {
 				switch {
+				// only a file of that format: an assistant misled by what it reads cannot overwrite .bashrc or a key
+				case a.Path != "" && !strings.EqualFold(filepath.Ext(a.Path), "."+a.Format):
+					err = fmt.Errorf("the path must end in .%s", a.Format)
 				case a.Path != "":
 					if err = os.WriteFile(a.Path, doc, 0o644); err == nil {
 						text = fmt.Sprintf("wrote %d bytes of %s to %s", len(doc), a.Format, a.Path)
