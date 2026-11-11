@@ -1,5 +1,9 @@
 # Riwayat versi
 
+## 0.4.5 · 11 Nov 2026
+
+**Keamanan**: binary, paket Node.js/Java, dan image Docker dibangun dengan Go 1.26.11, yang menutup GO-2026-6859 di `net/http` (dipakai `ddreport -serve`). 0.4.4 masih dibangun dengan Go 1.26.10; perbarui bila menjalankan `-serve`. Tidak ada perubahan lain.
+
 ## 0.4.4 · 11 Nov 2026
 
 **QRIS dinamis**: `{{qris(toko.qris, sum(qty * price))}}` sebagai isi barcode `qr` mengubah kode QRIS statis toko menjadi QRIS dinamis untuk nominal itu (tag 01 `12`, nominal di tag 54, CRC dihitung ulang), jadi pembeli tidak perlu mengetik nominal. Kode yang bukan QRIS atau CRC-nya salah, dan nominal nol atau minus, tercetak kosong.
