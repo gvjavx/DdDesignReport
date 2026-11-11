@@ -1,6 +1,6 @@
 # Riwayat versi
 
-## Belum dirilis
+## 0.4.4 · 11 Nov 2026
 
 **QRIS dinamis**: `{{qris(toko.qris, sum(qty * price))}}` sebagai isi barcode `qr` mengubah kode QRIS statis toko menjadi QRIS dinamis untuk nominal itu (tag 01 `12`, nominal di tag 54, CRC dihitung ulang), jadi pembeli tidak perlu mengetik nominal. Kode yang bukan QRIS atau CRC-nya salah, dan nominal nol atau minus, tercetak kosong.
 

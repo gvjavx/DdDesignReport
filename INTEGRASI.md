@@ -56,7 +56,7 @@ designer.setData(data)               // contoh data: chart di kanvas, menu Field
 
 Tanpa bundler, sajikan `node_modules/ddreport-designer/designer.js` sebagai file statis lalu `import { createDesigner } from '/designer.js'`, seperti di contoh. Untuk React dan Vue: [README paket designer](release/designer-README.md).
 
-Di Laravel atau framework lain tanpa npm: unduh `https://cdn.jsdelivr.net/npm/ddreport-designer@0.4.3/designer.js` ke folder `public/`, lalu `import { createDesigner } from '/designer.js'`. Satu file, tanpa dependency. Laravel menolak POST tanpa token CSRF (`419`), jadi `fetch` untuk preview dan simpan ikut mengirimnya: taruh `<meta name="csrf-token" content="{{ csrf_token() }}">` di halaman Blade, lalu tambahkan `headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content }`.
+Di Laravel atau framework lain tanpa npm: unduh `https://cdn.jsdelivr.net/npm/ddreport-designer@0.4.4/designer.js` ke folder `public/`, lalu `import { createDesigner } from '/designer.js'`. Satu file, tanpa dependency. Laravel menolak POST tanpa token CSRF (`419`), jadi `fetch` untuk preview dan simpan ikut mengirimnya: taruh `<meta name="csrf-token" content="{{ csrf_token() }}">` di halaman Blade, lalu tambahkan `headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content }`.
 
 ## 2. Menyimpan template per pelanggan
 
