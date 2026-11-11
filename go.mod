@@ -2,7 +2,7 @@ module github.com/gvjavx/DdDesignReport
 
 go 1.25.0
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 require (
 	codeberg.org/go-pdf/fpdf v0.12.0

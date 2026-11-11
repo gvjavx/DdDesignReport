@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -124,15 +125,26 @@ func TestDataAsBytes(t *testing.T) {
 	}
 }
 
-// a long text over many pages is laid out once, not again on every page: 40 000 words took about 20 s, now well under 1 s
+// a long text over many pages is laid out once, not again on every page: 40 000 words took about 20 s, now well under 1 s,
+// and the time grows with the text, not with its square
 func TestLongTextLinear(t *testing.T) {
 	tpl := []byte(`{"page": {"width": 200, "height": 200}, "bands": {"detail": {"height": 20, "elements": [{"type": "text", "grow": true, "w": 100, "h": 20, "text": "{{s}}"}]}}}`)
-	start := time.Now()
-	if _, err := Render(tpl, []map[string]any{{"s": strings.Repeat("kata ", 40000)}}, "pdf"); err != nil {
-		t.Fatal(err)
+	// the fastest of three, so a busy machine does not decide it
+	fastest := func(words int) time.Duration {
+		best := time.Duration(math.MaxInt64)
+		for range 3 {
+			start := time.Now()
+			if _, err := Render(tpl, []map[string]any{{"s": strings.Repeat("kata ", words)}}, "pdf"); err != nil {
+				t.Fatal(err)
+			}
+			best = min(best, time.Since(start))
+		}
+		return best
 	}
-	if d := time.Since(start); d > 5*time.Second {
-		t.Errorf("took %v", d)
+	// sixteen times the text: about sixteen times the time when linear, 256 when quadratic
+	short, long := fastest(2000), fastest(32000)
+	if long > 40*short {
+		t.Errorf("2 000 words %v, 32 000 words %v: grows faster than the text", short, long)
 	}
 }
 
