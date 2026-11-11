@@ -1,6 +1,6 @@
 # Riwayat versi
 
-## Belum dirilis
+## 0.4.6 · 11 Nov 2026
 
 - Template boleh berisi `"$schema": "https://cdn.jsdelivr.net/npm/ddreport-designer/template.schema.json"`, agar editor seperti VS Code memeriksa dan melengkapinya tanpa pengaturan. Sebelumnya JSON Schema dan `check_template` (MCP) menganggapnya properti yang salah ketik. Pemakaian lewat Go mendapat field `Template.Schema`.
 - Schema juga terdaftar di [SchemaStore](https://www.schemastore.org) (PR [#6624](https://github.com/SchemaStore/schemastore/pull/6624)), jadi editor bisa memilihnya dari daftar.
