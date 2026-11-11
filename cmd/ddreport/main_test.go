@@ -476,10 +476,12 @@ func TestMCP(t *testing.T) {
 // a render that takes longer than DDREPORT_TIMEOUT is stopped and answered with 503
 func TestRenderTimeout(t *testing.T) {
 	defer func(d time.Duration) { renderTimeout = d }(renderTimeout)
-	renderTimeout = time.Nanosecond
+	renderTimeout = time.Millisecond // a timer Windows can keep; the report below takes far longer
+	// 100 000 words over many pages: hundreds of milliseconds on any machine
+	long := `{"template": {"page": {"width": 200, "height": 200}, "bands": {"detail": {"height": 20, "elements": [{"type": "text", "grow": true, "w": 100, "h": 20, "text": "` + strings.Repeat("kata ", 100000) + `"}]}}}, "data": [{}]}`
 	srv := httptest.NewServer(handler("", t.TempDir()))
 	defer srv.Close()
-	res, err := http.Post(srv.URL+"/render?format=pdf", "application/json", strings.NewReader(request))
+	res, err := http.Post(srv.URL+"/render?format=pdf", "application/json", strings.NewReader(long))
 	if err != nil {
 		t.Fatal(err)
 	}
