@@ -106,7 +106,7 @@ Data contoh harus buatan, bukan data pelanggan sungguhan. Template yang disumban
 
 ## Template
 
-Template adalah JSON. [`designer/template.schema.json`](designer/template.schema.json) adalah JSON Schema-nya (juga di `ddreport-designer/template.schema.json` dan di `/template.schema.json` pada `ddreport -serve`), untuk validasi dan pelengkapan otomatis di editor; properti yang tidak dikenal adalah kesalahan. [`llms.txt`](llms.txt) meringkas cara menulis template untuk asisten AI, dengan contoh yang dicek oleh test.
+Template adalah JSON. [`designer/template.schema.json`](designer/template.schema.json) adalah JSON Schema-nya (juga di `ddreport-designer/template.schema.json` dan di `/template.schema.json` pada `ddreport -serve`), untuk validasi dan pelengkapan otomatis di editor; properti yang tidak dikenal adalah kesalahan. Tulis `"$schema": "https://cdn.jsdelivr.net/npm/ddreport-designer/template.schema.json"` di template agar editor seperti VS Code langsung memakainya. [`llms.txt`](llms.txt) meringkas cara menulis template untuk asisten AI, dengan contoh yang dicek oleh test.
 
 ### Asisten AI (MCP)
 

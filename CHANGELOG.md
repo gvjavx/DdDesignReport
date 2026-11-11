@@ -1,5 +1,11 @@
 # Riwayat versi
 
+## Belum dirilis
+
+- Template boleh berisi `"$schema": "https://cdn.jsdelivr.net/npm/ddreport-designer/template.schema.json"`, agar editor seperti VS Code memeriksa dan melengkapinya tanpa pengaturan. Sebelumnya JSON Schema dan `check_template` (MCP) menganggapnya properti yang salah ketik. Pemakaian lewat Go mendapat field `Template.Schema`.
+- Schema juga terdaftar di [SchemaStore](https://www.schemastore.org) (PR [#6624](https://github.com/SchemaStore/schemastore/pull/6624)), jadi editor bisa memilihnya dari daftar.
+- Deskripsi JSON Schema menyebut semua format output (PNG, TXT, ESC/POS).
+
 ## 0.4.5 · 11 Nov 2026
 
 **Keamanan**: binary, paket Node.js/Java, dan image Docker dibangun dengan Go 1.26.11, yang menutup GO-2026-6859 di `net/http` (dipakai `ddreport -serve`). 0.4.4 masih dibangun dengan Go 1.26.10; perbarui bila menjalankan `-serve`. Tidak ada perubahan lain.

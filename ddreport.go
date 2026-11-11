@@ -42,7 +42,8 @@ var MaxRows int
 
 // Template is the JSON document produced by the designer. All sizes are in points.
 type Template struct {
-	Version        int // template format version it was written for; newer than FormatVersion is refused
+	Schema         string `json:"$schema,omitempty"` // the JSON Schema an editor checks the template against; the renderer ignores it
+	Version        int    // template format version it was written for; newer than FormatVersion is refused
 	Page           Page
 	DataKey        string // key of the row array in the data, default "rows"
 	SortBy         string // row fields to sort by, "-" for descending: "category, -total"

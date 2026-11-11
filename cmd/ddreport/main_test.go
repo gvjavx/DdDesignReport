@@ -491,3 +491,11 @@ func TestRenderTimeout(t *testing.T) {
 		t.Errorf("%d %s", res.StatusCode, body)
 	}
 }
+
+// "$schema", which editors read to check the template, is not an unknown property
+func TestCheckTemplateSchemaKey(t *testing.T) {
+	tpl := `{"$schema": "https://cdn.jsdelivr.net/npm/ddreport-designer/template.schema.json", "bands": {"detail": {"height": 20}}}`
+	if got, err := checkTemplate(json.RawMessage(tpl), nil); err != nil || !strings.HasPrefix(got, "ok") {
+		t.Errorf("got %q, %v", got, err)
+	}
+}

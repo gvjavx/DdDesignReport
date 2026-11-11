@@ -2,10 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/gvjavx/DdDesignReport/designer/template.schema.json",
   "title": "DdDesignReport template",
-  "description": "A report template as the designer saves it and ddreport renders it to PDF, HTML, XLSX, XLS or CSV. All sizes are in points (1/72 inch); A4 is 595 x 842. Text may contain placeholders: {{field}}, {{customer.name}}, {{page}}, {{pages}}, {{now:dd/MM/yyyy}}, {{sum(price)}}, {{avg(f)}}, {{min(f)}}, {{max(f)}}, {{count()}}, {{qty * price:2}} (:N = N decimals with thousands separators), {{date:dd MMMM yyyy}}, {{if(paid, 'PAID', 'DUE')}}, {{upper(name)}}, {{lower(name)}}, {{round(x, 2)}}, {{terbilang(total)}} (number in Indonesian words), {{index}} (row number). Aggregates run over the group in group and detail bands, over all rows elsewhere.",
+  "description": "A report template as the designer saves it and ddreport renders it to PDF, HTML, PNG, XLSX, XLS, CSV, TXT or ESC/POS (receipt printers). All sizes are in points (1/72 inch); A4 is 595 x 842. Text may contain placeholders: {{field}}, {{customer.name}}, {{page}}, {{pages}}, {{now:dd/MM/yyyy}}, {{sum(price)}}, {{avg(f)}}, {{min(f)}}, {{max(f)}}, {{count()}}, {{qty * price:2}} (:N = N decimals with thousands separators), {{date:dd MMMM yyyy}}, {{if(paid, 'PAID', 'DUE')}}, {{upper(name)}}, {{lower(name)}}, {{round(x, 2)}}, {{terbilang(total)}} (number in Indonesian words), {{index}} (row number). Aggregates run over the group in group and detail bands, over all rows elsewhere.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "$schema": { "type": "string", "description": "This schema's URL, so an editor checks and completes the template: https://cdn.jsdelivr.net/npm/ddreport-designer/template.schema.json" },
     "version": { "type": "integer", "minimum": 1, "maximum": 1, "description": "Template format version it was written for. An engine refuses a version newer than it reads, rather than print the report wrongly." },
     "page": { "$ref": "#/$defs/page" },
     "dataKey": { "type": "string", "description": "Key of the row list in the data; default \"rows\". The data may also be the row list itself." },

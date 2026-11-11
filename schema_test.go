@@ -34,7 +34,7 @@ func TestSchemaMatchesTheTypes(t *testing.T) {
 	props := func(m any) []string {
 		var out []string
 		for k := range m.(map[string]any)["properties"].(map[string]any) {
-			out = append(out, strings.ToLower(k))
+			out = append(out, strings.ToLower(strings.TrimPrefix(k, "$"))) // $schema is the field Schema
 		}
 		slices.Sort(out)
 		return out
