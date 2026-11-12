@@ -2,7 +2,7 @@
 
 # DdDesignReport
 
-A reporting library with a drag-and-drop designer. Templates are designed in the browser, saved as JSON, and rendered by one Go core to **PDF, HTML, XLSX, XLS, CSV or receipt-printer commands (ESC/POS)** from Go, Java, Kotlin, Node.js, or any language over HTTP. Templates also go to and from JasperReports (`.jrxml`). MIT licensed.
+A reporting library with a drag-and-drop designer. Templates are designed in the browser, saved as JSON, and rendered by one Go core to **PDF, HTML, PNG, XLSX, XLS, CSV, plain text or receipt-printer commands (ESC/POS)** from Go, Java, Kotlin, Node.js, or any language over HTTP. Templates also go to and from JasperReports (`.jrxml`). MIT licensed.
 
 **For software houses:** embed the designer in your application and your customers change their own invoice header, payslip columns or report-card layout, with no ticket to you. Easy mode, hideable buttons and replaceable interface text suit admins and staff who do not program.
 

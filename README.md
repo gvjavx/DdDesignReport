@@ -2,7 +2,7 @@
 
 # DdDesignReport
 
-Library reporting dengan designer drag and drop. Template didesain di browser, disimpan sebagai JSON, lalu di-render oleh satu core (Go) menjadi **PDF, HTML, XLSX, XLS, CSV, atau perintah printer struk (ESC/POS)** dari backend Go, Java, Kotlin, Node.js, atau bahasa apa pun lewat HTTP. Template juga bisa dibawa ke dan dari JasperReports (`.jrxml`).
+Library reporting dengan designer drag and drop. Template didesain di browser, disimpan sebagai JSON, lalu di-render oleh satu core (Go) menjadi **PDF, HTML, PNG, XLSX, XLS, CSV, teks, atau perintah printer struk (ESC/POS)** dari backend Go, Java, Kotlin, Node.js, atau bahasa apa pun lewat HTTP. Template juga bisa dibawa ke dan dari JasperReports (`.jrxml`).
 
 **Untuk software house:** pasang designer-nya di aplikasi Anda, dan klien bisa mengubah sendiri kop faktur, kolom slip gaji, atau tata letak rapor mereka. Tidak ada lagi tiket "tolong geser logonya" untuk Anda. Mode mudah, tombol yang bisa disembunyikan, dan teks antarmuka yang bisa diganti membuatnya cocok untuk admin dan staf yang bukan programmer, dan dokumen lokal sudah ada: kuitansi dengan terbilang, kertas F4, nama bulan Indonesia, slip gaji, surat jalan, dan rapor.
 
